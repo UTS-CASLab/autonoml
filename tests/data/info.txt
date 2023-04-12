@@ -1,0 +1,7 @@
+Datasets...
+mixed_0101_abrupto
+mixed_0101_gradual
+
+Source...
+https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/5OWRGB
+López Lobo, Jesús, 2020, "Synthetic datasets for concept drift detection purposes", https://doi.org/10.7910/DVN/5OWRGB, Harvard Dataverse, V1, UNF:6:VVTBgRNMEV+B/GmoE3Myng== [fileUNF]

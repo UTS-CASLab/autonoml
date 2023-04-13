@@ -6,11 +6,13 @@ Created on Wed Apr  5 20:39:37 2023
 """
 
 from .utils import log
+from .settings import SystemSettings as SS
 
 import asyncio
 from aioconsole import ainput
 
 import time
+
 
 
 class Timestamp:
@@ -21,15 +23,6 @@ class Timestamp:
     def __str__(self):
         return time.strftime('%y-%m-%d %H:%M:%S', time.localtime(self.time))
 
-# def get_time():
-#     time_now = time.time()
-#     return time_now
-    
-# def get_time_pretty():
-#     date_time = datetime.fromtimestamp(timestamp)
-
-# convert timestamp to string in dd-mm-yyyy HH:MM:SS
-# str_date_time = date_time.strftime("%d-%m-%Y, %H:%M:%S")
 
 
 class DataSupply:
@@ -41,18 +34,6 @@ class DataSupply:
         log.info("%s - A DataSupply has been initialised." % Timestamp())
 
 
-async def user_input():
-    content = await ainput(">")
-    print(content)
-
-async def print_something():
-    await asyncio.sleep(5)
-    print('something')
-
-async def loop_main():
-    tasks = [user_input(), print_something()]
-    await asyncio.gather(*tasks)
-
 
 class AutonoMachine:
     """
@@ -61,21 +42,50 @@ class AutonoMachine:
     
     def __init__(self):
         log.info("%s - An AutonoMachine has been initialised." % Timestamp())
+        
+        self.dataports = dict()
+        
+        self.is_running = False
+        self.delay_until_check = SS.BASE_DELAY_UNTIL_CHECK
+        
+        self.ops = None
+        
         self.run()
         
-    async def user_input(self):
-        while True:
-            content = await ainput(">")
-            print(content)
-        
     def run(self):
-        log.info("Run")
+        log.info("%s - The AutonoMachine is now running." % Timestamp())
+        self.is_running = True
+        
         loop = asyncio.get_event_loop()
-        # asyncio.run(loop_main())
         if loop.is_running() == False:
-            log.info("Out")
-            asyncio.run(user_input())
+            log.debug(("No asyncio event loop is currently running.\n"
+                       "One will be launched for AutonoML operations."))
+            asyncio.run(self.gather_ops())
         else:
-            log.info("In")
-            loop.create_task(user_input())
-        # loop.close()
+            log.debug(("The Python environment is already running an asyncio event loop.\n"
+                       "It will be used for AutonoML operations."))
+            loop.create_task(self.gather_ops())
+            
+    def stop(self):
+        log.info("%s - The AutonoMachine is now stopping." % Timestamp())
+        self.is_running = False
+        
+        # Cancel all asynchronous operations.
+        if self.ops:
+            for op in self.ops:
+                op.cancel()
+            
+    async def gather_ops(self):
+        self.ops = [asyncio.create_task(op) for op in [self.check_stop(),
+                                                       self.check_issues()]]
+        await asyncio.gather(*self.ops, return_exceptions=True)
+        
+    async def check_stop(self):
+        while self.is_running:
+            await asyncio.sleep(10)
+            self.stop()
+        
+    async def check_issues(self):
+        while self.is_running:
+            await asyncio.sleep(self.delay_until_check)
+            log.warning("%s - Whoop." % Timestamp())

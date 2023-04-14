@@ -35,8 +35,9 @@ if not log.handlers:
     log.addHandler(handler_warning)
     log.setLevel(logging.INFO)
 
-#%% Ensure all functions are available upon importing the root module.
+#%% Ensure all required functions are available upon importing the root module.
 from .core import *
+from .settings import *
 
 # # Display version information using logging
 

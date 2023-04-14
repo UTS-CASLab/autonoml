@@ -10,4 +10,4 @@ class SystemSettings:
     A container for all constants used in the AutonoML framework.
     """
     
-    BASE_DELAY_UNTIL_CHECK = 1
+    BASE_DELAY_UNTIL_CHECK = 10

@@ -4,6 +4,12 @@ AutonoML root module.
 
 import sys
 import logging
+import asyncio
+
+#%% 
+if "win32" in sys.platform:
+    # Windows specific event-loop policy & cmd
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 #%% Set up a module-level logger.
 log = logging.getLogger("autonoml")
@@ -38,6 +44,7 @@ if not log.handlers:
 #%% Ensure all required functions are available upon importing the root module.
 from .core import *
 from .settings import *
+from .streamer import *
 
 # # Display version information using logging
 

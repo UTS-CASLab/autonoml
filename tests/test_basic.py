@@ -14,11 +14,11 @@ import asyncio
 async def test():
     
     # Make checks more frequent for this test.
-    aml.SystemSettings.BASE_DELAY_UNTIL_CHECK = 1
+    aml.SystemSettings.BASE_DELAY_FOR_ISSUE_CHECK = 1
     
     # Define a default data server host/port for the user to connect with.
     server_host = aml.SystemSettings.DEFAULT_HOST
-    server_port = aml.SystemSettings.DEFAULT_PORT
+    server_port = aml.SystemSettings.DEFAULT_PORT_DATA
     
     # async def print_process_output:
         
@@ -38,8 +38,8 @@ async def test():
     # stdout, stderr = await proc.communicate()
     
     # Make a non-blocking task to fake the user pausing during UI interactions.
-    user_pause_duration_short = 3
-    user_pause_duration_long = 60
+    user_pause_duration_short = 5
+    user_pause_duration_long = 30
     async def user_pause(in_duration):
         await asyncio.sleep(in_duration)
     

@@ -26,38 +26,54 @@ class DataPort:
     An object to wrap up a connection to a data source.
     """
     
-    def __init__(self, in_data_storage, in_host = SS.DEFAULT_HOST, in_port = SS.DEFAULT_PORT):
+    def __init__(self, in_data_storage, in_host = SS.DEFAULT_HOST, in_port = SS.DEFAULT_PORT_DATA):
         log.info("%s - A DataPort has been initialised." % Timestamp())
         
         self.data_storage = in_data_storage
         self.host = in_host
         self.port = in_port
         
-        self.reader = None
-        self.writer = None
-        
-        self.is_running = False
         self.task = asyncio.get_event_loop().create_task(self.run_connection())
         
     def close(self):
-        self.is_running = False
         self.task.cancel()
         
     async def run_connection(self):
-        self.is_running = True
-        while self.is_running:
+        while True:
             try:
-                self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
-                
-                while True:
-                    message = await self.reader.readline()
-                    data = message.decode("utf8")
-                    log.info("%s - Data received: %s" % (Timestamp(), data))
+                reader, writer = await asyncio.open_connection(self.host, self.port)
+                log.warning("%s - Connected to host %s, port %s." 
+                            % (Timestamp(), self.host, self.port))
+                ops = [asyncio.create_task(op) for op in [self.send_confirm_to_server(writer),
+                                                          self.receive_data_from_server(reader)]]
+                await asyncio.gather(*ops)
+                writer.close()
+                await writer.wait_closed()
                     
             except Exception as e:
                 log.debug(e)
                 log.warning("%s - Cannot connect to host %s, port %s. Retrying." 
                             % (Timestamp(), self.host, self.port))
+                
+    async def send_confirm_to_server(self, in_writer):
+        while True:
+            in_writer.write(SS.SIGNAL_CONFIRM.encode("utf8"))
+            try:
+                await in_writer.drain()
+            except Exception as e:
+                log.warning(e)
+                break
+            await asyncio.sleep(SS.DELAY_FOR_CLIENT_CONFIRM)
+        
+    async def receive_data_from_server(self, in_reader):
+        while True:
+            try:
+                message = await in_reader.readline()
+            except Exception as e:
+                log.warning(e)
+                break
+            data = message.decode("utf8")
+            log.info("%s - Data received: %s" % (Timestamp(), data))
                 
         
         # self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
@@ -148,6 +164,10 @@ class AutonoMachine:
                        "It will be used for AutonoML operations."))
             loop.create_task(self.gather_ops())
             
+    async def gather_ops(self):
+        self.ops = [asyncio.create_task(op) for op in [self.check_issues()]]
+        await asyncio.gather(*self.ops, return_exceptions=True)
+            
     def stop(self):
         log.info("%s - The AutonoMachine is now stopping." % Timestamp())
         self.is_running = False
@@ -161,7 +181,7 @@ class AutonoMachine:
         for data_port in self.data_ports:
             data_port.close()
                 
-    def open_data_port(self, in_host = SS.DEFAULT_HOST, in_port = SS.DEFAULT_PORT):
+    def open_data_port(self, in_host = SS.DEFAULT_HOST, in_port = SS.DEFAULT_PORT_DATA):
         self.data_ports.append(DataPort(in_data_storage = self.data_storage, 
                                         in_host = in_host, in_port = in_port))
         
@@ -171,17 +191,12 @@ class AutonoMachine:
 
     #     data = await reader.readline()
     #     print('Received: %s' % data.decode())
-            
-    async def gather_ops(self):
-        self.ops = [asyncio.create_task(op) for op in [self.check_stop(),
-                                                       self.check_issues()]]
-        await asyncio.gather(*self.ops, return_exceptions=True)
         
-    # TODO: Decide on a stop event when UI gets fleshed out.
-    async def check_stop(self):
-        while self.is_running:
-            await asyncio.sleep(10)
-            # self.stop()
+    # # TODO: Decide on a stop event when UI gets fleshed out.
+    # async def check_stop(self):
+    #     while self.is_running:
+    #         await asyncio.sleep(10)
+    #         # self.stop()
         
     async def check_issues(self):
         while self.is_running:

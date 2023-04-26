@@ -19,3 +19,7 @@ class Timestamp:
     def __str__(self):
         return time.strftime("%y-%m-%d %H:%M:%S.{}".format(self.ms), 
                              time.localtime(self.time))
+    
+    def update_from(self, in_timestamp):
+        self.time = in_timestamp.time
+        self.ms = repr(self.time).split('.')[1][:3]

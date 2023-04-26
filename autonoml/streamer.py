@@ -8,71 +8,16 @@ Created on Fri Apr 14 21:38:26 2023
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
 
+from copy import deepcopy
+
 import asyncio
-
-# import multiprocessing as mp
-
-# import time
-
-# def stream_data():
-#     while True:
-#         time.sleep(2)
-#         log.info("WHOOP WHOOP!")
-
-# class SimDataStreamer:
-#     """
-#     An object that simulates a data-streaming server in a new process.
-#     """
-    
-#     def __init__(self):
-#         log.info("%s - A SimDataStreamer has been initialised." % Timestamp())
-        
-#         self.process = mp.Process(target=stream_data)
-#         self.process.start()
-        
-#     def stop(self):
-#         log.info("%s - The SimDataStreamer is now stopping." % Timestamp())
-        
-#         self.process.join(0)
-#         self.process.terminate()
-        
-#         # self.data_storage = DataStorage()
-#         # self.data_ports = dict()
-        
-#         # self.is_running = False
-#         # self.delay_until_check = SS.BASE_DELAY_UNTIL_CHECK
-        
-#         # self.ops = None
-        
-#         # self.run()
-        
-# #     def run(self):
-# #         log.info("%s - The AutonoMachine is now running." % Timestamp())
-# #         self.is_running = True
-        
-# #         # Check the Python environment for an asynchronous event loop.
-# #         # Gather operations and hand them to a new/existing event loop.
-# #         loop = asyncio.get_event_loop()
-# #         if loop.is_running() == False:
-# #             log.debug(("No asyncio event loop is currently running.\n"
-# #                        "One will be launched for AutonoML operations."))
-# #             asyncio.run(self.gather_ops())
-# #         else:
-# #             log.debug(("The Python environment is already running an asyncio event loop.\n"
-# #                        "It will be used for AutonoML operations."))
-# #             loop.create_task(self.gather_ops())
-
-
-# # # a custom function that blocks for a moment
-# # def task():
-# #     # block for a moment
-# #     sleep(1)
-# #     # display a message
-# #     print('This is from another process')
 
 class SimDataStreamer:
     """
-    An object that simulates a data-streaming server.
+    An object that simulates data-streaming servers based on a CSV file.
+    The primary server generates training data.
+    The secondary server generates queries with expected responses.
+    In practice the data instances are simply sampled lines from the CSV file.
     """
     
     def __init__(self, 
@@ -81,25 +26,26 @@ class SimDataStreamer:
                  in_file_has_headers = True):
         log.info("%s - A SimDataStreamer has been initialised." % Timestamp())
         
-        # self.data_storage = DataStorage()
-        # self.data_ports = dict()
-        
-        # self.delay_until_check = SS.BASE_DELAY_UNTIL_CHECK
-        
         self.filename_data = in_filename_data
         self.file_has_headers = in_file_has_headers
-        self.data = asyncio.Future()
-        
-        self.server = None
+        self.period_data_stream = in_period_data_stream
         
         self.ops = None
+        self.server_data = None
+        self.server_query = None
         
-        self.is_running = False
+        # 'Future' objects that will be updated with data/queries to broadcast.
+        self.data = asyncio.Future()
+        self.query = asyncio.Future()
+        
+        # A timestamp used to track the last confirmation of client connection.
+        # This is a 'global' value, in case multiple clients connect.
+        self.timestamp_confirm_global = Timestamp()
+        
         self.run()
         
     def run(self):
         log.info("%s - The SimDataStreamer is now running." % Timestamp())
-        self.is_running = True
         
         # Check the Python environment for an asynchronous event loop.
         # Gather operations and hand them to a new/existing event loop.
@@ -113,9 +59,32 @@ class SimDataStreamer:
                        "It will be used for simulated data streaming."))
             loop.create_task(self.gather_ops())
             
+    async def gather_ops(self):
+        """
+        Gather top-level concurrent tasks.
+        These include...
+        - Running the data broadcasting server.
+        - Generating the data to broadcast.
+        - Checking when to shut down the server.
+        """
+        
+        self.ops = [asyncio.create_task(op) for op in [self.run_server(),
+                                                       self.get_data(),
+                                                       self.check_stop()]]
+        await asyncio.gather(*self.ops, return_exceptions=True)
+        
+    async def check_stop(self):
+        """
+        The streamer stops if there is no interest in its server for a while.
+        """
+        while Timestamp().time - self.timestamp_confirm_global.time < SS.DELAY_FOR_SHUTDOWN_CONFIRM:
+            await asyncio.sleep(SS.PERIOD_SHUTDOWN_CHECK)
+        log.warning("%s - No clients have confirmed connection to the server "
+                    "in over %s seconds." % (Timestamp(), SS.DELAY_FOR_SHUTDOWN_CONFIRM))
+        self.stop()
+        
     def stop(self):
         log.info("%s - The SimDataStreamer is now stopping." % Timestamp())
-        self.is_running = False
         
         # Cancel all asynchronous operations.
         if self.ops:
@@ -125,74 +94,96 @@ class SimDataStreamer:
         # Close server.
         if self.server:
             self.server.close()
-            
-    async def gather_ops(self):
-        self.ops = [asyncio.create_task(op) for op in [self.run_server(),
-                                                       self.get_data(),
-                                                       self.check_stop()]]
-        await asyncio.gather(*self.ops, return_exceptions=True)
-    
-    async def handle_client(self, reader, writer):
-        # time_last_confirm = Timestamp().time
-        # while Timestamp().time < time_last_confirm + SS.DELAY_FOR_SOCKET_TIMEOUT:
-        #     await asyncio.sleep(SS.PERIOD_DATA_STREAM)
-        #     response = "WHOOP\n"
-        #     print(response)
-        #     writer.write(response.encode("utf8"))
-        #     await writer.drain()
-        while True:
-            data = await self.data
-            writer.write(data.encode("utf8"))
-            try:
-                await writer.drain()
-            except Exception as e:
-                log.warning(e)
-                log.warning("%s - SimDataStreamer has lost connection with a client." % Timestamp())
-                break
-        writer.close()
-        await writer.wait_closed()
+
+    #%% Server-client process management.
 
     async def run_server(self):
-        self.server = await asyncio.start_server(self.handle_client, SS.DEFAULT_HOST, SS.DEFAULT_PORT)
-        async with self.server:
-            await self.server.serve_forever()
+        self.server_data = await asyncio.start_server(self.handle_client, 
+                                                      SS.DEFAULT_HOST, SS.DEFAULT_PORT_DATA)
+        self.server_query = await asyncio.start_server(lambda r, w: self.handle_client(r, w, is_query = True), 
+                                                       SS.DEFAULT_HOST, SS.DEFAULT_PORT_QUERY)
+        async with self.server_data, self.server_query:
+            await asyncio.gather(self.server_data.serve_forever(), self.server_query.serve_forever())
+
+    async def handle_client(self, in_reader, in_writer, is_query = False):
+        """
+        If a client connects, regularly check for connection confirmations.
+        While connected, transmit data.
+        """
+        
+        timestamp_confirm_local = Timestamp()
+        ops = [asyncio.create_task(op) for op in [self.send_data_to_client(in_writer, timestamp_confirm_local, is_query),
+                                                  self.receive_confirm_from_client(in_reader, timestamp_confirm_local)]]
+        await asyncio.gather(*ops, return_exceptions=True)
+        log.warning("%s - SimDataStreamer has lost connection with a client." % Timestamp())
+        for op in ops:
+            op.cancel()
+        in_writer.close()
+        await in_writer.wait_closed()
+        
+    async def send_data_to_client(self, in_writer, in_timestamp_confirm, is_query):
+        while Timestamp().time - in_timestamp_confirm.time < SS.DELAY_FOR_SERVER_ABANDON:
+            # If the 'future' object is updated with data, proceed to transmit.
+            if is_query:
+                message = await self.query
+            else:
+                message = await self.data
+            in_writer.write(message.encode("utf8"))
+            try:
+                await in_writer.drain()
+            except Exception as e:
+                log.warning(e)
+                break
             
+    async def receive_confirm_from_client(self, in_reader, in_timestamp_confirm):
+        while Timestamp().time - in_timestamp_confirm.time < SS.DELAY_FOR_SERVER_ABANDON:
+            try:
+                # Any message from the client with an endline confirms the connection.
+                await in_reader.readline()
+            except Exception as e:
+                log.warning(e)
+                break
+            in_timestamp_confirm.update_from(Timestamp())
+            self.timestamp_confirm_global = deepcopy(in_timestamp_confirm)
+
+    #%% Data generation for transmission to clients.
+            
+    # TODO: Make the balance between training and testing data differ from 1:1.
     async def get_data(self):
+        """
+        Iteratively reads the lines of a text file.
+        Each line is sent to any connected clients elsewhere.
+        The file is assumed to be in CSV format. 
+        """
+        
         try:
             with open(self.filename_data, "r") as data_file:
+                # Ignore the header line.
                 if self.file_has_headers:
                     data_file.readline()
+                is_query = False
                 while True:
                     line = data_file.readline()
-                    log.info("%s - Data acquired: %s" % (Timestamp(), line))
                     if not line:
                         break
                     
-                    # Resolving awaited future results are priority microtasks.
-                    self.data.set_result(line)
-                    self.data = asyncio.Future()
-                    await asyncio.sleep(SS.PERIOD_DATA_STREAM)
-        except:
+                    # Stream writers for connected clients wait for a 'future'.
+                    # Set the result so they can transmit the data.
+                    # Note: Resolving awaited futures are priority microtasks.
+                    # The following reset runs after the writers get results.
+                    if is_query:
+                        log.info("%s - Query and expected response generated: %s" % (Timestamp(), line))
+                        self.query.set_result(line)
+                        self.query = asyncio.Future()
+                        is_query = False
+                    else:
+                        log.info("%s - Data generated: %s" % (Timestamp(), line))
+                        self.data.set_result(line)
+                        self.data = asyncio.Future()
+                        is_query = True
+                    if not is_query:
+                        await asyncio.sleep(self.period_data_stream)
+        except asyncio.CancelledError:
             pass
-        if self.is_running:
+        except:
             log.warning("%s - SimDataStreamer cannot find data to read from a valid file." % Timestamp())
-        
-    async def check_stop(self):
-        while self.is_running:
-            await asyncio.sleep(60)
-            self.stop()
-        
-    # async def check_issues(self):
-    #     while self.is_running:
-    #         await asyncio.sleep(self.delay_until_check)
-    #         is_issue = False
-    #         if not self.data_ports:
-    #             log.warning(("%s - %i+ seconds since last check - "
-    #                          "No data ports have been assigned to the AutonoMachine.") 
-    #                         % (Timestamp(), self.delay_until_check))
-    #             is_issue = True
-                
-    #         if is_issue:
-    #             self.delay_until_check *= 2
-    #         else:
-    #             self.delay_until_check = SS.BASE_DELAY_UNTIL_CHECK

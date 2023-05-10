@@ -110,7 +110,7 @@ class SimDataStreamer:
         If a client connects, regularly check for connection confirmations.
         While connected, transmit data.
         """
-        
+        log.info("%s - SimDataStreamer has established connection with a client." % Timestamp())
         timestamp_confirm_local = Timestamp()
         ops = [asyncio.create_task(op) for op in [self.send_data_to_client(in_writer, timestamp_confirm_local, is_query),
                                                   self.receive_confirm_from_client(in_reader, timestamp_confirm_local)]]
@@ -134,17 +134,20 @@ class SimDataStreamer:
             except Exception as e:
                 log.warning(e)
                 break
+        log.info("%s - No more send." % Timestamp())
             
     async def receive_confirm_from_client(self, in_reader, in_timestamp_confirm):
         while Timestamp().time - in_timestamp_confirm.time < SS.DELAY_FOR_SERVER_ABANDON:
             try:
                 # Any message from the client with an endline confirms the connection.
-                await in_reader.readline()
+                message = await in_reader.readline()
+                log.info("%s - Received %s." % (Timestamp(), message.decode("utf8")))
             except Exception as e:
                 log.warning(e)
                 break
             in_timestamp_confirm.update_from(Timestamp())
             self.timestamp_confirm_global = deepcopy(in_timestamp_confirm)
+        log.info("%s - No more receive." % Timestamp())
 
     #%% Data generation for transmission to clients.
             
@@ -172,12 +175,12 @@ class SimDataStreamer:
                     # Note: Resolving awaited futures are priority microtasks.
                     # The following reset runs after the writers get results.
                     if is_query:
-                        log.info("%s - Query and expected response generated: %s" % (Timestamp(), line))
+                        log.info("%s - Query and expected response generated: %s" % (Timestamp(), line.rstrip()))
                         self.query.set_result(line)
                         self.query = asyncio.Future()
                         is_query = False
                     else:
-                        log.info("%s - Data generated: %s" % (Timestamp(), line))
+                        log.info("%s - Data generated: %s" % (Timestamp(), line.rstrip()))
                         self.data.set_result(line)
                         self.data = asyncio.Future()
                         is_query = True

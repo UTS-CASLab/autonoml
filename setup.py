@@ -36,8 +36,10 @@ setup(
     # classifiers=CLASSIFIERS,
     packages=find_packages(),
     include_package_data=True,
+    # TODO: Consider user installation options for only useful subsets of packages.
     install_requires=[
-        "aioconsole"
+        "river"
+        # "aioconsole",
         # "matplotlib",
         # "numpy>=1.10.1",
         # "scipy>=1.2.1",

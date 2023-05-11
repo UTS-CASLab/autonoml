@@ -9,4 +9,6 @@ import autonoml as aml
 
 filename_data = "./data/mixed_0101_abrupto.csv"
 
-streamer = aml.SimDataStreamer(filename_data)
+# Data file interleaves class representation at 1:1 ratio.
+# So, choose a training/testing ratio of 4:1.
+streamer = aml.SimDataStreamer(filename_data, in_instances_per_query = 4)

@@ -9,8 +9,6 @@ import asyncio
 
 import subprocess
 
-# asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
 async def test():
     
     # Make checks more frequent for this test.
@@ -26,6 +24,9 @@ async def test():
     user_pause_duration_long = 45
     async def user_pause(in_duration):
         await asyncio.sleep(in_duration)
+        
+    # Define a log file for the streamer subprocess.
+    filename_log_streamer = "test_basic_streamer.log"
     
     
     
@@ -44,10 +45,11 @@ async def test():
     await task
     
     print("USER: Notices the streaming server is activating.")
-    server_process = subprocess.Popen(["python", "sim_data_streamer.py"],
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                      universal_newlines=True)
-    # TODO: Debug the initial burst of data received by the AutonoMachine, i.e. odd behaviour? 
+    with open(filename_log_streamer, "w") as file_log_streamer:
+        server_process = subprocess.Popen(["python", "sim_data_streamer.py"],
+                                          stdout = file_log_streamer, 
+                                          stderr = subprocess.STDOUT,
+                                          universal_newlines = True)
     
     print("USER: Thinks for %i+ seconds." % user_pause_duration_medium)
     task = asyncio.get_event_loop().create_task(user_pause(user_pause_duration_medium))
@@ -68,10 +70,7 @@ async def test():
     proj.stop()
     
     # An unconnected server should die eventually, but terminate it anyway.
-    print("\nDEBUG: Streaming server process output...")
-    # server_process.kill()
-    output = server_process.stdout.read()
-    print(output)
+    server_process.kill()
     
     return proj
 

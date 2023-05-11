@@ -57,12 +57,18 @@ class DataPort:
         self.host = in_host
         self.port = in_port
         
-        self.task = asyncio.get_event_loop().create_task(self.run_connection())
-        
         # A list of names to ID elements within incoming data.
         self.keys_data = list()
         
+        self.ops = None
+        self.task = asyncio.get_event_loop().create_task(self.run_connection())
+        
     def close(self):
+        # Cancel all asynchronous operations.
+        if self.ops:
+            for op in self.ops:
+                op.cancel()
+        
         self.task.cancel()
         
     async def run_connection(self):
@@ -71,10 +77,13 @@ class DataPort:
                 reader, writer = await asyncio.open_connection(self.host, self.port)
                 log.warning("%s - Connected to host %s, port %s." 
                             % (Timestamp(), self.host, self.port))
-                ops = [asyncio.create_task(op) for op in [self.send_confirm_to_server(writer),
-                                                          self.receive_data_from_server(reader)]]
-                # TODO: Ensure that both ops break together, e.g. as with data streamer.
-                await asyncio.gather(*ops)
+                self.ops = [asyncio.create_task(op) for op in [self.send_confirm_to_server(writer),
+                                                               self.receive_data_from_server(reader)]]
+                for op in asyncio.as_completed(self.ops):
+                    await op
+                    for op_other in self.ops:
+                        op_other.cancel()
+                    break
                 writer.close()
                 await writer.wait_closed()
                     
@@ -88,12 +97,10 @@ class DataPort:
             in_writer.write(SS.SIGNAL_CONFIRM.encode("utf8"))
             try:
                 await in_writer.drain()
-                log.info("%s - Sent." % Timestamp())
             except Exception as e:
                 log.warning(e)
                 break
             await asyncio.sleep(SS.DELAY_FOR_CLIENT_CONFIRM)
-        log.info("%s - No more send." % Timestamp())
         
     async def receive_data_from_server(self, in_reader):
         while True:
@@ -111,7 +118,6 @@ class DataPort:
             timestamp = Timestamp()
             self.data_storage.store_data(timestamp, self.keys_data, data)
             log.info("%s - Data received: %s" % (timestamp, data))
-        log.info("%s - No more receive." % Timestamp())
 
 class TaskSolver:
     """

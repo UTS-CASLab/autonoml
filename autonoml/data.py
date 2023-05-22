@@ -7,7 +7,23 @@ Created on Fri May 12 22:21:05 2023
 
 from .utils import log, Timestamp
 
+import ast
+
 import pandas as pd
+
+# TODO: Redesign so the inference/conversion is done at DataPort interface.
+#       This will allow CSV text file inputs to be treated differently from other inputs.
+def infer_data_type(in_element):
+    data_type = type(in_element)
+    
+    # Check if a string data type can be converted to something else.
+    if data_type == str:
+        try:
+            data_type = type(ast.literal_eval(in_element))
+        except:
+            pass
+    
+    return data_type
 
 # TODO: Consider how the data is best stored, including preallocated arrays.
 class DataStorage:
@@ -19,13 +35,15 @@ class DataStorage:
         log.info("%s - DataStorage has been initialised." % Timestamp())
         
         self.timestamps = list()
-        self.data = dict()
+        self.data = dict()          # Stored data arranged in keyed lists.
+        self.data_types = dict()    # The data types for each keyed list.
+        # Note: Data types are actual types not strings.
         
         # Ingested data arrives from data ports.
         # For data port X, this data is sent as a list of elements.
         # The elements have keys: X_0, X_1, etc.
         # Define a dict that links port-specific keys to storage-specific keys.
-        # This determines where elements of incoming data are stored.
+        # This directs elements of incoming data to the right list.
         self.keys_port_to_storage = dict()
         
     def store_data(self, in_timestamp, in_elements, in_port_id):
@@ -43,27 +61,48 @@ class DataStorage:
             # If a new port-specific key is encountered, initialise a list.
             # The list is initially named identically to this key.
             if not key_port in self.keys_port_to_storage:
-                log.info("%s - Data is being newly stored in a list with key '%s'." 
+                log.info("%s - DataStorage is newly encountering data "
+                         "from a DataPort with key '%s'." 
                          % (Timestamp(), key_port))
                 self.keys_port_to_storage[key_port] = key_port
             
             key_storage = self.keys_port_to_storage[key_port]
             
             if not key_storage in self.data:
+                log.info("%s - DataStorage has begun storing data "
+                         "in a list with key '%s'." 
+                         % (Timestamp(), key_storage))
                 self.data[key_storage] = [None]*len(self.timestamps)
-            self.data[key_storage][-1] = element
+                
+                # The first element in a list determines its data type.
+                self.data_types[key_storage] = infer_data_type(element)
+            
+            # Add the new element to the list with str-to-type conversion.
+            try:
+                # TODO: Some data types do not convert, e.g. NoneType. Consider how to fix/avoid.
+                self.data[key_storage][-1] = self.data_types[key_storage](element)
+            except Exception as e:
+                # TODO: Handle changes in data type for messy datasets.
+                raise e
         
     def info(self):
         """
         Utility method to give user info about data ports and storage.
         """
         log.info("Stored data is arranged into lists identified as follows.")
-        log.info("Keys: %s" % ", ".join(self.data.keys()))
+        log.info("Keys: %s" % ", ".join(key + " (" + self.data_types[key].__name__ + ")" 
+                                        for key in self.data_types))
         log.info("DataPorts pipe data into the lists as follows.")
-        log.info("Pipe: %s" % ", ".join("{" + key + " -> " + self.keys_port_to_storage[key]+ "}" 
+        log.info("Pipe: %s" % ", ".join("{" + key + " -> " + self.keys_port_to_storage[key] + "}" 
                                         for key in self.keys_port_to_storage))
         
     def update(self, in_keys_port, in_keys_storage):
+        """
+        Take in a list of DataPort data keys.
+        Update the DataStorage lists into which the data is directed.
+        This may be as simple as renaming lists or may involve merging.
+        Note: This process also shifts historically stored data across.
+        """
         
         for count_key in range(len(in_keys_port)):
             key_port = in_keys_port[count_key]
@@ -75,18 +114,40 @@ class DataStorage:
                             % (Timestamp(), key_port, key_port, key_storage))
             else:
                 key_storage_old = self.keys_port_to_storage[key_port]
-                self.keys_port_to_storage[key_port] = key_storage
+                data_type_old = self.data_types[key_storage_old]
+                
+                # Handle merging with pre-existing lists.
                 if key_storage in self.data:
-                    log.warning("%s - DataStorage already contains list '%s'. "
-                                "Proceeding to overwrite with list '%s' where values exist."
-                                % (Timestamp(), key_storage_old, key_storage))
-                    list_old = self.data.pop(key_storage_old)
-                    for count_element in range(len(list_old)):
-                        element = list_old[count_element]
-                        if element:
-                            self.data[key_storage][count_element] = element
+                    data_type_existing = self.data_types[key_storage]
+                    
+                    # Refuse for clashing data types.
+                    # TODO: Consider allowing it but generalising data types.
+                    if not data_type_existing == data_type_old:
+                        log.warning("%s - DataStorage already contains list '%s' with type '%s'. "
+                                    "Refusing to merge in list '%s' with type '%s'."
+                                    % (Timestamp(), key_storage, data_type_existing.__name__, 
+                                       key_storage_old, data_type_old.__name__))
+                    else:
+                        log.warning("%s - DataStorage already contains list '%s'. "
+                                    "Proceeding to overwrite with list '%s' where values exist."
+                                    % (Timestamp(), key_storage, key_storage_old))
+                        self.data_types.pop(key_storage_old)
+                        list_old = self.data.pop(key_storage_old)
+                        for count_element in range(len(list_old)):
+                            element = list_old[count_element]
+                            if element is not None:
+                                self.data[key_storage][count_element] = element
+                        
+                        # Update directions for the DataPort.
+                        self.keys_port_to_storage[key_port] = key_storage
+                        
+                # Handle what is effectively the renaming of a list.
                 else:
+                    self.data_types[key_storage] = self.data_types.pop(key_storage_old)
                     self.data[key_storage] = self.data.pop(key_storage_old)
+                    
+                    # Update directions for the DataPort.
+                    self.keys_port_to_storage[key_port] = key_storage
                 
         
         

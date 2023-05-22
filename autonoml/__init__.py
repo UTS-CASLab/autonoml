@@ -42,9 +42,11 @@ if not log.handlers:
     log.setLevel(logging.INFO)
 
 #%% Ensure all required functions are available upon importing the root module.
+
 from .core import *
-from .settings import *
 from .streamer import *
+from .settings import *
+from .utils import *
 
 # # Display version information using logging
 

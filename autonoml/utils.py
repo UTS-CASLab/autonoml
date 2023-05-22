@@ -7,8 +7,20 @@ Created on Wed Apr  5 22:23:02 2023
 
 import logging
 import time
+import asyncio
 
+# Explicitly grab a handle for the AutonoML codebase.
+# Detailed specifications are set in the __init__.py file.
 log = logging.getLogger("autonoml")
+
+
+async def user_pause(in_duration):
+    """
+    Helper function to mimic an asynchronous pause in user interactions.
+    """
+    print("USER: Pauses for %i+ seconds." % in_duration)
+    await asyncio.sleep(in_duration)
+
 
 class Timestamp:
     

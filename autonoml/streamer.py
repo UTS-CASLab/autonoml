@@ -29,13 +29,22 @@ class SimDataStreamer:
                  in_filename_data = None,
                  in_instances_per_query = 1,
                  in_period_data_stream = SS.PERIOD_DATA_STREAM,
-                 in_file_has_headers = True):
+                 in_file_has_headers = True,
+                 in_hostname_data = SS.DEFAULT_HOSTNAME,
+                 in_port_data = SS.DEFAULT_PORT_DATA,
+                 in_hostname_query = SS.DEFAULT_HOSTNAME,
+                 in_port_query = SS.DEFAULT_PORT_QUERY):
         log.info("%s - A SimDataStreamer has been initialised." % Timestamp())
         
         self.filename_data = in_filename_data
         self.file_has_headers = in_file_has_headers
         self.instances_per_query = in_instances_per_query
         self.period_data_stream = in_period_data_stream
+        
+        self.hostname_data = in_hostname_data
+        self.port_data = in_port_data
+        self.hostname_query = in_hostname_query
+        self.port_query = in_port_query
         
         self.ops = None
         self.server_data = None
@@ -107,10 +116,12 @@ class SimDataStreamer:
     #%% Server-client process management.
 
     async def run_server(self):
-        self.server_data = await asyncio.start_server(self.handle_client, 
-                                                      SS.DEFAULT_HOST, SS.DEFAULT_PORT_DATA)
-        self.server_query = await asyncio.start_server(lambda r, w: self.handle_client(r, w, is_query = True), 
-                                                       SS.DEFAULT_HOST, SS.DEFAULT_PORT_QUERY)
+        self.server_data = await asyncio.start_server(self.handle_client,
+                                                      self.hostname_data,
+                                                      self.port_data)
+        self.server_query = await asyncio.start_server(lambda r, w: self.handle_client(r, w, is_query = True),
+                                                       self.hostname_query,
+                                                       self.port_query)
         async with self.server_data, self.server_query:
             await asyncio.gather(self.server_data.serve_forever(), self.server_query.serve_forever())
 

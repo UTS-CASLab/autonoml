@@ -38,6 +38,7 @@ setup(
     include_package_data=True,
     # TODO: Consider user installation options for only useful subsets of packages.
     install_requires=[
+        "pandas",
         "river"
         # "aioconsole",
         # "matplotlib",

@@ -7,6 +7,7 @@ Created on Wed Apr  5 20:39:37 2023
 
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
+from .data import DataStorage
 
 import asyncio
 # from aioconsole import ainput
@@ -15,32 +16,6 @@ from river import linear_model
 from river import metrics
 
 
-# TODO: Consider how the data is best stored, including preallocated arrays.
-class DataStorage:
-    """
-    A collection of data that supplies machine learning processes.
-    """
-    
-    def __init__(self):
-        log.info("%s - DataStorage has been initialised." % Timestamp())
-        
-        self.timestamps = list()
-        self.data = dict()
-        
-    def store_data(self, in_timestamp, in_keys, in_elements):
-        
-        self.timestamps.append(in_timestamp)
-        
-        # Extend all existing feature columns by one.
-        for key in self.data:
-            self.data[key].append(None)
-        
-        for key, element in zip(in_keys, in_elements):
-            # If a new feature is identified in the keys, initialise a list.
-            if not key in self.data:
-                self.data[key] = [None]*len(self.timestamps)
-            self.data[key][-1] = element
-        
 
 # TODO: Extend this beyond .csv files.
 class DataPort:
@@ -49,16 +24,17 @@ class DataPort:
     """
     
     def __init__(self, in_id, in_data_storage, 
-                 in_host = SS.DEFAULT_HOST, in_port = SS.DEFAULT_PORT_DATA):
-        log.info("%s - A DataPort has been initialised." % Timestamp())
+                 in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA):
+        log.info("%s - DataPort '%s' has been initialised." % (Timestamp(), in_id))
         
-        self.id = in_id
+        self.id = in_id     # String to id data port.
+        
+        # Reference to the DataStorage contained in the AutonoMachine.
         self.data_storage = in_data_storage
-        self.host = in_host
-        self.port = in_port
         
-        # A list of names to ID elements within incoming data.
-        self.keys_data = list()
+        # Server details that this data port is targeting.
+        self.target_hostname = in_hostname
+        self.target_port = in_port
         
         self.ops = None
         self.task = asyncio.get_event_loop().create_task(self.run_connection())
@@ -74,9 +50,9 @@ class DataPort:
     async def run_connection(self):
         while True:
             try:
-                reader, writer = await asyncio.open_connection(self.host, self.port)
-                log.warning("%s - Connected to host %s, port %s." 
-                            % (Timestamp(), self.host, self.port))
+                reader, writer = await asyncio.open_connection(self.target_hostname, self.target_port)
+                log.warning("%s - DataPort '%s' is connected to host %s, port %s." 
+                            % (Timestamp(), self.id, self.target_hostname, self.target_port))
                 self.ops = [asyncio.create_task(op) for op in [self.send_confirm_to_server(writer),
                                                                self.receive_data_from_server(reader)]]
                 for op in asyncio.as_completed(self.ops):
@@ -89,8 +65,8 @@ class DataPort:
                     
             except Exception as e:
                 log.debug(e)
-                log.warning("%s - Cannot connect to host %s, port %s. Retrying." 
-                            % (Timestamp(), self.host, self.port))
+                log.warning("%s - DataPort '%s' cannot connect to host %s, port %s. Retrying." 
+                            % (Timestamp(), self.id, self.target_hostname, self.target_port))
                 
     async def send_confirm_to_server(self, in_writer):
         while True:
@@ -110,14 +86,12 @@ class DataPort:
                 log.warning(e)
                 break
             data = message.decode("utf8").rstrip().split(",")
-            
-            # TODO: Consider checking only once if keys need to be established.
-            if not self.keys_data:
-                self.keys_data = [str(self.id) + "_" + str(x) for x in range(len(data))]
                 
             timestamp = Timestamp()
-            self.data_storage.store_data(timestamp, self.keys_data, data)
-            log.info("%s - Data received: %s" % (timestamp, data))
+            self.data_storage.store_data(in_timestamp = timestamp, 
+                                         in_elements = data, 
+                                         in_port_id = self.id)
+            log.info("%s - DataPort '%s' received data: %s" % (timestamp, self.id, data))
 
 class TaskSolver:
     """
@@ -188,12 +162,30 @@ class AutonoMachine:
         for id in self.data_ports:
             self.data_ports[id].close()
                 
-    def open_data_port(self, in_host = SS.DEFAULT_HOST, in_port = SS.DEFAULT_PORT_DATA):
-        # TODO: Confirm how new data ports are named.
-        id_data_port = len(self.data_ports)
+    def open_data_port(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA,
+                       in_id = None):
+        id_data_port = str(len(self.data_ports))
+        if not in_id is None:
+            id_data_port = str(in_id)
         self.data_ports[id_data_port] = DataPort(in_id = id_data_port,
-                                                         in_data_storage = self.data_storage,
-                                                         in_host = in_host, in_port = in_port)
+                                                 in_data_storage = self.data_storage,
+                                                 in_hostname = in_hostname,
+                                                 in_port = in_port)
+        
+    def info_storage(self):
+        """
+        Utility method to give user info about data ports and storage.
+        """
+        log.info("The AutonoMachine has %i DataPorts: %s" 
+                 % (len(self.data_ports), ", ".join(self.data_ports.keys())))
+        self.data_storage.info()
+        
+    def update_storage(self, in_keys_port, in_keys_storage):
+        """
+        Redirects where DataPorts send their received data.
+        Renames the lists in DataStorage, merging if required.
+        """
+        self.data_storage.update(in_keys_port, in_keys_storage)
         
     def learn(self, in_id_target):
         self.task_solver = TaskSolver(in_data_storage = self.data_storage)

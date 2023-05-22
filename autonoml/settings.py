@@ -16,10 +16,10 @@ class SystemSettings:
     BASE_DELAY_FOR_ISSUE_CHECK = 10     # Seconds until checking for issues.
 
     #%% Streamer-specific constants.
-    DEFAULT_HOST = "localhost"   # Default IP address for connections.
-    DEFAULT_PORT_DATA = 50001    # Ephemeral port within IANA-advised range.
-    DEFAULT_PORT_QUERY = 50002   # Ephemeral port within IANA-advised range.
-    PERIOD_DATA_STREAM = 1      # Seconds between streamed data instances.
+    DEFAULT_HOSTNAME = "localhost"  # Default IP address for connections.
+    DEFAULT_PORT_DATA = 50001       # Ephemeral port within IANA-advised range.
+    DEFAULT_PORT_QUERY = 50002      # Ephemeral port within IANA-advised range.
+    PERIOD_DATA_STREAM = 1          # Seconds between streamed data instances.
     
     # The following manages when the data-streaming server knows when to shut down.
     PERIOD_SHUTDOWN_CHECK = 20          # Seconds between server checks to see if any client is connected.

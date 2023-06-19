@@ -7,6 +7,7 @@ Created on Fri May 12 22:21:05 2023
 
 from .utils import log, Timestamp
 
+import asyncio
 import ast
 
 import pandas as pd
@@ -46,6 +47,10 @@ class DataStorage:
         # This directs elements of incoming data to the right list.
         self.keys_port_to_storage = dict()
         
+        # Set up a variable that can be awaited elsewhere.
+        # This 'switch', when flicked, signals learners to ingest new data.
+        self.has_new_data = asyncio.Future()
+        
     def store_data(self, in_timestamp, in_elements, in_port_id):
         
         self.timestamps.append(in_timestamp)
@@ -78,12 +83,19 @@ class DataStorage:
                 self.data_types[key_storage] = infer_data_type(element)
             
             # Add the new element to the list with str-to-type conversion.
+            # Note the function call.
             try:
                 # TODO: Some data types do not convert, e.g. NoneType. Consider how to fix/avoid.
                 self.data[key_storage][-1] = self.data_types[key_storage](element)
             except Exception as e:
                 # TODO: Handle changes in data type for messy datasets.
                 raise e
+        
+        # Flick a switch so that learners can start ingesting new data.
+        # Note: Resolving awaited futures are priority microtasks.
+        # The following reset runs after the learners are signalled.
+        self.has_new_data.set_result(True)
+        self.has_new_data = asyncio.Future()
         
     def info(self):
         """

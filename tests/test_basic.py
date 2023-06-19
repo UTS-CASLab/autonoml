@@ -28,7 +28,7 @@ async def test():
     await aml.user_pause(5)
     
     print("USER: Opens a data port to an inactive streaming server.")
-    proj.open_data_port(server_hostname, server_port_data)
+    proj.open_data_port(server_hostname, server_port_data, in_id = "abrupto")
     await aml.user_pause(15)
     
     print("USER: Notices the streaming server is activating.")
@@ -39,14 +39,14 @@ async def test():
                                           universal_newlines = True)
     await aml.user_pause(15)
     
-    # print("USER: Decides on a machine learning task.")
-    # proj.learn("class")
+    print("USER: User renames stored data columns from the streamer.")
+    proj.update_storage(["abrupto_0", "abrupto_1", "abrupto_2", "abrupto_3", "abrupto_4"],
+                        ["X1", "X2", "X3", "X4", "class"])
+    await aml.user_pause(5)
     
+    print("USER: Decides on a machine learning task.")
+    proj.learn("class")
     await aml.user_pause(15)
-    
-    # print("USER: Thinks for %i+ seconds." % user_pause_duration_long)
-    # task = asyncio.get_event_loop().create_task(user_pause(user_pause_duration_long))
-    # await task
     
     print("USER: Stops the AutonoMachine.")
     proj.stop()

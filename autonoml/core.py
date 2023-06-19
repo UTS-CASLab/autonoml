@@ -8,12 +8,9 @@ Created on Wed Apr  5 20:39:37 2023
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
 from .data import DataStorage
+from .solver import TaskSolver
 
 import asyncio
-# from aioconsole import ainput
-
-from river import linear_model
-from river import metrics
 
 
 
@@ -92,21 +89,7 @@ class DataPort:
                                          in_elements = data, 
                                          in_port_id = self.id)
             log.info("%s - DataPort '%s' received data: %s" % (timestamp, self.id, data))
-
-class TaskSolver:
-    """
-    A wrapper for components that learn from data and respond to queries.
-    """
-    
-    def __init__(self, in_data_storage):
-        log.info("%s - A TaskSolver has been initialised." % Timestamp())
         
-        self.data_storage = in_data_storage
-        
-        # linear_model.LogisticRegression()
-        # self.metric = metrics.Accuracy()
-        
-
 
 
 class AutonoMachine:
@@ -158,6 +141,10 @@ class AutonoMachine:
             for op in self.ops:
                 op.cancel()
                 
+        # Stop the task solver.
+        if self.task_solver:
+            self.task_solver.stop()
+                
         # Close all data ports.
         for id in self.data_ports:
             self.data_ports[id].close()
@@ -185,10 +172,15 @@ class AutonoMachine:
         Redirects where DataPorts send their received data.
         Renames the lists in DataStorage, merging if required.
         """
-        self.data_storage.update(in_keys_port, in_keys_storage)
+        if not self.task_solver:
+            self.data_storage.update(in_keys_port, in_keys_storage)
+        else:
+            # TODO: Relax this constraint eventually.
+            log.error("%s - DataStorage cannot be updated while a TaskSolver exists." % Timestamp())
         
-    def learn(self, in_id_target):
-        self.task_solver = TaskSolver(in_data_storage = self.data_storage)
+    def learn(self, in_key_target):
+        self.task_solver = TaskSolver(in_key_target = in_key_target, 
+                                      in_data_storage = self.data_storage)
         
     # # TODO: Decide on a stop event when UI gets fleshed out.
     # async def check_stop(self):

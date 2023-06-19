@@ -55,8 +55,8 @@ async def test():
     # print(proj.data_storage.get_dataframe())    # Inspect data for debugging.
     
     print("USER: User renames stored data columns from the first streamer.")
-    proj.update_storage(["gradual_0", "gradual_1", "gradual_2", "gradual_fake", "gradual_3", "gradual_4"],
-                        ["X1", "X2", "X3", "XFAKE", "X4", "class"])
+    proj.update_storage(["abrupto_0", "abrupto_1", "abrupto_2", "abrupto_3", "abrupto_4"],
+                        ["X1", "X2", "X3", "X4", "class"])
     await aml.user_pause(5)
     
     print("USER: User checks how data is being stored.")
@@ -65,8 +65,8 @@ async def test():
     # print(proj.data_storage.get_dataframe())    # Inspect data for debugging.
     
     print("USER: User redirects and merges in data from the second streamer.")
-    proj.update_storage(["abrupto_0", "abrupto_1", "abrupto_2", "abrupto_3", "abrupto_4"],
-                        ["X1", "X2", "X3", "X4", "class"])
+    proj.update_storage(["gradual_0", "gradual_1", "gradual_2", "gradual_fake", "gradual_3", "gradual_4"],
+                        ["X1", "X2", "X3", "XFAKE", "X4", "class"])
     await aml.user_pause(5)
     
     print("USER: User checks how data is being stored.")

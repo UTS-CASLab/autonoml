@@ -27,7 +27,8 @@ class TaskSolver:
         self.model = linear_model.LogisticRegression()
         self.metric = metrics.RMSE()
         
-        # Keep track of the data-storage instance up to which model has used. 
+        # Keep track of the data-storage instance up to which model has used.
+        # TODO: Consider variant starting points for the model and update log messages.
         self.count_data = 0
         
         self.task = asyncio.get_event_loop().create_task(self.continuously_learn())
@@ -38,6 +39,9 @@ class TaskSolver:
     async def continuously_learn(self):
         while True:
             # Check for new data and learn from it.
+            count_instance = 0
+            y = None
+            y_pred = None
             while self.count_data < len(self.data_storage.timestamps):
                 x = dict()
                 for key in self.data_storage.data:
@@ -50,11 +54,15 @@ class TaskSolver:
                 self.metric = self.metric.update(y, y_pred)
                 self.model.learn_one(x, y)
                 
-                log.info("%s - RMSE is %f after Observation %i"
-                         " - True Value %s vs Prediction %s" 
-                         % (Timestamp(), self.metric.get(), self.count_data,
-                            y, y_pred))
-                
                 self.count_data += 1
+                count_instance += 1
+            
+            if count_instance > 0:
+                log.info("%s - The TaskSolver has learned from another %i observations." 
+                         % (Timestamp(), count_instance))
+                log.info("%s   Metric is %f after Observation %i"
+                         % (Timestamp(None), self.metric.get(), self.count_data))
+                log.info("%s   Last observation: Prediction %s vs True Value %s" 
+                         % (Timestamp(None), y_pred, y))
                 
             await self.data_storage.has_new_data

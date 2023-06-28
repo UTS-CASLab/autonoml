@@ -20,14 +20,57 @@ class DataPort:
     An object to wrap up a connection to a data source.
     """
     
-    def __init__(self, in_id, in_data_storage, 
-                 in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA):
+    def __init__(self, in_id, in_data_storage):
         log.info("%s - DataPort '%s' has been initialised." % (Timestamp(), in_id))
         
         self.id = in_id     # String to id data port.
         
         # Reference to the DataStorage contained in the AutonoMachine.
         self.data_storage = in_data_storage
+        
+        # An ordered list of keys associated with elements of inflow data.
+        self.keys = None
+        
+    def ingest_file(self, in_filename, in_file_has_headers = True):
+        
+        log.info("%s - DataPort '%s' is ingesting a file: %s" 
+                 % (Timestamp(), self.id, in_filename))
+        
+        with open(in_filename, "r") as data_file:
+            # If there are headers, these become the inflow keys.
+            if in_file_has_headers:
+                line = data_file.readline()
+                self.keys = line.rstrip().split(",")
+
+            count_instance = 0
+            for line in data_file:
+                data = line.rstrip().split(",")
+                
+                # If there are no headers...
+                # Inflow keys enumerate the inflow data elements encountered.
+                if count_instance == 0 and not in_file_has_headers:
+                    self.keys = [str(num_element) for num_element in range(len(data))]
+                    
+                self.data_storage.store_data(in_timestamp = Timestamp(),
+                                             in_data_port_id = self.id,
+                                             in_keys = self.keys,
+                                             in_elements = data)
+                count_instance += 1
+                
+        log.info("%s - DataPort '%s' has acquired %s instances of data." 
+                 % (Timestamp(), self.id, count_instance))
+                
+
+
+class DataPortStream(DataPort):
+    """
+    A DataPort that connects to a server.
+    """
+    
+    def __init__(self, in_id, in_data_storage, 
+                 in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA):
+        super().__init__(in_id = in_id, in_data_storage = in_data_storage)
+        log.info("%s   This DataPort is designed for streams." % Timestamp(None))
         
         # Server details that this data port is targeting.
         self.target_hostname = in_hostname
@@ -36,7 +79,7 @@ class DataPort:
         self.ops = None
         self.task = asyncio.get_event_loop().create_task(self.run_connection())
         
-    def close(self):
+    def __del__(self):
         # Cancel all asynchronous operations.
         if self.ops:
             for op in self.ops:
@@ -132,6 +175,7 @@ class AutonoMachine:
         self.ops = [asyncio.create_task(op) for op in [self.check_issues()]]
         await asyncio.gather(*self.ops, return_exceptions=True)
             
+    # TODO: Perhaps convert to a del. Distinguish between pause and del.
     def stop(self):
         log.info("%s - The AutonoMachine is now stopping." % Timestamp())
         self.is_running = False
@@ -147,17 +191,26 @@ class AutonoMachine:
                 
         # Close all data ports.
         for id in self.data_ports:
-            self.data_ports[id].close()
+            del self.data_ports[id]
+            
+    def ingest_file(self, in_filename):
+        id_data_port = str(len(self.data_ports))
+        self.data_ports[id_data_port] = DataPort(in_id = id_data_port,
+                                                 in_data_storage = self.data_storage)
+        self.data_ports[id_data_port].ingest_file(in_filename)
+        
+    def ingest_stream(self, in_hostname, in_port):
+        self.open_data_port(in_hostname = in_hostname, in_port = in_port)
                 
     def open_data_port(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA,
                        in_id = None):
         id_data_port = str(len(self.data_ports))
         if not in_id is None:
             id_data_port = str(in_id)
-        self.data_ports[id_data_port] = DataPort(in_id = id_data_port,
-                                                 in_data_storage = self.data_storage,
-                                                 in_hostname = in_hostname,
-                                                 in_port = in_port)
+        self.data_ports[id_data_port] = DataPortStream(in_id = id_data_port,
+                                                       in_data_storage = self.data_storage,
+                                                       in_hostname = in_hostname,
+                                                       in_port = in_port)
         
     def info_storage(self):
         """

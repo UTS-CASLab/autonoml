@@ -19,7 +19,7 @@ async def test():
     server_port_data = aml.SystemSettings.DEFAULT_PORT_DATA
         
     # Define a log file for the streamer subprocess.
-    filename_log_streamer = "test_basic_streamer.log"
+    filename_log_streamer = "test_ml_continuous_streamer.log"
     
     
     

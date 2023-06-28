@@ -23,14 +23,26 @@ async def user_pause(in_duration):
 
 
 class Timestamp:
+    """
+    A wrapper for timestamps.
     
-    def __init__(self):
-        self.time = time.time()
-        self.ms = repr(self.time).split('.')[1][:3]
+    If initialised with arbitrary argument, is 'fake', e.g. Timestamp(None).
+    Fake Timestamps are printed out as blank spaces, i.e. an indent.
+    """
+    
+    def __init__(self, is_real = True):
+        self.time = None
+        self.ms = None
+        if is_real:
+            self.time = time.time()
+            self.ms = repr(self.time).split('.')[1][:3]
         
     def __str__(self):
-        return time.strftime("%y-%m-%d %H:%M:%S.{}".format(self.ms), 
-                             time.localtime(self.time))
+        if self.time:
+            return time.strftime("%y-%m-%d %H:%M:%S.{}".format(self.ms), 
+                                 time.localtime(self.time))
+        else:
+            return " "*21
     
     def update_from(self, in_timestamp):
         self.time = in_timestamp.time

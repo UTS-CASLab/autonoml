@@ -45,48 +45,49 @@ class DataStorage:
         # The elements have keys: X_0, X_1, etc.
         # Define a dict that links port-specific keys to storage-specific keys.
         # This directs elements of incoming data to the right list.
-        self.keys_port_to_storage = dict()
+        self.ikeys_to_dkeys = dict()
         
         # Set up a variable that can be awaited elsewhere.
         # This 'switch', when flicked, signals learners to ingest new data.
         self.has_new_data = asyncio.Future()
         
-    def store_data(self, in_timestamp, in_elements, in_port_id):
+    def store_data(self, in_timestamp, in_data_port_id, in_keys, in_elements):
         
         self.timestamps.append(in_timestamp)
         
         # Extend all existing data lists by one empty slot.
-        for key_storage in self.data:
-            self.data[key_storage].append(None)
+        for dkey in self.data:
+            self.data[dkey].append(None)
         
-        for num_element, element in zip(range(len(in_elements)), in_elements):
+        for key, element in zip(in_keys, in_elements):
             
-            key_port = in_port_id + "_" + str(num_element)
+            ikey = in_data_port_id + "_" + key
             
             # If a new port-specific key is encountered, initialise a list.
             # The list is initially named identically to this key.
-            if not key_port in self.keys_port_to_storage:
+            if not ikey in self.ikeys_to_dkeys:
                 log.info("%s - DataStorage is newly encountering data "
-                         "from a DataPort with key '%s'." 
-                         % (Timestamp(), key_port))
-                self.keys_port_to_storage[key_port] = key_port
+                         "from a DataPort with key '%s'."
+                         % (Timestamp(), ikey))
+                # TODO: Set up a safety mode where key is a distinct ikey.
+                self.ikeys_to_dkeys[ikey] = key
             
-            key_storage = self.keys_port_to_storage[key_port]
+            dkey = self.ikeys_to_dkeys[ikey]
             
-            if not key_storage in self.data:
+            if not dkey in self.data:
                 log.info("%s - DataStorage has begun storing data "
                          "in a list with key '%s'." 
-                         % (Timestamp(), key_storage))
-                self.data[key_storage] = [None]*len(self.timestamps)
+                         % (Timestamp(), dkey))
+                self.data[dkey] = [None]*len(self.timestamps)
                 
                 # The first element in a list determines its data type.
-                self.data_types[key_storage] = infer_data_type(element)
+                self.data_types[dkey] = infer_data_type(element)
             
             # Add the new element to the list with str-to-type conversion.
             # Note the function call.
             try:
                 # TODO: Some data types do not convert, e.g. NoneType. Consider how to fix/avoid.
-                self.data[key_storage][-1] = self.data_types[key_storage](element)
+                self.data[dkey][-1] = self.data_types[dkey](element)
             except Exception as e:
                 # TODO: Handle changes in data type for messy datasets.
                 raise e
@@ -105,8 +106,8 @@ class DataStorage:
         log.info("Keys: %s" % ", ".join(key + " (" + self.data_types[key].__name__ + ")" 
                                         for key in self.data_types))
         log.info("DataPorts pipe data into the lists as follows.")
-        log.info("Pipe: %s" % ", ".join("{" + key + " -> " + self.keys_port_to_storage[key] + "}" 
-                                        for key in self.keys_port_to_storage))
+        log.info("Pipe: %s" % ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}" 
+                                        for key in self.ikeys_to_dkeys))
         
     def update(self, in_keys_port, in_keys_storage):
         """
@@ -120,12 +121,12 @@ class DataStorage:
             key_port = in_keys_port[count_key]
             key_storage = in_keys_storage[count_key]
             
-            if not key_port in self.keys_port_to_storage:
+            if not key_port in self.ikeys_to_dkeys:
                 log.warning("%s - No existing DataPort keys data with '%s'. "
                             "Ignoring update request: {%s -> %s}"
                             % (Timestamp(), key_port, key_port, key_storage))
             else:
-                key_storage_old = self.keys_port_to_storage[key_port]
+                key_storage_old = self.ikeys_to_dkeys[key_port]
                 data_type_old = self.data_types[key_storage_old]
                 
                 # Handle merging with pre-existing lists.
@@ -151,7 +152,7 @@ class DataStorage:
                                 self.data[key_storage][count_element] = element
                         
                         # Update directions for the DataPort.
-                        self.keys_port_to_storage[key_port] = key_storage
+                        self.ikeys_to_dkeys[key_port] = key_storage
                         
                 # Handle what is effectively the renaming of a list.
                 else:
@@ -159,7 +160,7 @@ class DataStorage:
                     self.data[key_storage] = self.data.pop(key_storage_old)
                     
                     # Update directions for the DataPort.
-                    self.keys_port_to_storage[key_port] = key_storage
+                    self.ikeys_to_dkeys[key_port] = key_storage
                 
         
         

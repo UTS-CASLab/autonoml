@@ -31,12 +31,12 @@ class DataPort:
         # An ordered list of keys associated with elements of inflow data.
         self.keys = None
         
-    def ingest_file(self, in_filename, in_file_has_headers = True):
+    def ingest_file(self, in_filepath, in_file_has_headers = True):
         
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
-                 % (Timestamp(), self.id, in_filename))
+                 % (Timestamp(), self.id, in_filepath))
         
-        with open(in_filename, "r") as data_file:
+        with open(in_filepath, "r") as data_file:
             # If there are headers, these become the inflow keys.
             if in_file_has_headers:
                 line = data_file.readline()
@@ -190,14 +190,14 @@ class AutonoMachine:
             self.task_solver.stop()
                 
         # Close all data ports.
-        for id in self.data_ports:
+        for id in list(self.data_ports.keys()):
             del self.data_ports[id]
             
-    def ingest_file(self, in_filename):
+    def ingest_file(self, in_filepath):
         id_data_port = str(len(self.data_ports))
         self.data_ports[id_data_port] = DataPort(in_id = id_data_port,
                                                  in_data_storage = self.data_storage)
-        self.data_ports[id_data_port].ingest_file(in_filename)
+        self.data_ports[id_data_port].ingest_file(in_filepath)
         
     def ingest_stream(self, in_hostname, in_port):
         self.open_data_port(in_hostname = in_hostname, in_port = in_port)

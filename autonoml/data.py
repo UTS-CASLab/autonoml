@@ -6,11 +6,13 @@ Created on Fri May 12 22:21:05 2023
 """
 
 from .utils import log, Timestamp
+from .settings import SystemSettings as SS
 
 import asyncio
 import ast
 
 import pandas as pd
+import numpy as np
 
 # TODO: Redesign so the inference/conversion is done at DataPort interface.
 #       This will allow CSV text file inputs to be treated differently from other inputs.
@@ -59,6 +61,8 @@ class DataStorage:
         for dkey in self.data:
             self.data[dkey].append(None)
         
+        count_ikey_new = 0
+        count_dkey_new = 0
         for key, element in zip(in_keys, in_elements):
             
             ikey = in_data_port_id + "_" + key
@@ -66,22 +70,26 @@ class DataStorage:
             # If a new port-specific key is encountered, initialise a list.
             # The list is initially named identically to this key.
             if not ikey in self.ikeys_to_dkeys:
-                log.info("%s - DataStorage is newly encountering data "
-                         "from a DataPort with key '%s'."
-                         % (Timestamp(), ikey))
+                if count_ikey_new < SS.MAX_ALERTS_IKEY_NEW:
+                    log.info("%s - DataStorage is newly encountering data "
+                             "from a DataPort with key '%s'."
+                             % (Timestamp(), ikey))
                 # TODO: Set up a safety mode where key is a distinct ikey.
                 self.ikeys_to_dkeys[ikey] = key
+                count_ikey_new += 1
             
             dkey = self.ikeys_to_dkeys[ikey]
             
             if not dkey in self.data:
-                log.info("%s - DataStorage has begun storing data "
-                         "in a list with key '%s'." 
-                         % (Timestamp(), dkey))
+                if count_dkey_new < SS.MAX_ALERTS_DKEY_NEW:
+                    log.info("%s - DataStorage has begun storing data "
+                             "in a list with key '%s'." 
+                             % (Timestamp(), dkey))
                 self.data[dkey] = [None]*len(self.timestamps)
                 
                 # The first element in a list determines its data type.
                 self.data_types[dkey] = infer_data_type(element)
+                count_dkey_new += 1
             
             # Add the new element to the list with str-to-type conversion.
             # Note the function call.
@@ -91,6 +99,15 @@ class DataStorage:
             except Exception as e:
                 # TODO: Handle changes in data type for messy datasets.
                 raise e
+                
+        if count_ikey_new > SS.MAX_ALERTS_IKEY_NEW:
+            log.info("%s - In total, DataStorage has newly encountered data "
+                     "from a DataPort with %i unseen keys."
+                     % (Timestamp(), count_ikey_new))
+        if count_dkey_new > SS.MAX_ALERTS_DKEY_NEW:
+            log.info("%s - In total, DataStorage has begun storing data "
+                     "in %i new keyed lists."
+                     % (Timestamp(), count_dkey_new))
         
         # Flick a switch so that learners can start ingesting new data.
         # Note: Resolving awaited futures are priority microtasks.
@@ -102,12 +119,37 @@ class DataStorage:
         """
         Utility method to give user info about data ports and storage.
         """
+        if len(self.data_types.keys()) > SS.MAX_INFO_KEYS_EXAMPLE:
+            data_types_keys = list(self.data_types.keys())
+            len_start = int(np.ceil(SS.MAX_INFO_KEYS_EXAMPLE/2))
+            len_end = SS.MAX_INFO_KEYS_EXAMPLE - len_start
+            example_keys = ", ".join(key + " (" + self.data_types[key].__name__ + ")"
+                                     for key in data_types_keys[:len_start])
+            example_keys += ", ..., "
+            example_keys += ", ".join(key + " (" + self.data_types[key].__name__ + ")"
+                                      for key in data_types_keys[-len_end:])
+        else:
+            example_keys = ", ".join(key + " (" + self.data_types[key].__name__ + ")"
+                                     for key in self.data_types)
+            
+        if len(self.ikeys_to_dkeys) > SS.MAX_INFO_PIPE_EXAMPLE:
+            ikeys_to_dkeys_keys = list(self.ikeys_to_dkeys.keys())
+            len_start = int(np.ceil(SS.MAX_INFO_PIPE_EXAMPLE/2))
+            len_end = SS.MAX_INFO_PIPE_EXAMPLE - len_start
+            example_pipe = ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}"
+                                     for key in ikeys_to_dkeys_keys[:len_start])
+            example_pipe += ", ..., "
+            example_pipe += ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}"
+                                      for key in ikeys_to_dkeys_keys[-len_end:])
+        else:
+            example_pipe = ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}"
+                                     for key in self.ikeys_to_dkeys)
+
+        
         log.info("Stored data is arranged into lists identified as follows.")
-        log.info("Keys: %s" % ", ".join(key + " (" + self.data_types[key].__name__ + ")" 
-                                        for key in self.data_types))
+        log.info("Keys: %s" % example_keys)
         log.info("DataPorts pipe data into the lists as follows.")
-        log.info("Pipe: %s" % ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}" 
-                                        for key in self.ikeys_to_dkeys))
+        log.info("Pipe: %s" % example_pipe)
         
     def update(self, in_keys_port, in_keys_storage):
         """

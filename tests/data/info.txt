@@ -7,16 +7,10 @@ https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/5OWRGB
 López Lobo, Jesús, 2020, "Synthetic datasets for concept drift detection purposes", https://doi.org/10.7910/DVN/5OWRGB, Harvard Dataverse, V1, UNF:6:VVTBgRNMEV+B/GmoE3Myng== [fileUNF]
 
 Datasets...
-sps_quality_1000_events_1p2uW_3000cps
-sps_quality_1000_events_2p5uW_4000cps
-sps_quality_1000_events_4uW_4100cps
-sps_quality_1000_events_8uW_5100cps
-sps_quality_1000_events_10uW_6000cps
-sps_quality_1000_events_10uW_12000cps
-sps_quality_1000_events_20uW_7000cps
-sps_quality_1000_events_30uW_7000cps
+*_sps_quality_1000_events_*
 
 Details...
 Synthetic histograms of ~1000 two-photon events with 0 to 500 ns temporal separation, used to estimate single-photon source quality parameter g2(0).
-Target can either be the individually fitted estimates or the best estimate for the original data with 10000+ events from which the synthetic histograms were bootstrapped.
-https://github.com/UTS-CASLab/sps-quality 
+Target can either be the individually fitted estimates or the best estimate for the original data (10000+ events) from which the synthetic histograms were bootstrapped.
+Samples are prepared for training/testing.
+https://github.com/UTS-CASLab/sps-quality

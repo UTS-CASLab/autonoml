@@ -7,132 +7,13 @@ Created on Wed Apr  5 20:39:37 2023
 
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
-from .data import DataStorage
+
+from .data_storage import DataStorage
+from .data_io import DataPort, DataPortStream
 from .solver import TaskSolver
 
 import asyncio
 
-
-
-# TODO: Extend this beyond .csv files.
-class DataPort:
-    """
-    An object to wrap up a connection to a data source.
-    """
-    
-    def __init__(self, in_id, in_data_storage):
-        log.info("%s - DataPort '%s' has been initialised." % (Timestamp(), in_id))
-        
-        self.id = in_id     # String to id data port.
-        
-        # Reference to the DataStorage contained in the AutonoMachine.
-        self.data_storage = in_data_storage
-        
-        # An ordered list of keys associated with elements of inflow data.
-        self.keys = None
-        
-    def ingest_file(self, in_filepath, in_file_has_headers = True):
-        
-        log.info("%s - DataPort '%s' is ingesting a file: %s" 
-                 % (Timestamp(), self.id, in_filepath))
-        
-        with open(in_filepath, "r") as data_file:
-            # If there are headers, these become the inflow keys.
-            if in_file_has_headers:
-                line = data_file.readline()
-                self.keys = line.rstrip().split(",")
-
-            count_instance = 0
-            for line in data_file:
-                data = line.rstrip().split(",")
-                
-                # If there are no headers...
-                # Inflow keys enumerate the inflow data elements encountered.
-                if count_instance == 0 and not in_file_has_headers:
-                    self.keys = [str(num_element) for num_element in range(len(data))]
-                    
-                self.data_storage.store_data(in_timestamp = Timestamp(),
-                                             in_data_port_id = self.id,
-                                             in_keys = self.keys,
-                                             in_elements = data)
-                count_instance += 1
-                
-        log.info("%s - DataPort '%s' has acquired %s instances of data." 
-                 % (Timestamp(), self.id, count_instance))
-                
-
-
-class DataPortStream(DataPort):
-    """
-    A DataPort that connects to a server.
-    """
-    
-    def __init__(self, in_id, in_data_storage, 
-                 in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA):
-        super().__init__(in_id = in_id, in_data_storage = in_data_storage)
-        log.info("%s   This DataPort is designed for streams." % Timestamp(None))
-        
-        # Server details that this data port is targeting.
-        self.target_hostname = in_hostname
-        self.target_port = in_port
-        
-        self.ops = None
-        self.task = asyncio.get_event_loop().create_task(self.run_connection())
-        
-    def __del__(self):
-        # Cancel all asynchronous operations.
-        if self.ops:
-            for op in self.ops:
-                op.cancel()
-        
-        self.task.cancel()
-        
-    async def run_connection(self):
-        while True:
-            try:
-                reader, writer = await asyncio.open_connection(self.target_hostname, self.target_port)
-                log.warning("%s - DataPort '%s' is connected to host %s, port %s." 
-                            % (Timestamp(), self.id, self.target_hostname, self.target_port))
-                self.ops = [asyncio.create_task(op) for op in [self.send_confirm_to_server(writer),
-                                                               self.receive_data_from_server(reader)]]
-                for op in asyncio.as_completed(self.ops):
-                    await op
-                    for op_other in self.ops:
-                        op_other.cancel()
-                    break
-                writer.close()
-                await writer.wait_closed()
-                    
-            except Exception as e:
-                log.debug(e)
-                log.warning("%s - DataPort '%s' cannot connect to host %s, port %s. Retrying." 
-                            % (Timestamp(), self.id, self.target_hostname, self.target_port))
-                
-    async def send_confirm_to_server(self, in_writer):
-        while True:
-            in_writer.write(SS.SIGNAL_CONFIRM.encode("utf8"))
-            try:
-                await in_writer.drain()
-            except Exception as e:
-                log.warning(e)
-                break
-            await asyncio.sleep(SS.DELAY_FOR_CLIENT_CONFIRM)
-        
-    async def receive_data_from_server(self, in_reader):
-        while True:
-            try:
-                message = await in_reader.readline()
-            except Exception as e:
-                log.warning(e)
-                break
-            data = message.decode("utf8").rstrip().split(",")
-                
-            timestamp = Timestamp()
-            self.data_storage.store_data(in_timestamp = timestamp, 
-                                         in_elements = data, 
-                                         in_port_id = self.id)
-            log.info("%s - DataPort '%s' received data: %s" % (timestamp, self.id, data))
-        
 
 
 class AutonoMachine:
@@ -176,6 +57,7 @@ class AutonoMachine:
         await asyncio.gather(*self.ops, return_exceptions=True)
             
     # TODO: Perhaps convert to a del. Distinguish between pause and del.
+    # TODO: Work out whether all asyncio tasks genuinely are stopping and why not.
     def stop(self):
         log.info("%s - The AutonoMachine is now stopping." % Timestamp())
         self.is_running = False
@@ -231,9 +113,18 @@ class AutonoMachine:
             # TODO: Relax this constraint eventually.
             log.error("%s - DataStorage cannot be updated while a TaskSolver exists." % Timestamp())
         
-    def learn(self, in_key_target):
-        self.task_solver = TaskSolver(in_key_target = in_key_target, 
-                                      in_data_storage = self.data_storage)
+    def learn(self, in_key_target, in_keys_features = None, do_exclude = False):
+        self.task_solver = TaskSolver(in_data_storage = self.data_storage,
+                                      in_key_target = in_key_target, 
+                                      in_keys_features = in_keys_features,
+                                      do_exclude = do_exclude)
+        
+    def test_with_file(self, in_filepath):
+        if self.task_solver:
+            self.task_solver.
+        else:
+            log.error("%s - The AutonoMachine cannot be tested if it has "
+                      "not been tasked to learn anything." % Timestamp())
         
     # # TODO: Decide on a stop event when UI gets fleshed out.
     # async def check_stop(self):

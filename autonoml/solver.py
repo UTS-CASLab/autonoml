@@ -15,12 +15,17 @@ class TaskSolver:
     A wrapper for components that learn from data and respond to queries.
     """
     
-    def __init__(self, in_key_target, in_data_storage):
+    def __init__(self, in_data_storage, in_key_target, 
+                 in_keys_features = None, do_exclude = False):
         log.info("%s - A TaskSolver has been initialised." % Timestamp())
         
         self.data_storage = in_data_storage
         
-        self.key_target = in_key_target
+        o1, o2 = self.set_target_and_features(in_key_target = in_key_target,
+                                              in_keys_features = in_keys_features,
+                                              do_exclude = do_exclude)
+        self.key_target = o1
+        self.keys_features = o2
         
         self.pipelines = list()
         
@@ -42,16 +47,17 @@ class TaskSolver:
             if self.count_data < len(self.data_storage.timestamps):
                 self.count_data = len(self.data_storage.timestamps)
                 
+                # df = self.data_storage.get_dataframe()
+                # print(df)
+                # df = df.sample(frac = 1)
+                # print(df)
+                
                 x = list()
-                y = None
-                # TODO: Make sure everything maintains order in all cases.
-                for key in self.data_storage.data:
-                    # TODO: Throw error if there is no key_target.
-                    if key == self.key_target:
-                        y = self.data_storage.data[key][:5]
-                    else:
-                        x_element = self.data_storage.data[key][:5]
-                        x.append(x_element)
+                y = self.data_storage.data[self.key_target]
+                # TODO: Control DataStorage updates.
+                for key in self.keys_features:
+                    x_element = self.data_storage.data[key]
+                    x.append(x_element)
                 x = [list(row) for row in zip(*x)]  # Transpose.
                     
                         
@@ -71,6 +77,66 @@ class TaskSolver:
                              % (Timestamp(None), y_pred_last, y_last))
                 
             await self.data_storage.has_new_data
+            
+    def query(self):
+        
+        x = list()
+        y = self.data_storage.queries[self.key_target]
+        # TODO: Control DataStorage updates.
+        for key in self.keys_features:
+            x_element = self.data_storage.queries[key]
+            x.append(x_element)
+        x = [list(row) for row in zip(*x)]  # Transpose.
+        
+        for pipeline in self.pipelines:
+            # TODO: Develop for an actual pipeline.
+            component = pipeline
+            score = component.score(x, y)
+            y_last = y[-1]
+            y_pred_last = component.query([x[-1]])[0][0]
+            
+            log.info("%s - Model '%s' has been tested on a total of %i queries with expected responses." 
+                     % (Timestamp(), component.name, len(y)))
+            log.info("%s   Score on those testable queries: %f" 
+                     % (Timestamp(None), score))
+            log.info("%s   Last query: Prediction '%s' vs True Value '%s'" 
+                     % (Timestamp(None), y_pred_last, y_last))
+            
+    # TODO: Include error checking for no features. Error-check target existence somewhere too.
+    def set_target_and_features(self, in_key_target, 
+                                in_keys_features = None, do_exclude = False):
+        
+        if in_key_target in self.data_storage.data:
+            key_target = in_key_target
+        else:
+            text_error = "Desired target key '%s' cannot be found in DataStorage." % in_key_target 
+            log.error("%s - %s" % (Timestamp(), text_error))
+            raise Exception(text_error)
+        
+        keys_features = list()
+        # If the user provided feature keys, but not to exclude...
+        # Include them as long as such features exist in the data storage.
+        if in_keys_features and not do_exclude:
+            for key_feature in in_keys_features:
+                if key_feature in self.data_storage.data:
+                    keys_features.append(key_feature)
+                else:
+                    log.warning("%s - Desired feature key '%s' cannot be found in DataStorage.\n"
+                                "%s   The TaskSolver will ignore it." 
+                                % (Timestamp(), key_feature, Timestamp(None)))
+        # Otherwise, include every feature existing in the data storage...
+        # Except for feature keys specified with the intention of excluding.
+        else:
+            for dkey in self.data_storage.data.keys():
+                if not dkey == in_key_target:
+                    if do_exclude and dkey in in_keys_features:
+                        log.info("%s - DataStorage key '%s' has been marked as not a feature.\n"
+                                 "%s   The TaskSolver will ignore it."
+                                 % (Timestamp(), dkey, Timestamp(None)))
+                    else:
+                        keys_features.append(dkey)
+        
+        return key_target, keys_features
 
 # class TaskSolver:
 #     """

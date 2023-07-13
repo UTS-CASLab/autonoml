@@ -39,6 +39,9 @@ setup(
     # TODO: Consider user installation options for only useful subsets of packages.
     install_requires=[
         "pandas",
+        "matplotlib",
+        "seaborn",
+        "sklearn",
         "river"
         # "aioconsole",
         # "matplotlib",

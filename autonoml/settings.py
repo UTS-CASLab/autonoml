@@ -33,3 +33,7 @@ class SystemSettings:
     MAX_ALERTS_DKEY_NEW = 5     # How many newly established DataStorage data keys to individually acknowledge.
     MAX_INFO_KEYS_EXAMPLE = 10  # How many DataStorage keys to exemplify when providing info.
     MAX_INFO_PIPE_EXAMPLE = 10  # How many inflow-to-data pipes to exemplify when providing info.
+    
+    #%% Plot settings.
+    MAX_LABELS_BAR = 25     # If there are more bars in a chart, label a fraction of them.
+    BINS_HIST = 100         # Number of bins for a histogram to show.

@@ -32,20 +32,36 @@ class TaskSolver:
         # Keep track of the data-storage instance up to which model has used.
         # TODO: Consider variant starting points for the model and update log messages.
         self.count_data = 0
+        self.count_queries = 0
         
-        self.task = asyncio.get_event_loop().create_task(self.process_strategy())
+        # Set up a variable that can be awaited elsewhere.
+        # This 'switch', when flicked, signals that the pipelines can be queried.
+        self.can_query = asyncio.Future()
+        
+        self.ops = None
+        asyncio.get_event_loop().create_task(self.gather_ops())
+        
+    async def gather_ops(self):
+        self.ops = [asyncio.create_task(op) for op in [self.process_strategy(),
+                                                       self.process_queries()]]
+        await asyncio.gather(*self.ops, return_exceptions=True)
         
     def stop(self):
-        self.task.cancel()
+        # Cancel all asynchronous operations.
+        if self.ops:
+            for op in self.ops:
+                op.cancel()
         
     async def process_strategy(self):
         
         self.pipelines.append(PartialLeastSquaresRegressor())
         
+        self.can_query.set_result(True)
+        
         while True:
             # Check for new data and learn from it.
-            if self.count_data < len(self.data_storage.timestamps):
-                self.count_data = len(self.data_storage.timestamps)
+            if self.count_data < len(self.data_storage.timestamps_data):
+                self.count_data = len(self.data_storage.timestamps_data)
                 
                 # df = self.data_storage.get_dataframe()
                 # print(df)
@@ -65,7 +81,7 @@ class TaskSolver:
                     # TODO: Develop for an actual pipeline.
                     component = pipeline
                     component.learn(x, y)
-                    score = component.score(x, y)
+                    score = component.score(x, y, do_remember = True, for_training = True)
                     y_last = y[-1]
                     y_pred_last = component.query([x[-1]])[0][0]
             
@@ -78,29 +94,67 @@ class TaskSolver:
                 
             await self.data_storage.has_new_data
             
-    def query(self):
+    async def process_queries(self):
         
-        x = list()
-        y = self.data_storage.queries[self.key_target]
-        # TODO: Control DataStorage updates.
-        for key in self.keys_features:
-            x_element = self.data_storage.queries[key]
-            x.append(x_element)
-        x = [list(row) for row in zip(*x)]  # Transpose.
-        
-        for pipeline in self.pipelines:
-            # TODO: Develop for an actual pipeline.
-            component = pipeline
-            score = component.score(x, y)
-            y_last = y[-1]
-            y_pred_last = component.query([x[-1]])[0][0]
+        while True:
+            await self.can_query
             
-            log.info("%s - Model '%s' has been tested on a total of %i queries with expected responses." 
-                     % (Timestamp(), component.name, len(y)))
-            log.info("%s   Score on those testable queries: %f" 
-                     % (Timestamp(None), score))
-            log.info("%s   Last query: Prediction '%s' vs True Value '%s'" 
-                     % (Timestamp(None), y_pred_last, y_last))
+            # Check for new queries and derive responses.
+            # Score them if possible.
+            if self.count_queries < len(self.data_storage.timestamps_queries):
+                self.count_queries = len(self.data_storage.timestamps_queries)
+                
+                # df = self.data_storage.get_dataframe()
+                # print(df)
+                # df = df.sample(frac = 1)
+                # print(df)
+                
+                x = list()
+                y = self.data_storage.queries[self.key_target]
+                # TODO: Control DataStorage updates.
+                for key in self.keys_features:
+                    x_element = self.data_storage.queries[key]
+                    x.append(x_element)
+                x = [list(row) for row in zip(*x)]  # Transpose.
+                    
+                        
+                for pipeline in self.pipelines:
+                    # TODO: Develop for an actual pipeline.
+                    component = pipeline
+                    score = component.score(x, y, do_remember = True)
+                    y_last = y[-1]
+                    y_pred_last = component.query([x[-1]])[0][0]
+            
+                    log.info("%s - Model '%s' has responded to a total of %i queries." 
+                             % (Timestamp(), component.name, self.count_queries))
+                    log.info("%s   Score on those queries: %f" 
+                             % (Timestamp(None), score))
+                    log.info("%s   Last query: Prediction '%s' vs True Value '%s'" 
+                             % (Timestamp(None), y_pred_last, y_last))
+            
+            await self.data_storage.has_new_queries
+            
+        # x = list()
+        # y = self.data_storage.queries[self.key_target]
+        # # TODO: Control DataStorage updates.
+        # for key in self.keys_features:
+        #     x_element = self.data_storage.queries[key]
+        #     x.append(x_element)
+        # x = [list(row) for row in zip(*x)]  # Transpose.
+        
+        # for pipeline in self.pipelines:
+        #     # TODO: Develop for an actual pipeline.
+        #     component = pipeline
+        #     score = component.score(x, y)
+        #     y_last = y[-1]
+        #     y_pred_last = component.query([x[-1]])[0][0]
+            
+        #     log.info("%s - Model '%s' has been tested on a total of %i queries with expected responses." 
+        #              % (Timestamp(), component.name, len(y)))
+        #     log.info("%s   Score on those testable queries: %f" 
+        #              % (Timestamp(None), score))
+        #     log.info("%s   Last query: Prediction '%s' vs True Value '%s'" 
+        #              % (Timestamp(None), y_pred_last, y_last))
             
     # TODO: Include error checking for no features. Error-check target existence somewhere too.
     def set_target_and_features(self, in_key_target, 
@@ -137,6 +191,20 @@ class TaskSolver:
                         keys_features.append(dkey)
         
         return key_target, keys_features
+
+
+    def info(self):
+        """
+        Utility method to give user info about the task solver and its models.
+        """
+        
+        for pipeline in self.pipelines:
+            # TODO: Develop for an actual pipeline.
+            component = pipeline
+            component.inspect_structure(self.keys_features)
+            component.inspect_performance(for_training = True)
+            component.inspect_performance(for_training = False)
+        
 
 # class TaskSolver:
 #     """

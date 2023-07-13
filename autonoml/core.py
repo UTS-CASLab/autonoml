@@ -81,6 +81,12 @@ class AutonoMachine:
                                                  in_data_storage = self.data_storage)
         self.data_ports[id_data_port].ingest_file(in_filepath)
         
+    def query_with_file(self, in_filepath):
+        id_data_port = str(len(self.data_ports))
+        self.data_ports[id_data_port] = DataPort(in_id = id_data_port,
+                                                 in_data_storage = self.data_storage)
+        self.data_ports[id_data_port].ingest_file(in_filepath, as_query = True)
+        
     def ingest_stream(self, in_hostname, in_port):
         self.open_data_port(in_hostname = in_hostname, in_port = in_port)
                 
@@ -102,29 +108,32 @@ class AutonoMachine:
                  % (len(self.data_ports), ", ".join(self.data_ports.keys())))
         self.data_storage.info()
         
-    def update_storage(self, in_keys_port, in_keys_storage):
+    def info_solver(self):
         """
-        Redirects where DataPorts send their received data.
-        Renames the lists in DataStorage, merging if required.
+        Utility method to give user info about the task solver and its models.
         """
-        if not self.task_solver:
-            self.data_storage.update(in_keys_port, in_keys_storage)
+        if self.task_solver:
+            self.task_solver.info()
         else:
-            # TODO: Relax this constraint eventually.
-            log.error("%s - DataStorage cannot be updated while a TaskSolver exists." % Timestamp())
+            log.error("%s - The AutonoMachine has not been given a task to solve." % Timestamp())
+        
+    # # TODO: Update for queries.
+    # def update_storage(self, in_keys_port, in_keys_storage):
+    #     """
+    #     Redirects where DataPorts send their received data.
+    #     Renames the lists in DataStorage, merging if required.
+    #     """
+    #     if not self.task_solver:
+    #         self.data_storage.update(in_keys_port, in_keys_storage)
+    #     else:
+    #         # TODO: Relax this constraint eventually.
+    #         log.error("%s - DataStorage cannot be updated while a TaskSolver exists." % Timestamp())
         
     def learn(self, in_key_target, in_keys_features = None, do_exclude = False):
         self.task_solver = TaskSolver(in_data_storage = self.data_storage,
                                       in_key_target = in_key_target, 
                                       in_keys_features = in_keys_features,
                                       do_exclude = do_exclude)
-        
-    def test_with_file(self, in_filepath):
-        if self.task_solver:
-            self.task_solver.
-        else:
-            log.error("%s - The AutonoMachine cannot be tested if it has "
-                      "not been tasked to learn anything." % Timestamp())
         
     # # TODO: Decide on a stop event when UI gets fleshed out.
     # async def check_stop(self):

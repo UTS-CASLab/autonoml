@@ -28,7 +28,8 @@ class DataPort:
         self.keys = None
         
     # TODO: Consider Pandas if it is faster.
-    def ingest_file(self, in_filepath, in_file_has_headers = True):
+    # TODO: Update logs for queries.
+    def ingest_file(self, in_filepath, in_file_has_headers = True, as_query = False):
         
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
                  % (Timestamp(), self.id, in_filepath))
@@ -63,9 +64,10 @@ class DataPort:
                     self.keys = [str(num_element) for num_element in range(len(data))]
                     
                 self.data_storage.store_data(in_timestamp = Timestamp(),
-                                              in_data_port_id = self.id,
-                                              in_keys = self.keys,
-                                              in_elements = data)
+                                             in_data_port_id = self.id,
+                                             in_keys = self.keys,
+                                             in_elements = data,
+                                             as_query = as_query)
                 count_instance += 1
                 
         log.info("%s - DataPort '%s' has acquired and stored %s instances of data." 

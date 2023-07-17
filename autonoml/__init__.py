@@ -39,7 +39,8 @@ if not log.handlers:
     log.addHandler(handler_debug)
     log.addHandler(handler_info)
     log.addHandler(handler_warning)
-    log.setLevel(logging.INFO)
+    # log.setLevel(logging.INFO)
+    log.setLevel(logging.DEBUG)
 
 #%% Ensure all required functions are available upon importing the root module.
 

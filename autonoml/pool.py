@@ -75,11 +75,11 @@ class MLComponent:
             if for_training:
                 plot_performance(in_vals_response = self.training_y_response,
                                  in_vals_true = self.training_y_true,
-                                 in_title = "Performance - Training")
+                                 in_title = "Performance (Training): " + self.name)
             else:
                 plot_performance(in_vals_response = self.testing_y_response,
                                  in_vals_true = self.testing_y_true,
-                                 in_title = "Performance - Testing")
+                                 in_title = "Performance (Testing): " + self.name)
                 
         else:
             text_error = "Cannot inspect the performance of an empty MLComponent."

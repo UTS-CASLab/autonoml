@@ -5,7 +5,7 @@ Created on Mon May 22 21:58:33 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp
+from .utils import log, Timestamp, asyncio_task_from_method
 from .pool import PartialLeastSquaresRegressor
 
 import asyncio
@@ -39,11 +39,11 @@ class TaskSolver:
         self.can_query = asyncio.Future()
         
         self.ops = None
-        asyncio.get_event_loop().create_task(self.gather_ops())
+        asyncio_task_from_method(self.gather_ops)
         
     async def gather_ops(self):
-        self.ops = [asyncio.create_task(op) for op in [self.process_strategy(),
-                                                       self.process_queries()]]
+        self.ops = [asyncio_task_from_method(op) for op in [self.process_strategy,
+                                                            self.process_queries]]
         await asyncio.gather(*self.ops, return_exceptions=True)
         
     def stop(self):

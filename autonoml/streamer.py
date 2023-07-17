@@ -5,7 +5,7 @@ Created on Fri Apr 14 21:38:26 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp
+from .utils import log, Timestamp, asyncio_task_from_method
 from .settings import SystemSettings as SS
 
 from copy import deepcopy
@@ -73,7 +73,7 @@ class SimDataStreamer:
         else:
             log.debug(("The Python environment is already running an asyncio event loop.\n"
                        "It will be used for simulated data streaming."))
-            loop.create_task(self.gather_ops())
+            asyncio_task_from_method(self.gather_ops)
             
     async def gather_ops(self):
         """
@@ -84,9 +84,9 @@ class SimDataStreamer:
         - Checking when to shut down the server.
         """
         
-        self.ops = [asyncio.create_task(op) for op in [self.run_server(),
-                                                       self.get_data(),
-                                                       self.check_stop()]]
+        self.ops = [asyncio_task_from_method(op) for op in [self.run_server,
+                                                            self.get_data,
+                                                            self.check_stop]]
         await asyncio.gather(*self.ops, return_exceptions=True)
         
     async def check_stop(self):
@@ -132,6 +132,7 @@ class SimDataStreamer:
         """
         log.info("%s - SimDataStreamer has established connection with a client." % Timestamp())
         timestamp_confirm_local = Timestamp()
+        # TODO: Update for asyncio_task_from_method.
         ops = [asyncio.create_task(op) for op in [self.send_data_to_client(in_writer, timestamp_confirm_local, is_query),
                                                   self.receive_confirm_from_client(in_reader, timestamp_confirm_local)]]
         for op in asyncio.as_completed(ops):

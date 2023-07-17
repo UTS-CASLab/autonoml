@@ -35,7 +35,7 @@ class DataStorage:
     """
     
     def __init__(self):
-        log.info("%s - DataStorage has been initialised." % Timestamp())
+        log.info("%s - Initialising DataStorage." % Timestamp())
         
         self.timestamps_data = list()
         self.data = dict()          # Stored data arranged in keyed lists.

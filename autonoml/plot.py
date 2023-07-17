@@ -50,7 +50,9 @@ def plot_performance(in_vals_response, in_vals_true, in_title = None):
     g.ax_joint.set_xlim([val_min, val_max])
     g.ax_joint.set_ylim([val_min, val_max])
     
-    # g.ax_joint.
+    g.fig.suptitle(in_title)
+    g.fig.tight_layout()
+    g.fig.subplots_adjust(top = 0.95)   # Reduce plot to make room for title. 
     
     # fig, ax = plt.subplots()
     # ax.hist2d(in_vals_response, in_vals_true, bins = SS.BINS_HIST, 

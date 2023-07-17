@@ -10,11 +10,12 @@ from .settings import SystemSettings as SS
 
 import asyncio
 import ast
+from enum import Enum
 
 import pandas as pd
 import numpy as np
 
-# TODO: Redesign so the inference/conversion is done at DataPort interface.
+# TODO: Redesign so the inference/conversion is done at DataPort interface?
 #       This will allow CSV text file inputs to be treated differently from other inputs.
 def infer_data_type(in_element):
     data_type = type(in_element)
@@ -27,6 +28,10 @@ def infer_data_type(in_element):
             pass
     
     return data_type
+
+class DataFormat(Enum):
+    LIST_OF_LISTS = 1
+    DATAFRAME = 2
 
 # TODO: Consider how the data is best stored, including preallocated arrays.
 class DataStorage:
@@ -233,14 +238,48 @@ class DataStorage:
                     
     #                 # Update directions for the DataPort.
     #                 self.ikeys_to_dkeys[key_port] = key_storage
-                
+    
+    def get_data(self, in_keys_features, in_key_target, in_format, from_queries = False):
+
+        source = self.data
+        if from_queries:
+            source = self.queries
+
+        if in_format is None:
+            text_error = "No format has been specified for the data being extracted from storage."
+            log.error("%s - %s" % (Timestamp(), text_error))
+            raise Exception(text_error)
         
+        elif in_format == DataFormat.LIST_OF_LISTS:
+            x = list()
+            y = [source[in_key_target]]
+
+            for key in in_keys_features:
+                x_element = source[key]
+                x.append(x_element)
+
+            # Transpose from lists of column lists to lists of row lists.
+            x = [list(row) for row in zip(*x)]  # Transpose.
+            y = [list(row) for row in zip(*y)]  # Transpose.
+
+        elif in_format == DataFormat.DATAFRAME:
+            df = self.get_dataframe(from_queries = from_queries)
+            x = df[in_keys_features]
+            y = df[in_key_target]
+            
+        return x, y
         
-    def get_dataframe(self):
+    def get_dataframe(self, from_queries = False):
         """
         A utility method converting data dictionary into a Pandas dataframe.
         This is slow and should be called sparingly.
         """
-        df = pd.DataFrame.from_dict(self.data)
-        df.index = self.timestamps
+        source = self.data
+        timestamps = self.timestamps_data
+        if from_queries:
+            source = self.queries
+            timestamps = self.timestamps_queries
+
+        df = pd.DataFrame.from_dict(source)
+        df.index = timestamps
         return df

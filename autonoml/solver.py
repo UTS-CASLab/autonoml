@@ -6,7 +6,8 @@ Created on Mon May 22 21:58:33 2023
 """
 
 from .utils import log, Timestamp, asyncio_task_from_method
-from .pool import PartialLeastSquaresRegressor
+from .pool import (OnlineLinearRegressor, 
+                   PartialLeastSquaresRegressor)
 
 import asyncio
 
@@ -44,7 +45,8 @@ class TaskSolver:
     async def gather_ops(self):
         self.ops = [asyncio_task_from_method(op) for op in [self.process_strategy,
                                                             self.process_queries]]
-        await asyncio.gather(*self.ops, return_exceptions=True)
+        await asyncio.gather(*self.ops)
+        #, return_exceptions=True)
         
     def stop(self):
         # Cancel all asynchronous operations.
@@ -53,8 +55,10 @@ class TaskSolver:
                 op.cancel()
         
     async def process_strategy(self):
+        self.pipelines.extend([OnlineLinearRegressor(),
+                               PartialLeastSquaresRegressor()])
         
-        self.pipelines.append(PartialLeastSquaresRegressor())
+        # self.pipelines.append(PartialLeastSquaresRegressor())
         
         self.can_query.set_result(True)
         
@@ -67,30 +71,28 @@ class TaskSolver:
                 # print(df)
                 # df = df.sample(frac = 1)
                 # print(df)
-                
-                x = list()
-                y = self.data_storage.data[self.key_target]
-                # TODO: Control DataStorage updates.
-                for key in self.keys_features:
-                    x_element = self.data_storage.data[key]
-                    x.append(x_element)
-                x = [list(row) for row in zip(*x)]  # Transpose.
-                    
                         
                 for pipeline in self.pipelines:
                     # TODO: Develop for an actual pipeline.
                     component = pipeline
+                    time_start = Timestamp().time
+                    x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
+                                                      in_key_target = self.key_target,
+                                                      in_format = component.data_format)
                     component.learn(x, y)
                     score = component.score(x, y, do_remember = True, for_training = True)
-                    y_last = y[-1]
-                    y_pred_last = component.query([x[-1]])[0][0]
+                    time_end = Timestamp().time
+                    y_last = y[-1:]
+                    y_pred_last = component.query(x[-1:])
             
-                    log.info("%s - Model '%s' has learned from a total of %i observations." 
-                             % (Timestamp(), component.name, self.count_data))
-                    log.info("%s   Score on those observations: %f" 
-                             % (Timestamp(None), score))
-                    log.info("%s   Last observation: Prediction '%s' vs True Value '%s'" 
-                             % (Timestamp(None), y_pred_last, y_last))
+                    log.info("%s - Model '%s' has learned from a total of %i observations.\n"
+                             "%s   Time taken to retrieve, learn and score model on data: %.3f s\n"
+                             "%s   Score on those observations: %f\n"
+                             "%s   Last observation: Prediction '%s' vs True Value '%s'"
+                             % (Timestamp(), component.name, self.count_data,
+                                Timestamp(None), time_end - time_start,
+                                Timestamp(None), score,
+                                Timestamp(None), y_pred_last, y_last))
                 
             await self.data_storage.has_new_data
             
@@ -108,29 +110,28 @@ class TaskSolver:
                 # print(df)
                 # df = df.sample(frac = 1)
                 # print(df)
-                
-                x = list()
-                y = self.data_storage.queries[self.key_target]
-                # TODO: Control DataStorage updates.
-                for key in self.keys_features:
-                    x_element = self.data_storage.queries[key]
-                    x.append(x_element)
-                x = [list(row) for row in zip(*x)]  # Transpose.
-                    
                         
                 for pipeline in self.pipelines:
                     # TODO: Develop for an actual pipeline.
                     component = pipeline
+                    time_start = Timestamp().time
+                    x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
+                                                      in_key_target = self.key_target,
+                                                      in_format = component.data_format,
+                                                      from_queries = True)
                     score = component.score(x, y, do_remember = True)
-                    y_last = y[-1]
-                    y_pred_last = component.query([x[-1]])[0][0]
+                    time_end = Timestamp().time
+                    y_last = y[-1:]
+                    y_pred_last = component.query(x[-1:])
             
-                    log.info("%s - Model '%s' has responded to a total of %i queries." 
-                             % (Timestamp(), component.name, self.count_queries))
-                    log.info("%s   Score on those queries: %f" 
-                             % (Timestamp(None), score))
-                    log.info("%s   Last query: Prediction '%s' vs True Value '%s'" 
-                             % (Timestamp(None), y_pred_last, y_last))
+                    log.info("%s - Model '%s' has responded to a total of %i queries.\n"
+                             "%s   Time taken to retrieve and score model on queries: %.3f s\n"
+                             "%s   Score on those queries: %f\n"
+                             "%s   Last query: Prediction '%s' vs True Value '%s'"
+                             % (Timestamp(), component.name, self.count_queries,
+                                Timestamp(None), time_end - time_start,
+                                Timestamp(None), score,
+                                Timestamp(None), y_pred_last, y_last))
             
             await self.data_storage.has_new_queries
             

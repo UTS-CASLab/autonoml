@@ -87,7 +87,8 @@ class SimDataStreamer:
         self.ops = [asyncio_task_from_method(op) for op in [self.run_server,
                                                             self.get_data,
                                                             self.check_stop]]
-        await asyncio.gather(*self.ops, return_exceptions=True)
+        await asyncio.gather(*self.ops)
+        #, return_exceptions=True)
         
     async def check_stop(self):
         """

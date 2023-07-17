@@ -78,7 +78,8 @@ class AutonoMachine:
             
     async def gather_ops(self):
         self.ops = [asyncio_task_from_method(op) for op in [self.check_issues]]
-        await asyncio.gather(*self.ops, return_exceptions=True)
+        await asyncio.gather(*self.ops)
+        #, return_exceptions=True)
             
     # TODO: Perhaps convert to a del. Distinguish between pause and del.
     # TODO: Review cleanup.

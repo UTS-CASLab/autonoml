@@ -12,14 +12,15 @@ import pandas as pd
 import seaborn as sns
 import numpy as np
 
-def plot_feature_importance(in_keys_features, in_importance):
+def plot_feature_importance(in_keys_features, in_importance, in_title = None):
 
     x_max = len(in_keys_features)
     
     fig, ax = plt.subplots()
     
     ax.bar(x = in_keys_features, height = in_importance)
-    ax.set_title("Feature Importance from Model Coefficients")
+    if in_title:
+        ax.set_title(in_title)
     if len(in_keys_features) > SS.MAX_LABELS_BAR:
         step = int(len(in_keys_features)/SS.MAX_LABELS_BAR + 1)
         ax.set_xticks(list(range(0, x_max, step)), in_keys_features[::step], rotation="vertical")
@@ -50,7 +51,8 @@ def plot_performance(in_vals_response, in_vals_true, in_title = None):
     g.ax_joint.set_xlim([val_min, val_max])
     g.ax_joint.set_ylim([val_min, val_max])
     
-    g.fig.suptitle(in_title)
+    if in_title:
+        g.fig.suptitle(in_title)
     g.fig.tight_layout()
     g.fig.subplots_adjust(top = 0.95)   # Reduce plot to make room for title. 
     

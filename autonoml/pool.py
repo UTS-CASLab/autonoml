@@ -13,6 +13,7 @@ from river import linear_model
 from river import metrics
 
 from sklearn.cross_decomposition import PLSRegression
+from sklearn.svm import LinearSVR
 
 import functools
 
@@ -84,37 +85,6 @@ class MLComponent:
         self.training_y_response = list()
         self.testing_y_true = list()
         self.testing_y_response = list()
-    
-    # def learn(self, x, y):
-    #     if self.model:
-    #         self.model.fit(x=x, y=y)
-    #     else:
-    #         text_error = "Cannot fit an empty MLComponent to data."
-    #         log.error("%s - %s" % (Timestamp(), text_error))
-    #         raise Exception(text_error)
-            
-    # def score(self, x, y, do_remember = False, for_training = False):
-    #     if self.model:
-    #         if do_remember:
-    #             if for_training:
-    #                 self.training_y_true.extend(y)
-    #                 self.training_y_response.extend([k[0] for k in self.query(x)])
-    #             else:
-    #                 self.testing_y_true.extend(y)
-    #                 self.testing_y_response.extend([k[0] for k in  self.query(x)])
-    #         return self.model.score(x=x, y=y)
-    #     else:
-    #         text_error = "Cannot score an empty MLComponent on test data."
-    #         log.error("%s - %s" % (Timestamp(), text_error))
-    #         raise Exception(text_error)
-            
-    # def query(self, x):
-    #     if self.model:
-    #         return self.model.predict(x=x)
-    #     else:
-    #         text_error = "Cannot query an empty MLComponent on its response to data."
-    #         log.error("%s - %s" % (Timestamp(), text_error))
-    #         raise Exception(text_error)
 
     def get_feature_importance(self):
         return None
@@ -142,7 +112,7 @@ class MLComponent:
                 vals_response = self.testing_y_response
                 vals_true = self.testing_y_true
 
-            if self.data_format == DataFormat.LIST_OF_LISTS:
+            if self.data_format == DataFormat.LISTS_OF_X_LISTS_AND_Y_LISTS:
                 # Flatten into lists that can be plotted.
                 vals_response = [list(row) for row in zip(*vals_response)][0]
                 vals_true = [list(row) for row in zip(*vals_true)][0]
@@ -156,18 +126,11 @@ class MLComponent:
             log.error("%s - %s" % (Timestamp(), text_error))
             raise Exception(text_error)
             
-            
-    
-class PartialLeastSquaresRegressor(MLComponent):
+
+class SKLearnPredictor(MLComponent):
     def __init__(self):
         super().__init__()
-        self.model = PLSRegression(n_components=1)
-        self.name += "_PLSR"
-        self.data_format = DataFormat.LIST_OF_LISTS
-
-    @deco_learn
-    def learn(self, x, y):
-        self.model.fit(X=x, Y=y)
+        self.name += "_SKLearn"
 
     @deco_score
     def score(self, x, y):
@@ -176,9 +139,34 @@ class PartialLeastSquaresRegressor(MLComponent):
     @deco_query
     def query(self, x):
         return self.model.predict(X=x)
+    
+class PartialLeastSquaresRegressor(SKLearnPredictor):
+    def __init__(self):
+        super().__init__()
+        self.model = PLSRegression(n_components=1)
+        self.name += "_PLSR"
+        self.data_format = DataFormat.LISTS_OF_X_LISTS_AND_Y_LISTS
+
+    @deco_learn
+    def learn(self, x, y):
+        self.model.fit(X=x, Y=y)
 
     def get_feature_importance(self):
         return self.model.coef_.T[0]
+    
+class LinearSupportVectorRegressor(SKLearnPredictor):
+    def __init__(self):
+        super().__init__()
+        self.model = LinearSVR()
+        self.name += "_LinearSVR"
+        self.data_format = DataFormat.LISTS_OF_X_LISTS_AND_Y_SCALARS
+
+    @deco_learn
+    def learn(self, x, y):
+        self.model.fit(X=x, y=y)
+
+    def get_feature_importance(self):
+        return self.model.coef_
 
         
 class OnlineLinearRegressor(MLComponent):
@@ -198,7 +186,6 @@ class OnlineLinearRegressor(MLComponent):
         for y_true, y_pred in zip(y, self.query(x)):
             metric.update(y_true, y_pred)
         value = metric.get()
-        print(value)
         return value
 
     @deco_query

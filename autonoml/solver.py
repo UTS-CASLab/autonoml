@@ -7,7 +7,8 @@ Created on Mon May 22 21:58:33 2023
 
 from .utils import log, Timestamp, asyncio_task_from_method
 from .pool import (OnlineLinearRegressor, 
-                   PartialLeastSquaresRegressor)
+                   PartialLeastSquaresRegressor,
+                   LinearSupportVectorRegressor)
 
 import asyncio
 
@@ -56,7 +57,8 @@ class TaskSolver:
         
     async def process_strategy(self):
         self.pipelines.extend([OnlineLinearRegressor(),
-                               PartialLeastSquaresRegressor()])
+                               PartialLeastSquaresRegressor(),
+                               LinearSupportVectorRegressor()])
         
         # self.pipelines.append(PartialLeastSquaresRegressor())
         

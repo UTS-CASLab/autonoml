@@ -30,8 +30,9 @@ def infer_data_type(in_element):
     return data_type
 
 class DataFormat(Enum):
-    LIST_OF_LISTS = 1
-    DATAFRAME = 2
+    LISTS_OF_X_LISTS_AND_Y_LISTS = 1
+    LISTS_OF_X_LISTS_AND_Y_SCALARS = 2
+    DATAFRAME = 3
 
 # TODO: Consider how the data is best stored, including preallocated arrays.
 class DataStorage:
@@ -250,17 +251,21 @@ class DataStorage:
             log.error("%s - %s" % (Timestamp(), text_error))
             raise Exception(text_error)
         
-        elif in_format == DataFormat.LIST_OF_LISTS:
+        elif in_format in [DataFormat.LISTS_OF_X_LISTS_AND_Y_LISTS,
+                           DataFormat.LISTS_OF_X_LISTS_AND_Y_SCALARS]:
             x = list()
-            y = [source[in_key_target]]
-
             for key in in_keys_features:
                 x_element = source[key]
                 x.append(x_element)
 
             # Transpose from lists of column lists to lists of row lists.
             x = [list(row) for row in zip(*x)]  # Transpose.
-            y = [list(row) for row in zip(*y)]  # Transpose.
+
+            if in_format == DataFormat.LISTS_OF_X_LISTS_AND_Y_LISTS:
+                y = [source[in_key_target]]
+                y = [list(row) for row in zip(*y)]  # Transpose.
+            elif in_format == DataFormat.LISTS_OF_X_LISTS_AND_Y_SCALARS:
+                y = source[in_key_target]
 
         elif in_format == DataFormat.DATAFRAME:
             df = self.get_dataframe(from_queries = from_queries)

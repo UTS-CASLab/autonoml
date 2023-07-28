@@ -34,7 +34,7 @@ class AutonoMachine:
         self.data_storage = DataStorage()
         self.data_ports = dict()
         
-        self.task_solver = None
+        self.solver = None
         
         self.delay_for_issue_check = SS.BASE_DELAY_FOR_ISSUE_CHECK
         
@@ -93,8 +93,8 @@ class AutonoMachine:
                 op.cancel()
                 
         # Stop the task solver.
-        if self.task_solver:
-            self.task_solver.stop()
+        if self.solver:
+            self.solver.stop()
                 
         # Close all data ports.
         for id in list(self.data_ports.keys()):
@@ -137,8 +137,8 @@ class AutonoMachine:
         """
         Utility method to give user info about the task solver and its models.
         """
-        if self.task_solver:
-            self.task_solver.info()
+        if self.solver:
+            self.solver.info()
         else:
             log.error("%s - AutonoMachine %s has not been given a task to solve." % (Timestamp(), self.name))
         
@@ -148,14 +148,14 @@ class AutonoMachine:
     #     Redirects where DataPorts send their received data.
     #     Renames the lists in DataStorage, merging if required.
     #     """
-    #     if not self.task_solver:
+    #     if not self.solver:
     #         self.data_storage.update(in_keys_port, in_keys_storage)
     #     else:
     #         # TODO: Relax this constraint eventually.
     #         log.error("%s - DataStorage cannot be updated while a TaskSolver exists." % Timestamp())
         
     def learn(self, in_key_target, in_keys_features = None, do_exclude = False):
-        self.task_solver = TaskSolver(in_data_storage = self.data_storage,
+        self.solver = TaskSolver(in_data_storage = self.data_storage,
                                       in_key_target = in_key_target, 
                                       in_keys_features = in_keys_features,
                                       do_exclude = do_exclude)
@@ -174,7 +174,7 @@ class AutonoMachine:
             if id_issue in [0, 1] and not self.data_ports:
                 self.warn_issue("No data ports have been assigned to AutonoMachine %s." % self.name)
                 id_issue = 1
-            elif id_issue in [0, 2] and not self.task_solver:
+            elif id_issue in [0, 2] and not self.solver:
                 self.warn_issue("AutonoMachine %s has not been given a learning task." % self.name)
                 id_issue = 2
             else:

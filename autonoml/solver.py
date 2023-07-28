@@ -6,11 +6,14 @@ Created on Mon May 22 21:58:33 2023
 """
 
 from .utils import log, Timestamp, asyncio_task_from_method
-from .pool import (OnlineLinearRegressor, 
+from .pool import (MLPipeline,
+                   StandardScaler,
                    PartialLeastSquaresRegressor,
-                   LinearSupportVectorRegressor)
+                   LinearSupportVectorRegressor,
+                   OnlineLinearRegressor)
 
 import asyncio
+from copy import deepcopy
 
 class TaskSolver:
     """
@@ -56,9 +59,22 @@ class TaskSolver:
                 op.cancel()
         
     async def process_strategy(self):
-        self.pipelines.extend([OnlineLinearRegressor(),
-                               PartialLeastSquaresRegressor(),
-                               LinearSupportVectorRegressor()])
+        self.pipelines.append(MLPipeline(in_keys_features = deepcopy(self.keys_features),
+                                         in_key_target = self.key_target))
+        self.pipelines.append(MLPipeline(in_keys_features = deepcopy(self.keys_features),
+                                         in_key_target = self.key_target,
+                                         in_components = [PartialLeastSquaresRegressor()]))
+        self.pipelines.append(MLPipeline(in_keys_features = deepcopy(self.keys_features),
+                                         in_key_target = self.key_target,
+                                         in_components = [StandardScaler(),
+                                                          PartialLeastSquaresRegressor()]))
+        self.pipelines.append(MLPipeline(in_keys_features = deepcopy(self.keys_features),
+                                         in_key_target = self.key_target,
+                                         in_components = [LinearSupportVectorRegressor()]))
+        self.pipelines.append(MLPipeline(in_keys_features = deepcopy(self.keys_features),
+                                         in_key_target = self.key_target,
+                                         in_components = [StandardScaler(),
+                                                          LinearSupportVectorRegressor()]))
         
         # self.pipelines.append(PartialLeastSquaresRegressor())
         
@@ -75,25 +91,28 @@ class TaskSolver:
                 # print(df)
                         
                 for pipeline in self.pipelines:
-                    # TODO: Develop for an actual pipeline.
-                    component = pipeline
                     time_start = Timestamp().time
                     x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
-                                                      in_key_target = self.key_target,
-                                                      in_format = component.data_format)
-                    component.learn(x, y)
-                    score = component.score(x, y, do_remember = True, for_training = True)
+                                                      in_key_target = self.key_target)
+                    _, metric = pipeline.process(x, y, do_remember = True, for_training = True)
+                    # print(1)
+                    # pipeline.learn(x, y)
+                    # print(2)
+                    # score = pipeline.score(x, y)#, do_remember = True, for_training = True)
+                    # print(3)
                     time_end = Timestamp().time
-                    y_last = y[-1:]
-                    y_pred_last = component.query(x[-1:])
+                    y_last = pipeline.training_y_true[-1]
+                    y_pred_last = pipeline.training_y_response[-1]
             
-                    log.info("%s - Model '%s' has learned from a total of %i observations.\n"
-                             "%s   Time taken to retrieve, learn and score model on data: %.3f s\n"
+                    log.info("%s - Pipeline '%s' has learned from a total of %i observations.\n"
+                             "%s   Structure: %s\n"
+                             "%s   Time taken to retrieve, learn and score pipeline on data: %.3f s\n"
                              "%s   Score on those observations: %f\n"
                              "%s   Last observation: Prediction '%s' vs True Value '%s'"
-                             % (Timestamp(), component.name, self.count_data,
+                             % (Timestamp(), pipeline.name, self.count_data,
+                                Timestamp(None), pipeline.components_as_string(),
                                 Timestamp(None), time_end - time_start,
-                                Timestamp(None), score,
+                                Timestamp(None), metric,
                                 Timestamp(None), y_pred_last, y_last))
                 
             await self.data_storage.has_new_data
@@ -115,24 +134,40 @@ class TaskSolver:
                         
                 for pipeline in self.pipelines:
                     # TODO: Develop for an actual pipeline.
-                    component = pipeline
+                    # component = pipeline
+                    # time_start = Timestamp().time
+                    # x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
+                    #                                   in_key_target = self.key_target,
+                    #                                   in_format = component.data_format,
+                    #                                   from_queries = True)
+                    # score = component.score(x, y, do_remember = True)
+                    # time_end = Timestamp().time
+                    # y_last = y[-1:]
+                    # y_pred_last = component.query(x[-1:])
+
                     time_start = Timestamp().time
                     x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
                                                       in_key_target = self.key_target,
-                                                      in_format = component.data_format,
                                                       from_queries = True)
-                    score = component.score(x, y, do_remember = True)
+                    _, metric = pipeline.process(x, y, do_learn = False, do_remember = True)
+                    # print(1)
+                    # pipeline.learn(x, y)
+                    # print(2)
+                    # score = pipeline.score(x, y)#, do_remember = True, for_training = True)
+                    # print(3)
                     time_end = Timestamp().time
-                    y_last = y[-1:]
-                    y_pred_last = component.query(x[-1:])
+                    y_last = pipeline.testing_y_true[-1]
+                    y_pred_last = pipeline.testing_y_response[-1]
             
-                    log.info("%s - Model '%s' has responded to a total of %i queries.\n"
-                             "%s   Time taken to retrieve and score model on queries: %.3f s\n"
+                    log.info("%s - Pipeline '%s' has responded to a total of %i queries.\n"
+                             "%s   Structure: %s\n"
+                             "%s   Time taken to retrieve and score pipeline on queries: %.3f s\n"
                              "%s   Score on those queries: %f\n"
                              "%s   Last query: Prediction '%s' vs True Value '%s'"
-                             % (Timestamp(), component.name, self.count_queries,
+                             % (Timestamp(), pipeline.name, self.count_queries,
+                                Timestamp(None), pipeline.components_as_string(),
                                 Timestamp(None), time_end - time_start,
-                                Timestamp(None), score,
+                                Timestamp(None), metric,
                                 Timestamp(None), y_pred_last, y_last))
             
             await self.data_storage.has_new_queries
@@ -202,11 +237,9 @@ class TaskSolver:
         """
         
         for pipeline in self.pipelines:
-            # TODO: Develop for an actual pipeline.
-            component = pipeline
-            component.inspect_structure(self.keys_features)
-            component.inspect_performance(for_training = True)
-            component.inspect_performance(for_training = False)
+            pipeline.inspect_structure()
+            pipeline.inspect_performance(for_training = True)
+            pipeline.inspect_performance(for_training = False)
         
 
 # class TaskSolver:

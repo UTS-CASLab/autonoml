@@ -7,10 +7,11 @@ Created on Fri May 12 22:21:05 2023
 
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
+# from .data import DataFormat
 
 import asyncio
 import ast
-from enum import Enum
+from copy import deepcopy
 
 import pandas as pd
 import numpy as np
@@ -28,11 +29,6 @@ def infer_data_type(in_element):
             pass
     
     return data_type
-
-class DataFormat(Enum):
-    LISTS_OF_X_LISTS_AND_Y_LISTS = 1
-    LISTS_OF_X_LISTS_AND_Y_SCALARS = 2
-    DATAFRAME = 3
 
 # TODO: Consider how the data is best stored, including preallocated arrays.
 class DataStorage:
@@ -240,51 +236,55 @@ class DataStorage:
     #                 # Update directions for the DataPort.
     #                 self.ikeys_to_dkeys[key_port] = key_storage
     
-    def get_data(self, in_keys_features, in_key_target, in_format, from_queries = False):
+    def get_data(self, in_keys_features, in_key_target, from_queries = False):
 
         source = self.data
         if from_queries:
             source = self.queries
 
-        if in_format is None:
-            text_error = "No format has been specified for the data being extracted from storage."
-            log.error("%s - %s" % (Timestamp(), text_error))
-            raise Exception(text_error)
+        # if in_format is None:
+        #     text_error = "No format has been specified for the data being extracted from storage."
+        #     log.error("%s - %s" % (Timestamp(), text_error))
+        #     raise Exception(text_error)
         
-        elif in_format in [DataFormat.LISTS_OF_X_LISTS_AND_Y_LISTS,
-                           DataFormat.LISTS_OF_X_LISTS_AND_Y_SCALARS]:
-            x = list()
-            for key in in_keys_features:
-                x_element = source[key]
-                x.append(x_element)
+        # elif in_format in [DataFormat.LISTS_OF_X_LISTS_AND_Y_LISTS,
+        #                    DataFormat.LISTS_OF_X_LISTS_AND_Y_SCALARS]:
+        #     x = list()
+        #     for key in in_keys_features:
+        #         x_element = source[key]
+        #         x.append(x_element)
 
-            # Transpose from lists of column lists to lists of row lists.
-            x = [list(row) for row in zip(*x)]  # Transpose.
+        #     # Transpose from lists of column lists to lists of row lists.
+        #     x = [list(row) for row in zip(*x)]  # Transpose.
 
-            if in_format == DataFormat.LISTS_OF_X_LISTS_AND_Y_LISTS:
-                y = [source[in_key_target]]
-                y = [list(row) for row in zip(*y)]  # Transpose.
-            elif in_format == DataFormat.LISTS_OF_X_LISTS_AND_Y_SCALARS:
-                y = source[in_key_target]
+        #     if in_format == DataFormat.LISTS_OF_X_LISTS_AND_Y_LISTS:
+        #         y = [source[in_key_target]]
+        #         y = [list(row) for row in zip(*y)]  # Transpose.
+        #     elif in_format == DataFormat.LISTS_OF_X_LISTS_AND_Y_SCALARS:
+        #         y = source[in_key_target]
 
-        elif in_format == DataFormat.DATAFRAME:
-            df = self.get_dataframe(from_queries = from_queries)
-            x = df[in_keys_features]
-            y = df[in_key_target]
+        # elif in_format == DataFormat.DATAFRAME:
+        #     df = self.get_dataframe(from_queries = from_queries)
+        #     x = df[in_keys_features]
+        #     y = df[in_key_target]
             
+        # Copy out the required data in default DataFormatX and DataFormatY style.
+        x = {key_feature:deepcopy(source[key_feature]) for key_feature in in_keys_features}
+        y = deepcopy(source[in_key_target])
+
         return x, y
         
-    def get_dataframe(self, from_queries = False):
-        """
-        A utility method converting data dictionary into a Pandas dataframe.
-        This is slow and should be called sparingly.
-        """
-        source = self.data
-        timestamps = self.timestamps_data
-        if from_queries:
-            source = self.queries
-            timestamps = self.timestamps_queries
+    # def get_dataframe(self, from_queries = False):
+    #     """
+    #     A utility method converting data dictionary into a Pandas dataframe.
+    #     This is slow and should be called sparingly.
+    #     """
+    #     source = self.data
+    #     timestamps = self.timestamps_data
+    #     if from_queries:
+    #         source = self.queries
+    #         timestamps = self.timestamps_queries
 
-        df = pd.DataFrame.from_dict(source)
-        df.index = timestamps
-        return df
+    #     df = pd.DataFrame.from_dict(source)
+    #     df.index = timestamps
+    #     return df

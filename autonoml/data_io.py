@@ -34,20 +34,8 @@ class DataPort:
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
                  % (Timestamp(), self.id, in_filepath))
         
-        # with open(in_filepath, "r") as data_file:
-        #     if not in_file_has_headers:
-        #         with open(in_filepath, "r") as temp_file:
-        #             num_fields = len(temp_file.readline().rstrip().split(","))
-        #         self.keys = [str(count_field) for count_field in range(num_fields)]
-        #     it = zip(*csv.DictReader(data_file, fieldnames = self.keys))
-        #     data = {el[0]: [val for val in el[1:]] for el in it}
-        #     self.data_storage.store_data(in_timestamp = Timestamp(),
-        #                                  in_data_port_id = self.id,
-        #                                  in_data_dict = data)
-        #     num_instances = len(data[list(test_dict.keys())[0]])
-        #     log.info("%s - DataPort '%s' has acquired %i instances of data." 
-        #              % (Timestamp(), self.id, num_instances))
-        
+        time_start = Timestamp().time
+
         with open(in_filepath, "r") as data_file:
             # If there are headers, these become the inflow keys.
             if in_file_has_headers:
@@ -69,9 +57,14 @@ class DataPort:
                                              in_elements = data,
                                              as_query = as_query)
                 count_instance += 1
+
+        time_end = Timestamp().time
                 
-        log.info("%s - DataPort '%s' has acquired and stored %s instances of data." 
-                  % (Timestamp(), self.id, count_instance))
+        log.info("%s - DataPort '%s' has acquired and stored %s instances of data.\n"
+                 "%s   Time taken: %.3f s" 
+                  % (Timestamp(), self.id, count_instance,
+                     Timestamp(None), time_end - time_start))
+
                 
 
 

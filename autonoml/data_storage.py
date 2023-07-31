@@ -7,7 +7,7 @@ Created on Fri May 12 22:21:05 2023
 
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
-# from .data import DataFormat
+from .data import DataFormatX, DataFormatY, reformat_x, reformat_y
 
 import asyncio
 import ast
@@ -31,6 +31,7 @@ def infer_data_type(in_element):
     return data_type
 
 # TODO: Consider how the data is best stored, including preallocated arrays.
+# TODO: Update comments.
 class DataStorage:
     """
     A collection of data that supplies machine learning processes.
@@ -71,7 +72,7 @@ class DataStorage:
         
     # TODO: Update info logging once terminology is settled.
     def store_data(self, in_timestamp, in_data_port_id, in_keys, in_elements, as_query = False):
-        
+
         if as_query:
             timestamps = self.timestamps_queries
             dict_storage = self.queries
@@ -95,9 +96,9 @@ class DataStorage:
             # The list is initially named identically to this key.
             if not ikey in self.ikeys_to_dkeys:
                 if count_ikey_new < SS.MAX_ALERTS_IKEY_NEW:
-                    log.info("%s - DataStorage is newly encountering elements "
+                    log.info("%s   DataStorage is newly encountering elements "
                              "of data/queries from a DataPort with key '%s'."
-                             % (Timestamp(), ikey))
+                             % (Timestamp(None), ikey))
                 # TODO: Set up a safety mode where key is a distinct ikey.
                 self.ikeys_to_dkeys[ikey] = key
                 count_ikey_new += 1
@@ -107,9 +108,9 @@ class DataStorage:
             # Both data/queries must have the same keys.
             if not dkey in self.data:
                 if count_dkey_new < SS.MAX_ALERTS_DKEY_NEW:
-                    log.info("%s - DataStorage has begun storing elements of "
+                    log.info("%s   DataStorage has begun storing elements of "
                              "data/queries in a list with key '%s'." 
-                             % (Timestamp(), dkey))
+                             % (Timestamp(None), dkey))
                 self.data[dkey] = [None]*len(self.timestamps_data)
                 self.queries[dkey] = [None]*len(self.timestamps_queries)
                 
@@ -127,13 +128,13 @@ class DataStorage:
                 raise e
                 
         if count_ikey_new > SS.MAX_ALERTS_IKEY_NEW:
-            log.info("%s - In total, DataStorage has newly encountered data/queries "
+            log.info("%s   In total, DataStorage has newly encountered data/queries "
                      "from a DataPort with %i unseen keys."
-                     % (Timestamp(), count_ikey_new))
+                     % (Timestamp(None), count_ikey_new))
         if count_dkey_new > SS.MAX_ALERTS_DKEY_NEW:
-            log.info("%s - In total, DataStorage has begun storing data/queries "
+            log.info("%s   In total, DataStorage has begun storing data/queries "
                      "in %i new keyed lists."
-                     % (Timestamp(), count_dkey_new))
+                     % (Timestamp(None), count_dkey_new))
         
         # Flick a switch so that learners can start ingesting new data.
         # Note: Resolving awaited futures are priority microtasks.
@@ -236,41 +237,28 @@ class DataStorage:
     #                 # Update directions for the DataPort.
     #                 self.ikeys_to_dkeys[key_port] = key_storage
     
-    def get_data(self, in_keys_features, in_key_target, from_queries = False):
+    # TODO: Error-check indices.
+    def get_data(self, in_keys_features, in_key_target, 
+                 in_format_x = DataFormatX.DICT_OF_FEATURE_LISTS, in_format_y = DataFormatY.LIST,
+                 in_idx_start = 0, in_idx_end = None,
+                 from_queries = False):
 
         source = self.data
         if from_queries:
             source = self.queries
-
-        # if in_format is None:
-        #     text_error = "No format has been specified for the data being extracted from storage."
-        #     log.error("%s - %s" % (Timestamp(), text_error))
-        #     raise Exception(text_error)
-        
-        # elif in_format in [DataFormat.LISTS_OF_X_LISTS_AND_Y_LISTS,
-        #                    DataFormat.LISTS_OF_X_LISTS_AND_Y_SCALARS]:
-        #     x = list()
-        #     for key in in_keys_features:
-        #         x_element = source[key]
-        #         x.append(x_element)
-
-        #     # Transpose from lists of column lists to lists of row lists.
-        #     x = [list(row) for row in zip(*x)]  # Transpose.
-
-        #     if in_format == DataFormat.LISTS_OF_X_LISTS_AND_Y_LISTS:
-        #         y = [source[in_key_target]]
-        #         y = [list(row) for row in zip(*y)]  # Transpose.
-        #     elif in_format == DataFormat.LISTS_OF_X_LISTS_AND_Y_SCALARS:
-        #         y = source[in_key_target]
-
-        # elif in_format == DataFormat.DATAFRAME:
-        #     df = self.get_dataframe(from_queries = from_queries)
-        #     x = df[in_keys_features]
-        #     y = df[in_key_target]
             
         # Copy out the required data in default DataFormatX and DataFormatY style.
-        x = {key_feature:deepcopy(source[key_feature]) for key_feature in in_keys_features}
-        y = deepcopy(source[in_key_target])
+        x = {key_feature:deepcopy(source[key_feature][in_idx_start:in_idx_end]) 
+             for key_feature in in_keys_features}
+        y = deepcopy(source[in_key_target][in_idx_start:in_idx_end])
+
+        x = reformat_x(in_data = x, 
+                       in_format_old = DataFormatX.DICT_OF_FEATURE_LISTS,
+                       in_format_new = in_format_x,
+                       in_keys_features = in_keys_features)
+        y = reformat_y(in_data = y, 
+                       in_format_old = DataFormatY.LIST,
+                       in_format_new = in_format_y)
 
         return x, y
         

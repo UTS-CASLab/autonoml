@@ -9,7 +9,9 @@ from .utils import log, Timestamp, asyncio_task_from_method
 from .pool import (MLPipeline,
                    StandardScaler,
                    PartialLeastSquaresRegressor,
+                   LinearRegressor,
                    LinearSupportVectorRegressor,
+                   OnlineStandardScaler,
                    OnlineLinearRegressor)
 
 import asyncio
@@ -19,10 +21,14 @@ class TaskSolver:
     """
     A wrapper for components that learn from data and respond to queries.
     """
+
+    count = 0
     
     def __init__(self, in_data_storage, in_key_target, 
                  in_keys_features = None, do_exclude = False):
-        log.info("%s - A TaskSolver has been initialised." % Timestamp())
+        self.name = "Sol_" + str(TaskSolver.count)
+        TaskSolver.count += 1
+        log.info("%s - Initialising TaskSolver '%s'." % (Timestamp(), self.name))
         
         self.data_storage = in_data_storage
         
@@ -32,7 +38,7 @@ class TaskSolver:
         self.key_target = o1
         self.keys_features = o2
         
-        self.pipelines = list()
+        self.pipelines = dict()
         
         # Keep track of the data-storage instance up to which model has used.
         # TODO: Consider variant starting points for the model and update log messages.
@@ -44,39 +50,78 @@ class TaskSolver:
         self.can_query = asyncio.Future()
         
         self.ops = None
+
+        self.is_running = False
+        self.run()
+
+    def __del__(self):
+        log.debug("Finalising TaskSolver '%s'." % self.name)
+
+    def run(self):
+        log.info("%s - TaskSolver '%s' is now running." % (Timestamp(), self.name))
+        self.is_running = True
+
         asyncio_task_from_method(self.gather_ops)
         
     async def gather_ops(self):
         self.ops = [asyncio_task_from_method(op) for op in [self.process_strategy,
                                                             self.process_queries]]
-        await asyncio.gather(*self.ops)
-        #, return_exceptions=True)
+        group = asyncio.gather(*self.ops)
+        try:
+            await group
+        except Exception as e:
+            log.error("%s - TaskSolver '%s' encountered an error. "
+                      "Cancelling Asyncio operations." % (Timestamp(), self.name))
+            log.debug(e)
+            for op in self.ops:
+                op.cancel()
+
+        self.is_running = False
         
     def stop(self):
         # Cancel all asynchronous operations.
         if self.ops:
             for op in self.ops:
                 op.cancel()
+
+    def add_pipeline(self, in_pipeline):
+        self.pipelines[in_pipeline.name] = in_pipeline
         
     async def process_strategy(self):
-        self.pipelines.append(MLPipeline(in_keys_features = deepcopy(self.keys_features),
-                                         in_key_target = self.key_target))
-        self.pipelines.append(MLPipeline(in_keys_features = deepcopy(self.keys_features),
-                                         in_key_target = self.key_target,
-                                         in_components = [PartialLeastSquaresRegressor()]))
-        self.pipelines.append(MLPipeline(in_keys_features = deepcopy(self.keys_features),
-                                         in_key_target = self.key_target,
-                                         in_components = [StandardScaler(),
-                                                          PartialLeastSquaresRegressor()]))
-        self.pipelines.append(MLPipeline(in_keys_features = deepcopy(self.keys_features),
-                                         in_key_target = self.key_target,
-                                         in_components = [LinearSupportVectorRegressor()]))
-        self.pipelines.append(MLPipeline(in_keys_features = deepcopy(self.keys_features),
-                                         in_key_target = self.key_target,
-                                         in_components = [StandardScaler(),
-                                                          LinearSupportVectorRegressor()]))
-        
-        # self.pipelines.append(PartialLeastSquaresRegressor())
+        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        #                              in_key_target = self.key_target))
+        self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target,
+                                     in_components = [PartialLeastSquaresRegressor()]))
+        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        #                              in_key_target = self.key_target,
+        #                              in_components = [StandardScaler(),
+        #                                               PartialLeastSquaresRegressor()]))
+        self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target,
+                                     in_components = [LinearRegressor()]))
+        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        #                              in_key_target = self.key_target,
+        #                              in_components = [LinearSupportVectorRegressor()]))
+        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        #                              in_key_target = self.key_target,
+        #                              in_components = [StandardScaler(),
+        #                                               LinearSupportVectorRegressor()]))
+        self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target,
+                                     in_components = [OnlineLinearRegressor()]))
+        self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target,
+                                     in_components = [OnlineStandardScaler(),
+                                                      OnlineLinearRegressor()]))
+        self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target,
+                                     in_components = [StandardScaler(),
+                                                      OnlineLinearRegressor()]))
+        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        #                              in_components = 
+        #                              [OnlineStandardScaler(in_hpars = {"batch_size":10}),
+        #                               OnlineLinearRegressor(in_hpars = {"batch_size":10})]))
         
         self.can_query.set_result(True)
         
@@ -90,30 +135,33 @@ class TaskSolver:
                 # df = df.sample(frac = 1)
                 # print(df)
                         
-                for pipeline in self.pipelines:
-                    time_start = Timestamp().time
-                    x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
-                                                      in_key_target = self.key_target)
-                    _, metric = pipeline.process(x, y, do_remember = True, for_training = True)
-                    # print(1)
-                    # pipeline.learn(x, y)
-                    # print(2)
-                    # score = pipeline.score(x, y)#, do_remember = True, for_training = True)
-                    # print(3)
-                    time_end = Timestamp().time
-                    y_last = pipeline.training_y_true[-1]
-                    y_pred_last = pipeline.training_y_response[-1]
-            
-                    log.info("%s - Pipeline '%s' has learned from a total of %i observations.\n"
-                             "%s   Structure: %s\n"
-                             "%s   Time taken to retrieve, learn and score pipeline on data: %.3f s\n"
-                             "%s   Score on those observations: %f\n"
-                             "%s   Last observation: Prediction '%s' vs True Value '%s'"
-                             % (Timestamp(), pipeline.name, self.count_data,
-                                Timestamp(None), pipeline.components_as_string(),
-                                Timestamp(None), time_end - time_start,
-                                Timestamp(None), metric,
-                                Timestamp(None), y_pred_last, y_last))
+                for pipeline_key in list(self.pipelines.keys()):
+                    pipeline = self.pipelines[pipeline_key]
+                    try:
+                        time_start = Timestamp().time
+                        x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
+                                                        in_key_target = self.key_target,
+                                                        in_idx_end = 2)
+                        _, metric = pipeline.process(x, y, do_remember = True, for_training = True)
+                        time_end = Timestamp().time
+                        y_last = pipeline.training_y_true[-1]
+                        y_pred_last = pipeline.training_y_response[-1]
+                
+                        log.info("%s - Pipeline '%s' has learned from a total of %i observations.\n"
+                                "%s   Structure: %s\n"
+                                "%s   Time taken to retrieve, learn and score pipeline on data: %.3f s\n"
+                                "%s   Score on those observations: %f\n"
+                                "%s   Last observation: Prediction '%s' vs True Value '%s'"
+                                % (Timestamp(), pipeline.name, self.count_data,
+                                    Timestamp(None), pipeline.components_as_string(),
+                                    Timestamp(None), time_end - time_start,
+                                    Timestamp(None), metric,
+                                    Timestamp(None), y_pred_last, y_last))
+                    except Exception as e:
+                        log.error("%s - Pipeline '%s' failed to process data while learning. "
+                                  "Deleting it and continuing." % (Timestamp(), pipeline.name))
+                        log.debug(e)
+                        del self.pipelines[pipeline_key]
                 
             await self.data_storage.has_new_data
             
@@ -132,18 +180,8 @@ class TaskSolver:
                 # df = df.sample(frac = 1)
                 # print(df)
                         
-                for pipeline in self.pipelines:
-                    # TODO: Develop for an actual pipeline.
-                    # component = pipeline
-                    # time_start = Timestamp().time
-                    # x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
-                    #                                   in_key_target = self.key_target,
-                    #                                   in_format = component.data_format,
-                    #                                   from_queries = True)
-                    # score = component.score(x, y, do_remember = True)
-                    # time_end = Timestamp().time
-                    # y_last = y[-1:]
-                    # y_pred_last = component.query(x[-1:])
+                for pipeline_key in list(self.pipelines.keys()):
+                    pipeline = self.pipelines[pipeline_key]
 
                     time_start = Timestamp().time
                     x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
@@ -171,28 +209,6 @@ class TaskSolver:
                                 Timestamp(None), y_pred_last, y_last))
             
             await self.data_storage.has_new_queries
-            
-        # x = list()
-        # y = self.data_storage.queries[self.key_target]
-        # # TODO: Control DataStorage updates.
-        # for key in self.keys_features:
-        #     x_element = self.data_storage.queries[key]
-        #     x.append(x_element)
-        # x = [list(row) for row in zip(*x)]  # Transpose.
-        
-        # for pipeline in self.pipelines:
-        #     # TODO: Develop for an actual pipeline.
-        #     component = pipeline
-        #     score = component.score(x, y)
-        #     y_last = y[-1]
-        #     y_pred_last = component.query([x[-1]])[0][0]
-            
-        #     log.info("%s - Model '%s' has been tested on a total of %i queries with expected responses." 
-        #              % (Timestamp(), component.name, len(y)))
-        #     log.info("%s   Score on those testable queries: %f" 
-        #              % (Timestamp(None), score))
-        #     log.info("%s   Last query: Prediction '%s' vs True Value '%s'" 
-        #              % (Timestamp(None), y_pred_last, y_last))
             
     # TODO: Include error checking for no features. Error-check target existence somewhere too.
     def set_target_and_features(self, in_key_target, 
@@ -236,7 +252,7 @@ class TaskSolver:
         Utility method to give user info about the task solver and its models.
         """
         
-        for pipeline in self.pipelines:
+        for _, pipeline in self.pipelines.items():
             pipeline.inspect_structure()
             pipeline.inspect_performance(for_training = True)
             pipeline.inspect_performance(for_training = False)

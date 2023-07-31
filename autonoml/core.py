@@ -13,6 +13,7 @@ from .data_io import DataPort, DataPortStream
 from .solver import TaskSolver
 
 import asyncio
+from enum import Enum
 
 
 
@@ -24,12 +25,9 @@ class AutonoMachine:
     count = 0
     
     def __init__(self):
-        # atexit.register(self.cleanup)
-        self.name = AutonoMachine.count
+        self.name = "Autono_" + str(AutonoMachine.count)
         AutonoMachine.count += 1
-        log.info("%s - Initialising AutonoMachine %s." % (Timestamp(), self.name))
-        
-        # self.asyncio_ops = set() # IMPROVE.
+        log.info("%s - Initialising AutonoMachine '%s'." % (Timestamp(), self.name))
 
         self.data_storage = DataStorage()
         self.data_ports = dict()
@@ -44,7 +42,7 @@ class AutonoMachine:
         self.run()
 
     def __del__(self):
-        log.debug("Finalising Autonomachine %s." % self.name)
+        log.debug("Finalising Autonomachine '%s'." % self.name)
 
         # # Cancel all asynchronous operations.
         # if self.ops:
@@ -61,7 +59,7 @@ class AutonoMachine:
     #             op.cancel()
         
     def run(self):
-        log.info("%s - AutonoMachine %s is now running." % (Timestamp(), self.name))
+        log.info("%s - AutonoMachine '%s' is now running." % (Timestamp(), self.name))
         self.is_running = True
         
         # Check the Python environment for an asynchronous event loop.
@@ -77,14 +75,27 @@ class AutonoMachine:
             asyncio_task_from_method(self.gather_ops)
             
     async def gather_ops(self):
-        self.ops = [asyncio_task_from_method(op) for op in [self.check_issues]]
-        await asyncio.gather(*self.ops)
+        # self.ops = [asyncio_task_from_method(op) for op in [self.check_issues]]
+        # await asyncio.gather(*self.ops)
         #, return_exceptions=True)
+
+        self.ops = [asyncio_task_from_method(op) for op in [self.check_issues]]
+        group = asyncio.gather(*self.ops)
+        try:
+            await group
+        except Exception as e:
+            log.error("%s - AutonoMachine '%s' encountered an error. "
+                      "Cancelling Asyncio operations." % (Timestamp(), self.name))
+            log.debug(e)
+            for op in self.ops:
+                op.cancel()
+                
+        self.is_running = False
             
     # TODO: Perhaps convert to a del. Distinguish between pause and del.
     # TODO: Review cleanup.
     def stop(self):
-        log.info("%s - AutonoMachine %s is now stopping." % (Timestamp(), self.name))
+        log.info("%s - AutonoMachine '%s' is now stopping." % (Timestamp(), self.name))
         self.is_running = False
         
         # Cancel all asynchronous operations.
@@ -129,8 +140,8 @@ class AutonoMachine:
         """
         Utility method to give user info about data ports and storage.
         """
-        log.info("AutonoMachine %s has %i DataPorts: %s" 
-                 % (self.name, len(self.data_ports), ", ".join(self.data_ports.keys())))
+        log.info("AutonoMachine '%s' has %i DataPort(s): '%s'" 
+                 % (self.name, len(self.data_ports), "', '".join(self.data_ports.keys())))
         self.data_storage.info()
         
     def info_solver(self):
@@ -140,7 +151,7 @@ class AutonoMachine:
         if self.solver:
             self.solver.info()
         else:
-            log.error("%s - AutonoMachine %s has not been given a task to solve." % (Timestamp(), self.name))
+            log.error("%s - AutonoMachine '%s' has not been given a task to solve." % (Timestamp(), self.name))
         
     # # TODO: Update for queries.
     # def update_storage(self, in_keys_port, in_keys_storage):
@@ -166,21 +177,42 @@ class AutonoMachine:
     #         await asyncio.sleep(10)
     #         # self.stop()
     
+
+    class Issues(Enum):
+        """
+        Enumeration of issues to alert the user about.
+        """
+        NONE = 0
+        NO_DATA_PORTS = 1
+        NO_SOLVER = 2
+        INACTIVE_SOLVER = 3
+
     async def check_issues(self):
-        id_issue = 0
-        while self.is_in_scope():
+        id_issue = self.Issues.NONE
+        while self.is_running:
             await asyncio.sleep(self.delay_for_issue_check)
-            # TODO: Consider enums for issues.
-            if id_issue in [0, 1] and not self.data_ports:
-                self.warn_issue("No data ports have been assigned to AutonoMachine %s." % self.name)
-                id_issue = 1
-            elif id_issue in [0, 2] and not self.solver:
-                self.warn_issue("AutonoMachine %s has not been given a learning task." % self.name)
-                id_issue = 2
+
+            # Check for an issue if none exist or it has already been identified as an issue.
+            if (id_issue in [self.Issues.NONE, self.Issues.NO_DATA_PORTS] 
+                and not self.data_ports):
+                self.warn_issue("No data ports have been assigned to AutonoMachine '%s'." % self.name)
+                id_issue = self.Issues.NO_DATA_PORTS
+            elif (id_issue in [self.Issues.NONE, self.Issues.NO_SOLVER] 
+                  and self.solver is None):
+                self.warn_issue("AutonoMachine '%s' has not been given a learning task." % self.name)
+                id_issue = self.Issues.NO_SOLVER
+            elif (id_issue in [self.Issues.NONE, self.Issues.INACTIVE_SOLVER] 
+                  and self.solver and not self.solver.is_running):
+                self.warn_issue("AutonoMachine '%s' is no longer "
+                                "running its learning task." % self.name)
+                id_issue = self.Issues.INACTIVE_SOLVER
+
+            # If there are no issues, keep the checkdelay small.
             else:
                 self.delay_for_issue_check = SS.BASE_DELAY_FOR_ISSUE_CHECK
-                id_issue = 0
+                id_issue = self.Issues.NONE
             
+            # If there is an issue, provide alerts that are less and less frequent.
             if not id_issue == 0:
                 self.delay_for_issue_check *= 2
                 

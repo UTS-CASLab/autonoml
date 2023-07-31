@@ -45,3 +45,14 @@ proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_1p2uW_30
 # print(proj.data_storage.get_dataframe())
 # proj.info_solver()
 # proj.stop()
+
+# pipe = proj.solver.pipelines["Pipe_2"]
+# comp = pipe.components[-1]
+# model = comp.model
+
+# x, y = proj.data_storage.get_data(in_keys_features = comp.keys_features, 
+#                                   in_key_target = comp.key_target,
+#                                   in_format_x = comp.format_x, 
+#                                   in_format_y = comp.format_y,
+#                                   in_idx_start = -1)
+# print(model.debug_one(x[-1]))

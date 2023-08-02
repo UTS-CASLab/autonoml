@@ -239,7 +239,7 @@ class DataStorage:
     
     # TODO: Error-check indices.
     def get_data(self, in_keys_features, in_key_target, 
-                 in_format_x = DataFormatX.DICT_OF_FEATURE_LISTS, in_format_y = DataFormatY.LIST,
+                 in_format_x = None, in_format_y = None,
                  in_idx_start = 0, in_idx_end = None,
                  from_queries = False):
 
@@ -252,12 +252,19 @@ class DataStorage:
              for key_feature in in_keys_features}
         y = deepcopy(source[in_key_target][in_idx_start:in_idx_end])
 
+        if in_format_x is None:
+            in_format_x = DataFormatX(0)
+        if in_format_y is None:
+            in_format_y = DataFormatY(0)
+
+        # Reformat the data.
+        # If formats were not specified, the data is retrieved in 'standard' format.
         x = reformat_x(in_data = x, 
-                       in_format_old = DataFormatX.DICT_OF_FEATURE_LISTS,
+                       in_format_old = DataFormatX(0),
                        in_format_new = in_format_x,
                        in_keys_features = in_keys_features)
         y = reformat_y(in_data = y, 
-                       in_format_old = DataFormatY.LIST,
+                       in_format_old = DataFormatY(0),
                        in_format_new = in_format_y)
 
         return x, y

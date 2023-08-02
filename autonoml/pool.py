@@ -6,11 +6,9 @@ Created on Wed Jun 28 17:16:42 2023
 """
 
 from .utils import log, Timestamp
-from .plot import plot_feature_importance, plot_performance
 from .data import (DataFormatX, DataFormatY,
                    reformat_x, reformat_y)
 
-from copy import deepcopy
 import numpy as np
 
 from sklearn import (preprocessing as skprep,
@@ -324,17 +322,17 @@ class OnlineLinearRegressor(RiverPredictor):
         # If this method was called with any other class, propagate upwards.
         else:
             return super(cls_this, cls).__new__(cls, in_hpars, *args, **kwargs)
-        
-    @staticmethod
-    def new_hpars():
-        hpars = dict()
-        hpars["batch_size"] = Hyperparameter(in_default = 1)
-        return hpars
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = rivlin.LinearRegression()
         self.name += "_LinearRegressor"
+
+    @staticmethod
+    def new_hpars():
+        hpars = dict()
+        hpars["batch_size"] = Hyperparameter(in_default = 1)
+        return hpars
 
     def score(self, x, y):
         # TODO: Generalise the metrics.
@@ -378,139 +376,3 @@ class OnlineLinearRegressorIncremental(OnlineLinearRegressor):
         for x_increment in x:
             response.append(self.model.predict_one(x=x_increment))
         return response
-    
-
-
-#%% Pipeline code.
-
-# TODO: Upgrade to DAGs.
-class MLPipeline:
-    """
-    A class for a sequential learning pipeline.
-    The pipeline contains a list of learning components.
-    The last must be a predictor.
-    """
-
-    count = 0
-
-    def __init__(self, in_keys_features, in_key_target, in_components = None):
-        self.name = "Pipe_" + str(MLPipeline.count)
-        MLPipeline.count += 1
-
-        log.info("%s - Constructing MLPipeline '%s'." % (Timestamp(), self.name))
-
-        self.components = list()
-
-        if in_components is None:
-            # TODO: Implement and use DummyClassifier depending on the problem.
-            in_components = [DummyRegressor()]
-
-        for component in in_components:
-
-            # Pass on the relevant variable keys to individual components.
-            # TODO: Consider feature selection/generation down pipeline.
-            component.keys_features = deepcopy(in_keys_features)
-            if isinstance(component, MLPredictor):
-                component.key_target = in_key_target
-
-            self.components.append(component)
-            log.info("%s   Attached MLComponent '%s'." 
-                        % (Timestamp(None), component.name))
-
-        if not isinstance(self.components[-1], MLPredictor):
-            text_error = "The last component in an MLPipeline must be an MLPredictor."
-            log.error("%s - %s" % (Timestamp(), text_error))
-            raise Exception(text_error)
-
-        self.training_y_true = list()
-        self.training_y_response = list()
-        self.testing_y_true = list()
-        self.testing_y_response = list()
-
-    def components_as_string(self):
-        return " -> ".join([component.name for component in self.components])
-
-    def process(self, x, y, in_format_x = None, in_format_y = None, 
-                do_learn = True, do_query = True, do_score = True,
-                do_remember = False, for_training = False):
-
-        # Assume data is provided from storage in default format.
-        # It will be reformatted as required by components.
-        format_x = in_format_x
-        if format_x is None:
-            format_x = DataFormatX(0)
-        format_y = in_format_y
-        if format_y is None:
-            format_y = DataFormatY(0)
-
-        response = None
-        metric = None
-
-        num_components = len(self.components)
-        for idx_component in range(num_components):
-
-            # Every component learns from the incoming features and possibly the target.
-            component = self.components[idx_component]
-            x, format_x = component.reformat_x(x = x, in_format_old = format_x)
-            y, format_y = component.reformat_y(y = y, in_format_old = format_y)
-            if do_learn:
-                component.learn(x=x, y=y)
-
-            if isinstance(component, MLPreprocessor):
-                # Preprocessing components modify the propagated feature set.
-                x = component.transform(x=x)
-            elif isinstance(component, MLPredictor):
-                # TODO: Pipe predictions to the next component as a feature.
-                pass
-                # Any predictors in the pipeline are queried and scored.
-                if do_query:
-                    response = component.query(x=x)
-                if do_score:
-                    metric = component.score(x=x, y=y)
-
-        # If there is a response, reformat it to the standard data format.
-        if do_query:
-            response = reformat_y(in_data = response,
-                                  in_format_old = format_y,
-                                  in_format_new = DataFormatY(0))
-
-            # Memorise the true target and the final response.
-            if do_remember:
-                y = reformat_y(in_data = y,
-                               in_format_old = format_y,
-                               in_format_new = DataFormatY(0))
-
-                # TODO: Decide if do_learn and for_training are identical.
-                if for_training:
-                    self.training_y_true.extend(y)
-                    self.training_y_response.extend(response)
-                else:
-                    self.testing_y_true.extend(y)
-                    self.testing_y_response.extend(response)
-
-        # The final predictor in the pipeline has its response/score returned.
-        return response, metric
-
-    def inspect_structure(self):
-        for component in self.components:
-            if isinstance(component, MLPredictor):
-                importance = component.get_feature_importance()
-                if not importance is None:
-                    plot_feature_importance(in_keys_features = component.keys_features,
-                                            in_importance = importance,
-                                            in_title = "Feature Importance: " + component.name)
-            
-    def inspect_performance(self, for_training = False):
-        if for_training:
-            text_type = "Training"
-            vals_response = self.training_y_response
-            vals_true = self.training_y_true
-        else:
-            text_type = "Testing"
-            vals_response = self.testing_y_response
-            vals_true = self.testing_y_true
-
-        title = "Performance (%s): %s\n%s" % (text_type, self.name, self.components_as_string())
-        plot_performance(in_vals_response = vals_response,
-                         in_vals_true = vals_true,
-                         in_title = title)

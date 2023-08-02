@@ -15,6 +15,7 @@ class DataFormatX(Enum):
     """
     Enumeration of ways that X can be formatted.
     X is a set of feature variables across a sequence of instances.
+    Note: The 0th format is the 'standard' way a set of variables is kept in data storage.
 
     Example: Three instances with two features can be represented as follows.
 
@@ -42,6 +43,7 @@ class DataFormatY(Enum):
     """
     Enumeration of ways that Y can be formatted.
     Y is a target variable across a sequence of instances.
+    Note: The 0th format is the 'standard' way a variable is kept in data storage.
 
     Example: Three instances with one target can be represented as follows.
 

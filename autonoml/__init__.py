@@ -6,10 +6,10 @@ import sys
 import logging
 import asyncio
 
-#%% 
-if "win32" in sys.platform:
-    # Windows specific event-loop policy & cmd
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+# #%% 
+# if "win32" in sys.platform:
+#     # Windows specific event-loop policy & cmd
+#     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 #%% Set up a module-level logger.
 log = logging.getLogger("autonoml")
@@ -48,6 +48,7 @@ from .core import *
 from .streamer import *
 from .settings import *
 from .utils import *
+from .concurrency import *
 
 # # Display version information using logging
 

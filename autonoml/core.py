@@ -5,14 +5,17 @@ Created on Wed Apr  5 20:39:37 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp, asyncio_task_from_method
+from .utils import log, Timestamp
 from .settings import SystemSettings as SS
+from .concurrency import asyncio_task_from_method
 
 from .data_storage import DataStorage
 from .data_io import DataPort, DataPortStream
 from .solver import TaskSolver
 
 import asyncio
+import threading
+import multiprocess as mp
 from enum import Enum
 
 
@@ -24,10 +27,16 @@ class AutonoMachine:
 
     count = 0
     
-    def __init__(self):
+    def __init__(self, n_procs = None):
         self.name = "Autono_" + str(AutonoMachine.count)
         AutonoMachine.count += 1
         log.info("%s - Initialising AutonoMachine '%s'." % (Timestamp(), self.name))
+
+        if n_procs is None:
+            n_procs = mp.cpu_count() - 1
+        log.info("%s   Leveraging %i out of %i processors." 
+                 % (Timestamp(None), n_procs, mp.cpu_count()))
+        self.semaphore = mp.Semaphore(n_procs)
 
         self.data_storage = DataStorage()
         self.data_ports = dict()
@@ -58,21 +67,31 @@ class AutonoMachine:
     #         for op in self.ops:
     #             op.cancel()
         
+    def run_asyncio(self):
+        """
+        This function needs to be run in a separate thread.
+        """
+        asyncio.run(self.gather_ops())
+
     def run(self):
         log.info("%s - AutonoMachine '%s' is now running." % (Timestamp(), self.name))
         self.is_running = True
         
-        # Check the Python environment for an asynchronous event loop.
-        # Gather operations and hand them to a new/existing event loop.
-        loop = asyncio.get_event_loop()
-        if loop.is_running() == False:
-            log.debug(("No asyncio event loop is currently running.\n"
-                       "One will be launched for AutonoML operations."))
-            asyncio.run(self.gather_ops())  # TODO: Improve this.
-        else:
-            log.debug(("The Python environment is already running an asyncio event loop.\n"
-                       "It will be used for AutonoML operations."))
-            asyncio_task_from_method(self.gather_ops)
+        # # Check the Python environment for an asynchronous event loop.
+        # # Gather operations and hand them to a new/existing event loop.
+        # loop = asyncio.get_event_loop()
+        # if loop.is_running() == False:
+        #     log.debug(("No asyncio event loop is currently running.\n"
+        #                "One will be launched for AutonoML operations."))
+        #     thread_asyncio = threading.Thread(target=self.run_asyncio)
+        #     thread_asyncio.start()
+        #     # asyncio.run(self.gather_ops())
+        #     #HOW TO ADD TASKS TO IT?
+        # else:
+        #     log.debug(("The Python environment is already running an asyncio event loop.\n"
+        #                "It will be used for AutonoML operations."))
+        
+        asyncio_task_from_method(self.gather_ops)
             
     async def gather_ops(self):
         # self.ops = [asyncio_task_from_method(op) for op in [self.check_issues]]
@@ -167,9 +186,10 @@ class AutonoMachine:
         
     def learn(self, in_key_target, in_keys_features = None, do_exclude = False):
         self.solver = TaskSolver(in_data_storage = self.data_storage,
-                                      in_key_target = in_key_target, 
-                                      in_keys_features = in_keys_features,
-                                      do_exclude = do_exclude)
+                                 in_key_target = in_key_target,
+                                 in_keys_features = in_keys_features,
+                                 do_exclude = do_exclude,
+                                 in_semaphore = self.semaphore)
         
     # # TODO: Decide on a stop event when UI gets fleshed out.
     # async def check_stop(self):

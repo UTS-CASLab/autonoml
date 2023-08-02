@@ -33,7 +33,7 @@ class DataPort:
         
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
                  % (Timestamp(), self.id, in_filepath))
-        
+   
         time_start = Timestamp().time
 
         with open(in_filepath, "r") as data_file:

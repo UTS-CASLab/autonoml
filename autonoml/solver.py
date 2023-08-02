@@ -5,9 +5,10 @@ Created on Mon May 22 21:58:33 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp, asyncio_task_from_method
-from .pool import (MLPipeline,
-                   StandardScaler,
+from .utils import log, Timestamp
+from .concurrency import asyncio_task_from_method
+from .pipeline import MLPipeline, task
+from .pool import (StandardScaler,
                    PartialLeastSquaresRegressor,
                    LinearRegressor,
                    LinearSupportVectorRegressor,
@@ -15,20 +16,32 @@ from .pool import (MLPipeline,
                    OnlineLinearRegressor)
 
 import asyncio
+import multiprocess as mp
 from copy import deepcopy
+
+# def task(in_pipeline):
+#     print(in_pipeline)
+#     # with in_semaphore:
+#     #     print(in_pipeline.name)
 
 class TaskSolver:
     """
-    A wrapper for components that learn from data and respond to queries.
+    A wrapper for pipelines and components that learn from data and respond to queries.
+    Stores references to attributes of an AutonoMachine:
+        - DataStorage, for passing data and queries to pipelines.
+        - Semaphore, for distributing operations across multiple processors.
     """
 
     count = 0
     
-    def __init__(self, in_data_storage, in_key_target, 
-                 in_keys_features = None, do_exclude = False):
+    def __init__(self, in_data_storage, in_semaphore,
+                 in_key_target, in_keys_features = None, do_exclude = False):
         self.name = "Sol_" + str(TaskSolver.count)
         TaskSolver.count += 1
         log.info("%s - Initialising TaskSolver '%s'." % (Timestamp(), self.name))
+
+        # Keep a reference to a common semaphore used to control multiprocessing.
+        self.semaphore = in_semaphore
         
         self.data_storage = in_data_storage
         
@@ -38,12 +51,13 @@ class TaskSolver:
         self.key_target = o1
         self.keys_features = o2
         
-        self.pipelines = dict()
+        self.pipelines = dict()         # MLPipelines that are in production.
+        self.pipelines_dev = dict()     # MLPipelines that are in development.
         
         # Keep track of the data-storage instance up to which model has used.
         # TODO: Consider variant starting points for the model and update log messages.
-        self.count_data = 0
-        self.count_queries = 0
+        self.idx_data = 0
+        self.idx_queries = 0
         
         # Set up a variable that can be awaited elsewhere.
         # This 'switch', when flicked, signals that the pipelines can be queried.
@@ -112,12 +126,15 @@ class TaskSolver:
                                      in_components = [OnlineLinearRegressor()]))
         self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
                                      in_key_target = self.key_target,
-                                     in_components = [OnlineStandardScaler(),
-                                                      OnlineLinearRegressor()]))
-        self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target,
-                                     in_components = [StandardScaler(),
-                                                      OnlineLinearRegressor()]))
+                                     in_components = [OnlineLinearRegressor(in_hpars = {"batch_size":10000})]))
+        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        #                              in_key_target = self.key_target,
+        #                              in_components = [OnlineStandardScaler(),
+        #                                               OnlineLinearRegressor()]))
+        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        #                              in_key_target = self.key_target,
+        #                              in_components = [StandardScaler(),
+        #                                               OnlineLinearRegressor()]))
         # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
         #                              in_components = 
         #                              [OnlineStandardScaler(in_hpars = {"batch_size":10}),
@@ -127,8 +144,8 @@ class TaskSolver:
         
         while True:
             # Check for new data and learn from it.
-            if self.count_data < len(self.data_storage.timestamps_data):
-                self.count_data = len(self.data_storage.timestamps_data)
+            if self.idx_data < len(self.data_storage.timestamps_data):
+                self.idx_data = len(self.data_storage.timestamps_data)
                 
                 # df = self.data_storage.get_dataframe()
                 # print(df)
@@ -140,8 +157,8 @@ class TaskSolver:
                     try:
                         time_start = Timestamp().time
                         x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
-                                                        in_key_target = self.key_target,
-                                                        in_idx_end = 2)
+                                                          in_key_target = self.key_target,
+                                                          in_idx_end = 2)
                         _, metric = pipeline.process(x, y, do_remember = True, for_training = True)
                         time_end = Timestamp().time
                         y_last = pipeline.training_y_true[-1]
@@ -152,63 +169,118 @@ class TaskSolver:
                                 "%s   Time taken to retrieve, learn and score pipeline on data: %.3f s\n"
                                 "%s   Score on those observations: %f\n"
                                 "%s   Last observation: Prediction '%s' vs True Value '%s'"
-                                % (Timestamp(), pipeline.name, self.count_data,
+                                % (Timestamp(), pipeline.name, self.idx_data,
                                     Timestamp(None), pipeline.components_as_string(),
                                     Timestamp(None), time_end - time_start,
                                     Timestamp(None), metric,
                                     Timestamp(None), y_pred_last, y_last))
                     except Exception as e:
                         log.error("%s - Pipeline '%s' failed to process data while learning. "
-                                  "Deleting it and continuing." % (Timestamp(), pipeline.name))
+                                  "Deleting it and continuing." % (Timestamp(), pipeline_key))
                         log.debug(e)
                         del self.pipelines[pipeline_key]
                 
             await self.data_storage.has_new_data
-            
+
     async def process_queries(self):
         
         while True:
             await self.can_query
-            
-            # Check for new queries and derive responses.
-            # Score them if possible.
-            if self.count_queries < len(self.data_storage.timestamps_queries):
-                self.count_queries = len(self.data_storage.timestamps_queries)
-                
-                # df = self.data_storage.get_dataframe()
-                # print(df)
-                # df = df.sample(frac = 1)
-                # print(df)
-                        
-                for pipeline_key in list(self.pipelines.keys()):
-                    pipeline = self.pipelines[pipeline_key]
 
-                    time_start = Timestamp().time
-                    x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
-                                                      in_key_target = self.key_target,
-                                                      from_queries = True)
-                    _, metric = pipeline.process(x, y, do_learn = False, do_remember = True)
-                    # print(1)
-                    # pipeline.learn(x, y)
-                    # print(2)
-                    # score = pipeline.score(x, y)#, do_remember = True, for_training = True)
-                    # print(3)
-                    time_end = Timestamp().time
-                    y_last = pipeline.testing_y_true[-1]
-                    y_pred_last = pipeline.testing_y_response[-1]
+            # Check if there are more queries in storage than have been processed.
+            # If not, wait until new queries arive.
+            if not self.idx_queries < len(self.data_storage.timestamps_queries):
+                await self.data_storage.has_new_queries
+
+            # Fix how many queries to process based on what is available at the time.
+            idx_stop = len(self.data_storage.timestamps_queries)
+
+            # Extract the queries to process.
+            x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
+                                              in_key_target = self.key_target,
+                                              in_idx_start = self.idx_queries,
+                                              in_idx_end = idx_stop,
+                                              from_queries = True)
+
+            # Go through every pipeline in production and process the queries.
+            processes = list()
+            for pipeline_key in list(self.pipelines.keys()):
+                try:
+                    pipeline = self.pipelines[pipeline_key]
+                except Exception as e:
+                    log.warning("%s - Pipeline '%s' disappeared in the middle of a query phase. "
+                                "Continuing to query the next pipeline." % (Timestamp(), pipeline_key))
+                    log.debug(e)
+                    continue
+
+                time_start = Timestamp().time
+                _, metric = pipeline.process(deepcopy(x), deepcopy(y), 
+                                             do_learn = False, do_remember = True)
+                time_end = Timestamp().time
+                y_last = pipeline.testing_y_true[-1]
+                y_pred_last = pipeline.testing_y_response[-1]
+        
+                log.info("%s - Pipeline '%s' has responded to a total of %i queries.\n"
+                            "%s   Structure: %s\n"
+                            "%s   Time taken to score pipeline on queries: %.3f s\n"
+                            "%s   Score on those queries: %f\n"
+                            "%s   Last query: Prediction '%s' vs True Value '%s'"
+                            % (Timestamp(), pipeline.name, idx_stop - self.idx_queries,
+                            Timestamp(None), pipeline.components_as_string(),
+                            Timestamp(None), time_end - time_start,
+                            Timestamp(None), metric,
+                            Timestamp(None), y_pred_last, y_last))
+                
+                print(1)
+                process = mp.Process(target=task, args=("woo",))
+                print(2)
+                processes.append(process)
+                process.start()
+                print(3)
+
+            for process in processes:
+                process.join()
+                
+            # Update an index to acknowledge the queries that have been processed.
+            self.idx_queries = idx_stop
+
+        # while True:
+        #     await self.can_query
             
-                    log.info("%s - Pipeline '%s' has responded to a total of %i queries.\n"
-                             "%s   Structure: %s\n"
-                             "%s   Time taken to retrieve and score pipeline on queries: %.3f s\n"
-                             "%s   Score on those queries: %f\n"
-                             "%s   Last query: Prediction '%s' vs True Value '%s'"
-                             % (Timestamp(), pipeline.name, self.count_queries,
-                                Timestamp(None), pipeline.components_as_string(),
-                                Timestamp(None), time_end - time_start,
-                                Timestamp(None), metric,
-                                Timestamp(None), y_pred_last, y_last))
+        #     # Check for new queries and derive responses.
+        #     # Score them if possible.
+        #     if self.idx_queries < len(self.data_storage.timestamps_queries):
+        #         self.idx_queries = len(self.data_storage.timestamps_queries)
+                
+        #         # df = self.data_storage.get_dataframe()
+        #         # print(df)
+        #         # df = df.sample(frac = 1)
+        #         # print(df)
+                        
+        #         for pipeline_key in list(self.pipelines.keys()):
+        #             pipeline = self.pipelines[pipeline_key]
+
+        #             time_start = Timestamp().time
+        #             x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
+        #                                               in_key_target = self.key_target,
+        #                                               from_queries = True)
+        #             _, metric = pipeline.process(x, y, do_learn = False, do_remember = True)
+        #             time_end = Timestamp().time
+        #             y_last = pipeline.testing_y_true[-1]
+        #             y_pred_last = pipeline.testing_y_response[-1]
             
-            await self.data_storage.has_new_queries
+        #             log.info("%s - Pipeline '%s' has responded to a total of %i queries.\n"
+        #                      "%s   Structure: %s\n"
+        #                      "%s   Time taken to retrieve and score pipeline on queries: %.3f s\n"
+        #                      "%s   Score on those queries: %f\n"
+        #                      "%s   Last query: Prediction '%s' vs True Value '%s'"
+        #                      % (Timestamp(), pipeline.name, self.idx_queries,
+        #                         Timestamp(None), pipeline.components_as_string(),
+        #                         Timestamp(None), time_end - time_start,
+        #                         Timestamp(None), metric,
+        #                         Timestamp(None), y_pred_last, y_last))
+            
+        #     await self.data_storage.has_new_queries
             
     # TODO: Include error checking for no features. Error-check target existence somewhere too.
     def set_target_and_features(self, in_key_target, 
@@ -275,7 +347,7 @@ class TaskSolver:
         
 #         # Keep track of the data-storage instance up to which model has used.
 #         # TODO: Consider variant starting points for the model and update log messages.
-#         self.count_data = 0
+#         self.idx_data = 0
         
 #         self.task = asyncio.get_event_loop().create_task(self.process_strategy())
         
@@ -288,26 +360,26 @@ class TaskSolver:
 #             count_instance = 0
 #             y = None
 #             y_pred = None
-#             while self.count_data < len(self.data_storage.timestamps):
+#             while self.idx_data < len(self.data_storage.timestamps):
 #                 x = dict()
 #                 for key in self.data_storage.data:
 #                     if key == self.key_target:
-#                         y = self.data_storage.data[key][self.count_data]
+#                         y = self.data_storage.data[key][self.idx_data]
 #                     else:
-#                         x[key] = self.data_storage.data[key][self.count_data]
+#                         x[key] = self.data_storage.data[key][self.idx_data]
                         
 #                 y_pred = self.model.predict_one(x)
 #                 self.metric = self.metric.update(y, y_pred)
 #                 self.model.learn_one(x, y)
                 
-#                 self.count_data += 1
+#                 self.idx_data += 1
 #                 count_instance += 1
             
 #             if count_instance > 0:
 #                 log.info("%s - The TaskSolver has learned from another %i observations." 
 #                          % (Timestamp(), count_instance))
 #                 log.info("%s   Metric is %f after Observation %i"
-#                          % (Timestamp(None), self.metric.get(), self.count_data))
+#                          % (Timestamp(None), self.metric.get(), self.idx_data))
 #                 log.info("%s   Last observation: Prediction '%s' vs True Value '%s'" 
 #                          % (Timestamp(None), y_pred, y))
                 

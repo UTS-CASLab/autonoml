@@ -5,7 +5,8 @@ Created on Fri Apr 14 21:38:26 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp, asyncio_task_from_method
+from .utils import log, Timestamp
+from .concurrency import asyncio_task_from_method
 from .settings import SystemSettings as SS
 
 from copy import deepcopy

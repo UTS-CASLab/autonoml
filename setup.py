@@ -38,10 +38,11 @@ setup(
     include_package_data=True,
     # TODO: Consider user installation options for only useful subsets of packages.
     install_requires=[
+        "multiprocess",
         "pandas",
         "matplotlib",
         "seaborn",
-        "sklearn",
+        "scikit-learn",
         "river"
         # "aioconsole",
         # "matplotlib",

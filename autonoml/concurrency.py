@@ -8,26 +8,75 @@ Created on Wed Aug  2 21:15:47 2023
 import asyncio
 import threading
 import weakref
+import atexit
 
 # Set up a forever-running asyncio event loop in a thread dedicated to AutonoML.
 # This works for Python where there is no pre-existing loop.
 # This also works for IPython, which already runs a main-thread pre-existing loop.
+# TODO: Check whether there are memory leaks once a script ends.
 
 loop_autonoml = asyncio.new_event_loop()
 
 def run_loop(in_loop):
     asyncio.set_event_loop(in_loop)
-    in_loop.run_forever()
+    try:
+        in_loop.run_forever()
+    finally:
+        # If the loop is stopped, this is triggered.
+        in_loop.close()
 
-threading.Thread(target=lambda: run_loop(loop_autonoml)).start()
+# Create the thread to run the loop.
+thread_autonoml = threading.Thread(target=lambda: run_loop(loop_autonoml))
+thread_autonoml.start()
 
-# async def entrypoint():
-#     while True:
-#         asyncio.sleep(in_duration)
+# TODO: Consider cancelling all tasks in the loop.
+async def asyncio_stop_loop():
+    loop = asyncio.get_event_loop()
+    loop.stop()
 
-# async def loop_entrypoint():
-#     while True:
-#         asyncio.sleep(in_duration)
+def end_loop():
+    """
+    Stops the AutonoML event loop running.
+    This triggers it to close, which also stops the associated thread.
+    This should only be called when a program using the package is exited.
+    """
+    global loop_autonoml, thread_autonoml
+    asyncio.run_coroutine_threadsafe(coro = asyncio_stop_loop(),
+                                     loop = loop_autonoml)
+
+# Trigger the shutdown of the AutonoML end loop when it is no longer needed.
+# TODO: Work out if there is a way to test that this actually works.
+atexit.register(end_loop)
+
+
+
+def inspect_loop():
+    """
+    A debugging function to see what tasks exist on asyncio event loops.
+    It will operate on the calling thread and the AutonoML-dedicated thread.
+    These two threads may be the same, depending on where the function is called.
+    """
+
+    print("Asynchronous tasks running on the current-thread event loop, "
+          "if it exists for the Python implementation...")
+    print("Warning: If this function is called within an AutonoML coroutine, "
+          "it will inspect the dedicated AutonoML loop.")
+    loop = asyncio.get_event_loop()
+    try:
+        all_tasks = asyncio.all_tasks(loop)
+    except:
+        all_tasks = [None]
+    for task in all_tasks:
+        print(task)
+    print()
+
+    print("Asynchronous tasks running on the alternate-thread event loop "
+          "dedicated to AutonoML...")
+    for task in asyncio.all_tasks(loop_autonoml):
+        print(task)
+    print()
+
+
 
 def asyncio_task_from_method(in_method):
     """ 

@@ -6,7 +6,7 @@ Created on Mon May 22 21:58:33 2023
 """
 
 from .utils import log, Timestamp
-from .concurrency import asyncio_task_from_method
+from .concurrency import asyncio_task_from_method, inspect_loop
 from .pipeline import MLPipeline, task
 from .pool import (StandardScaler,
                    PartialLeastSquaresRegressor,
@@ -141,8 +141,12 @@ class TaskSolver:
         #                               OnlineLinearRegressor(in_hpars = {"batch_size":10})]))
         
         self.can_query.set_result(True)
-        
+
+        dev_waiting = mp.queue.Queue()
+        dev_done = mp.queue.Queue()
+
         while True:
+
             # Check for new data and learn from it.
             if self.idx_data < len(self.data_storage.timestamps_data):
                 self.idx_data = len(self.data_storage.timestamps_data)
@@ -151,7 +155,8 @@ class TaskSolver:
                 # print(df)
                 # df = df.sample(frac = 1)
                 # print(df)
-                        
+                
+                processes = list()
                 for pipeline_key in list(self.pipelines.keys()):
                     pipeline = self.pipelines[pipeline_key]
                     try:
@@ -179,8 +184,60 @@ class TaskSolver:
                                   "Deleting it and continuing." % (Timestamp(), pipeline_key))
                         log.debug(e)
                         del self.pipelines[pipeline_key]
+
+                    print(1)
+                    process = mp.Process(target=task, args=("woo",))
+                    print(2)
+                    processes.append(process)
+                    process.start()
+                    print(3)
+
+                for process in processes:
+                    process.join()
+
+            # self.can_query.set_result(True)
                 
             await self.data_storage.has_new_data
+        
+        # while True:
+        #     # Check for new data and learn from it.
+        #     if self.idx_data < len(self.data_storage.timestamps_data):
+        #         self.idx_data = len(self.data_storage.timestamps_data)
+                
+        #         # df = self.data_storage.get_dataframe()
+        #         # print(df)
+        #         # df = df.sample(frac = 1)
+        #         # print(df)
+                        
+        #         for pipeline_key in list(self.pipelines.keys()):
+        #             pipeline = self.pipelines[pipeline_key]
+        #             try:
+        #                 time_start = Timestamp().time
+        #                 x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
+        #                                                   in_key_target = self.key_target,
+        #                                                   in_idx_end = 2)
+        #                 _, metric = pipeline.process(x, y, do_remember = True, for_training = True)
+        #                 time_end = Timestamp().time
+        #                 y_last = pipeline.training_y_true[-1]
+        #                 y_pred_last = pipeline.training_y_response[-1]
+                
+        #                 log.info("%s - Pipeline '%s' has learned from a total of %i observations.\n"
+        #                         "%s   Structure: %s\n"
+        #                         "%s   Time taken to retrieve, learn and score pipeline on data: %.3f s\n"
+        #                         "%s   Score on those observations: %f\n"
+        #                         "%s   Last observation: Prediction '%s' vs True Value '%s'"
+        #                         % (Timestamp(), pipeline.name, self.idx_data,
+        #                             Timestamp(None), pipeline.components_as_string(),
+        #                             Timestamp(None), time_end - time_start,
+        #                             Timestamp(None), metric,
+        #                             Timestamp(None), y_pred_last, y_last))
+        #             except Exception as e:
+        #                 log.error("%s - Pipeline '%s' failed to process data while learning. "
+        #                           "Deleting it and continuing." % (Timestamp(), pipeline_key))
+        #                 log.debug(e)
+        #                 del self.pipelines[pipeline_key]
+                
+        #     await self.data_storage.has_new_data
 
     async def process_queries(self):
         
@@ -189,6 +246,7 @@ class TaskSolver:
 
             # Check if there are more queries in storage than have been processed.
             # If not, wait until new queries arive.
+            # TODO: Compare against a data storage index rather than a length.
             if not self.idx_queries < len(self.data_storage.timestamps_queries):
                 await self.data_storage.has_new_queries
 
@@ -203,7 +261,8 @@ class TaskSolver:
                                               from_queries = True)
 
             # Go through every pipeline in production and process the queries.
-            processes = list()
+            # TODO: Ensemble them to derive a single set of responses.
+            # processes = list()
             for pipeline_key in list(self.pipelines.keys()):
                 try:
                     pipeline = self.pipelines[pipeline_key]
@@ -231,18 +290,22 @@ class TaskSolver:
                             Timestamp(None), metric,
                             Timestamp(None), y_pred_last, y_last))
                 
-                print(1)
-                process = mp.Process(target=task, args=("woo",))
-                print(2)
-                processes.append(process)
-                process.start()
-                print(3)
+            #     print(1)
+            #     process = mp.Process(target=task, args=("woo",))
+            #     print(2)
+            #     processes.append(process)
+            #     process.start()
+            #     print(3)
 
-            for process in processes:
-                process.join()
+            # for process in processes:
+            #     process.join()
                 
             # Update an index to acknowledge the queries that have been processed.
             self.idx_queries = idx_stop
+
+            # Let other asynchronous tasks proceed if they are waiting.
+            # Prevents endlessly focussing on inference if development is possible.
+            await asyncio.sleep(0)
 
         # while True:
         #     await self.can_query

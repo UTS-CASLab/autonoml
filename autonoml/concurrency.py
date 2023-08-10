@@ -8,6 +8,7 @@ Created on Wed Aug  2 21:15:47 2023
 import asyncio
 import threading
 import weakref
+import functools
 import atexit
 
 # Set up a forever-running asyncio event loop in a thread dedicated to AutonoML.
@@ -78,31 +79,76 @@ def inspect_loop():
 
 
 
-def asyncio_task_from_method(in_method):
+def asyncio_task_from_method(from_sync_thread, in_method, *args, **kwargs):
     """ 
     Ensures proper handling of asynchronous tasks formed from bound methods.
     Specifically, weakly references the binding instance, i.e. self.
     Once self drops out of scope, the task should cancel.
+
+    Notes...
+    The return type depends on whether 'from_sync_thread' is True or False.
+    See 'create_async_task' and 'create_async_task_from_sync' functions.
     """
+
     class Canceller:
         def __call__(self, in_proxy):
-            self.task.cancel()
+            self.future.cancel()
 
     canceller = Canceller()
 
     # The canceller is called when the proxy is finalised.
     proxy_object = weakref.proxy(in_method.__self__, canceller)
     weakly_bound_method = in_method.__func__.__get__(proxy_object)
-    # task = asyncio.create_task(weakly_bound_method())
 
     global loop_autonoml
-    task = asyncio.run_coroutine_threadsafe(coro = weakly_bound_method(),
-                                            loop = loop_autonoml)
+    # print(weakly_bound_method)
+    # print(args)
+    # print(kwargs)
+    if from_sync_thread:
+        future = asyncio.run_coroutine_threadsafe(coro = weakly_bound_method(*args, **kwargs),
+                                                  loop = loop_autonoml)
+    else:
+        future = loop_autonoml.create_task(weakly_bound_method(*args, **kwargs))
 
-    # Establishes the task to cancel.
-    canceller.task = task
+    # Establishes the future to cancel.
+    canceller.future = future
 
-    return task
+    return future
+
+def create_async_task_from_sync(in_method, *args, **kwargs):
+    """
+    Creates an asyncio coroutine out of a bound method and puts it on an event loop.
+    This function is called from the main synchronous thread in a threadsafe manner.
+    Returns a concurrent.futures.Future, which can be awaited as follows.
+        try:
+            result = task.result(timeout=timeout)
+            ...
+        except concurrent.futures.TimeoutError:
+            ...
+        except concurrent.futures.CancelledError:
+            ...
+    """
+    return asyncio_task_from_method(True, in_method, *args, **kwargs)
+
+def create_async_task(in_method, *args, **kwargs):
+    """
+    Creates an asyncio coroutine out of a bound method and puts it on an event loop.
+    This function is called within running coroutines.
+    Returns an asyncio.Future, which can be awaited as usual with 'await'.
+    """
+    return asyncio_task_from_method(False, in_method, *args, **kwargs)
+
+
+
+# TODO: Verify the ChatGPT suggestion of binding method to instance. Seems to work.
+def schedule_this(bound_method):
+    @functools.wraps(bound_method)
+    def wrapper_decorator(self, *args, **kwargs):
+        bound_method_with_instance = bound_method.__get__(self, self.__class__)
+        create_async_task_from_sync(bound_method_with_instance, *args, **kwargs)
+    return wrapper_decorator
+
+
 
 async def user_pause(in_duration):
     """

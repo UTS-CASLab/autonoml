@@ -6,7 +6,7 @@ Created on Mon May 22 21:58:33 2023
 """
 
 from .utils import log, Timestamp
-from .concurrency import asyncio_task_from_method, inspect_loop
+from .concurrency import create_async_task_from_sync, create_async_task, inspect_loop
 from .pipeline import MLPipeline, task
 from .pool import (StandardScaler,
                    PartialLeastSquaresRegressor,
@@ -24,7 +24,13 @@ from copy import deepcopy
 #     # with in_semaphore:
 #     #     print(in_pipeline.name)
 
-class TaskSolver:
+class ProblemSolverInstructions:
+    def __init__(self, in_key_target, in_keys_features = None, do_exclude = False):
+        self.key_target = in_key_target
+        self.keys_features = in_keys_features
+        self.do_exclude = do_exclude
+
+class ProblemSolver:
     """
     A wrapper for pipelines and components that learn from data and respond to queries.
     Stores references to attributes of an AutonoMachine:
@@ -34,22 +40,23 @@ class TaskSolver:
 
     count = 0
     
-    def __init__(self, in_data_storage, in_semaphore,
-                 in_key_target, in_keys_features = None, do_exclude = False):
-        self.name = "Sol_" + str(TaskSolver.count)
-        TaskSolver.count += 1
-        log.info("%s - Initialising TaskSolver '%s'." % (Timestamp(), self.name))
+    def __init__(self, in_data_storage, in_semaphore, in_instructions):
+        self.name = "Sol_" + str(ProblemSolver.count)
+        ProblemSolver.count += 1
+        log.info("%s - Initialising ProblemSolver '%s'." % (Timestamp(), self.name))
 
         # Keep a reference to a common semaphore used to control multiprocessing.
         self.semaphore = in_semaphore
         
         self.data_storage = in_data_storage
         
-        o1, o2 = self.set_target_and_features(in_key_target = in_key_target,
-                                              in_keys_features = in_keys_features,
-                                              do_exclude = do_exclude)
-        self.key_target = o1
-        self.keys_features = o2
+        # o1, o2 = self.set_target_and_features(in_key_target = in_key_target,
+        #                                       in_keys_features = in_keys_features,
+        #                                       do_exclude = do_exclude)
+        # self.key_target = o1
+        # self.keys_features = o2
+        self.key_target = None
+        self.keys_features = None
         
         self.pipelines = dict()         # MLPipelines that are in production.
         self.pipelines_dev = dict()     # MLPipelines that are in development.
@@ -64,27 +71,42 @@ class TaskSolver:
         self.can_query = asyncio.Future()
         
         self.ops = None
-
         self.is_running = False
-        self.run()
+        create_async_task_from_sync(self.prepare, in_instructions)
 
     def __del__(self):
-        log.debug("Finalising TaskSolver '%s'." % self.name)
+        log.debug("Finalising ProblemSolver '%s'." % self.name)
+
+    async def prepare(self, in_instructions):
+
+        # Process instructions.
+        key_target = in_instructions.key_target
+        keys_features = in_instructions.keys_features
+        do_exclude = in_instructions.do_exclude
+        future = create_async_task(self.set_target_and_features,
+                                   in_key_target = key_target,
+                                   in_keys_features = keys_features,
+                                   do_exclude = do_exclude)
+        o1, o2 = await future
+        self.key_target = o1
+        self.keys_features = o2
+
+        # Once instructions are processed, begin the problem solving.
+        self.run()
 
     def run(self):
-        log.info("%s - TaskSolver '%s' is now running." % (Timestamp(), self.name))
+        log.info("%s - ProblemSolver '%s' is now running." % (Timestamp(), self.name))
         self.is_running = True
-
-        asyncio_task_from_method(self.gather_ops)
+        create_async_task_from_sync(self.gather_ops)
         
     async def gather_ops(self):
-        self.ops = [asyncio_task_from_method(op) for op in [self.process_strategy,
-                                                            self.process_queries]]
+        self.ops = [create_async_task(self.process_strategy), 
+                    create_async_task(self.process_queries)]
         group = asyncio.gather(*self.ops)
         try:
             await group
         except Exception as e:
-            log.error("%s - TaskSolver '%s' encountered an error. "
+            log.error("%s - ProblemSolver '%s' encountered an error. "
                       "Cancelling Asyncio operations." % (Timestamp(), self.name))
             log.debug(e)
             for op in self.ops:
@@ -92,11 +114,11 @@ class TaskSolver:
 
         self.is_running = False
         
-    def stop(self):
-        # Cancel all asynchronous operations.
-        if self.ops:
-            for op in self.ops:
-                op.cancel()
+    # def stop(self):
+    #     # Cancel all asynchronous operations.
+    #     if self.ops:
+    #         for op in self.ops:
+    #             op.cancel()
 
     def add_pipeline(self, in_pipeline):
         self.pipelines[in_pipeline.name] = in_pipeline
@@ -346,8 +368,8 @@ class TaskSolver:
         #     await self.data_storage.has_new_queries
             
     # TODO: Include error checking for no features. Error-check target existence somewhere too.
-    def set_target_and_features(self, in_key_target, 
-                                in_keys_features = None, do_exclude = False):
+    async def set_target_and_features(self, in_key_target,
+                                      in_keys_features = None, do_exclude = False):
         
         if in_key_target in self.data_storage.data:
             key_target = in_key_target
@@ -365,7 +387,7 @@ class TaskSolver:
                     keys_features.append(key_feature)
                 else:
                     log.warning("%s - Desired feature key '%s' cannot be found in DataStorage.\n"
-                                "%s   The TaskSolver will ignore it." 
+                                "%s   The ProblemSolver will ignore it." 
                                 % (Timestamp(), key_feature, Timestamp(None)))
         # Otherwise, include every feature existing in the data storage...
         # Except for feature keys specified with the intention of excluding.
@@ -374,11 +396,11 @@ class TaskSolver:
                 if not dkey == in_key_target:
                     if do_exclude and dkey in in_keys_features:
                         log.info("%s - DataStorage key '%s' has been marked as not a feature.\n"
-                                 "%s   The TaskSolver will ignore it."
+                                 "%s   The ProblemSolver will ignore it."
                                  % (Timestamp(), dkey, Timestamp(None)))
                     else:
                         keys_features.append(dkey)
-        
+
         return key_target, keys_features
 
 
@@ -393,13 +415,13 @@ class TaskSolver:
             pipeline.inspect_performance(for_training = False)
         
 
-# class TaskSolver:
+# class ProblemSolver:
 #     """
 #     A wrapper for components that learn from data and respond to queries.
 #     """
     
 #     def __init__(self, in_key_target, in_data_storage):
-#         log.info("%s - A TaskSolver has been initialised." % Timestamp())
+#         log.info("%s - A ProblemSolver has been initialised." % Timestamp())
         
 #         self.data_storage = in_data_storage
         
@@ -439,7 +461,7 @@ class TaskSolver:
 #                 count_instance += 1
             
 #             if count_instance > 0:
-#                 log.info("%s - The TaskSolver has learned from another %i observations." 
+#                 log.info("%s - The ProblemSolver has learned from another %i observations." 
 #                          % (Timestamp(), count_instance))
 #                 log.info("%s   Metric is %f after Observation %i"
 #                          % (Timestamp(None), self.metric.get(), self.idx_data))

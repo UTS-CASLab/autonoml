@@ -182,7 +182,7 @@ class DataStorage:
         log.info("DataPorts pipe data into the lists as follows.")
         log.info("Pipe: %s" % example_pipe)
         
-    # # TODO: This currently breaks a TaskSolver with feature keys. Decide what do.
+    # # TODO: This currently breaks a ProblemSolver with feature keys. Decide what do.
     # # TODO: Update for queries!
     # def update(self, in_keys_port, in_keys_storage):
     #     """

@@ -29,7 +29,7 @@ proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_1p2uW_3000c
 proj.info_storage()
 proj.learn(in_key_target = "estimate",
            in_keys_features = ["best"], do_exclude = True)
-aml.inspect_loop()
+# aml.inspect_loop()
 proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_1p2uW_3000cps.csv")
 # proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_2p5uW_4000cps.csv")
 # proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_4uW_4100cps.csv")

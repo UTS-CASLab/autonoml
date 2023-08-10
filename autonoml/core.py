@@ -7,11 +7,11 @@ Created on Wed Apr  5 20:39:37 2023
 
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
-from .concurrency import asyncio_task_from_method
+from .concurrency import create_async_task_from_sync, create_async_task, schedule_this
 
 from .data_storage import DataStorage
 from .data_io import DataPort, DataPortStream
-from .solver import TaskSolver
+from .solver import ProblemSolver, ProblemSolverInstructions
 
 import asyncio
 import threading
@@ -53,52 +53,13 @@ class AutonoMachine:
     def __del__(self):
         log.debug("Finalising Autonomachine '%s'." % self.name)
 
-        # # Cancel all asynchronous operations.
-        # if self.ops:
-        #     for op in self.ops:
-        #         if not op.done():
-        #             op.cancel()
-
-    # def cleanup(self):
-    #     log.info("%s - The AutonoMachine is now shutting down." % Timestamp())
-
-    #     # Cancel all asynchronous operations.
-    #     if self.ops:
-    #         for op in self.ops:
-    #             op.cancel()
-        
-    def run_asyncio(self):
-        """
-        This function needs to be run in a separate thread.
-        """
-        asyncio.run(self.gather_ops())
-
     def run(self):
         log.info("%s - AutonoMachine '%s' is now running." % (Timestamp(), self.name))
         self.is_running = True
-        
-        # # Check the Python environment for an asynchronous event loop.
-        # # Gather operations and hand them to a new/existing event loop.
-        # loop = asyncio.get_event_loop()
-        # if loop.is_running() == False:
-        #     log.debug(("No asyncio event loop is currently running.\n"
-        #                "One will be launched for AutonoML operations."))
-        #     thread_asyncio = threading.Thread(target=self.run_asyncio)
-        #     thread_asyncio.start()
-        #     # asyncio.run(self.gather_ops())
-        #     #HOW TO ADD TASKS TO IT?
-        # else:
-        #     log.debug(("The Python environment is already running an asyncio event loop.\n"
-        #                "It will be used for AutonoML operations."))
-        
-        asyncio_task_from_method(self.gather_ops)
+        create_async_task_from_sync(self.gather_ops)
             
     async def gather_ops(self):
-        # self.ops = [asyncio_task_from_method(op) for op in [self.check_issues]]
-        # await asyncio.gather(*self.ops)
-        #, return_exceptions=True)
-
-        self.ops = [asyncio_task_from_method(op) for op in [self.check_issues]]
+        self.ops = [create_async_task(self.check_issues)]
         group = asyncio.gather(*self.ops)
         try:
             await group
@@ -111,51 +72,65 @@ class AutonoMachine:
                 
         self.is_running = False
             
-    # TODO: Perhaps convert to a del. Distinguish between pause and del.
-    # TODO: Review cleanup.
-    def stop(self):
-        log.info("%s - AutonoMachine '%s' is now stopping." % (Timestamp(), self.name))
-        self.is_running = False
+    # # TODO: Perhaps convert to a del. Distinguish between pause and del.
+    # # TODO: Review cleanup.
+    # def stop(self):
+    #     log.info("%s - AutonoMachine '%s' is now stopping." % (Timestamp(), self.name))
+    #     self.is_running = False
         
-        # Cancel all asynchronous operations.
-        if self.ops:
-            for op in self.ops:
-                op.cancel()
+    #     # Cancel all asynchronous operations.
+    #     if self.ops:
+    #         for op in self.ops:
+    #             op.cancel()
                 
-        # Stop the task solver.
-        if self.solver:
-            self.solver.stop()
+    #     # Stop the task solver.
+    #     if self.solver:
+    #         self.solver.stop()
                 
-        # Close all data ports.
-        for id in list(self.data_ports.keys()):
-            del self.data_ports[id]
+    #     # Close all data ports.
+    #     for id in list(self.data_ports.keys()):
+    #         del self.data_ports[id]
             
     def ingest_file(self, in_filepath):
-        id_data_port = str(len(self.data_ports))
-        self.data_ports[id_data_port] = DataPort(in_id = id_data_port,
-                                                 in_data_storage = self.data_storage)
-        self.data_ports[id_data_port].ingest_file(in_filepath)
+        log.info("%s - Scheduling request for AutonoMachine '%s' to ingest data file: %s" 
+                 % (Timestamp(), self.name, in_filepath))
+        ref = DataPort(in_data_storage = self.data_storage)
+        self.data_ports[ref.name] = ref
+        # self.data_ports[ref.name].ingest_file(in_filepath)
+        create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath)
         
     def query_with_file(self, in_filepath):
-        id_data_port = str(len(self.data_ports))
-        self.data_ports[id_data_port] = DataPort(in_id = id_data_port,
-                                                 in_data_storage = self.data_storage)
-        self.data_ports[id_data_port].ingest_file(in_filepath, as_query = True)
+        log.info("%s - Scheduling request to query AutonoMachine '%s' with file: %s" 
+                 % (Timestamp(), self.name, in_filepath))
+        ref = DataPort(in_data_storage = self.data_storage)
+        self.data_ports[ref.name] = ref
+        # self.data_ports[ref.name].ingest_file(in_filepath, as_query = True)
+        create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
+                                    as_query = True)
         
-    def ingest_stream(self, in_hostname, in_port):
-        self.open_data_port(in_hostname = in_hostname, in_port = in_port)
+    # def ingest_stream(self, in_hostname, in_port):
+    #     self.open_data_port(in_hostname = in_hostname, in_port = in_port)
                 
-    def open_data_port(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA,
-                       in_id = None):
-        id_data_port = str(len(self.data_ports))
-        if not in_id is None:
-            id_data_port = str(in_id)
-        self.data_ports[id_data_port] = DataPortStream(in_id = id_data_port,
-                                                       in_data_storage = self.data_storage,
-                                                       in_hostname = in_hostname,
-                                                       in_port = in_port)
+    # def open_data_port(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA,
+    #                    in_id = None):
+    #     id_data_port = str(len(self.data_ports))
+    #     if not in_id is None:
+    #         id_data_port = str(in_id)
+    #     self.data_ports[id_data_port] = DataPortStream(in_id = id_data_port,
+    #                                                    in_data_storage = self.data_storage,
+    #                                                    in_hostname = in_hostname,
+    #                                                    in_port = in_port)
         
-    def info_storage(self):
+    # def info_storage(self):
+    #     """
+    #     Utility method to give user info about data ports and storage.
+    #     """
+    #     log.info("%s - Scheduling request for information on data flow/storage within AutonoMachine '%s'." 
+    #              % (Timestamp(), self.name))
+    #     asyncio_task_from_method(self.async_info_storage,
+    
+    @schedule_this
+    async def info_storage(self):
         """
         Utility method to give user info about data ports and storage.
         """
@@ -163,7 +138,8 @@ class AutonoMachine:
                  % (self.name, len(self.data_ports), "', '".join(self.data_ports.keys())))
         self.data_storage.info()
         
-    def info_solver(self):
+    @schedule_this
+    async def info_solver(self):
         """
         Utility method to give user info about the task solver and its models.
         """
@@ -182,21 +158,16 @@ class AutonoMachine:
     #         self.data_storage.update(in_keys_port, in_keys_storage)
     #     else:
     #         # TODO: Relax this constraint eventually.
-    #         log.error("%s - DataStorage cannot be updated while a TaskSolver exists." % Timestamp())
+    #         log.error("%s - DataStorage cannot be updated while a ProblemSolver exists." % Timestamp())
         
     def learn(self, in_key_target, in_keys_features = None, do_exclude = False):
-        self.solver = TaskSolver(in_data_storage = self.data_storage,
-                                 in_key_target = in_key_target,
-                                 in_keys_features = in_keys_features,
-                                 do_exclude = do_exclude,
-                                 in_semaphore = self.semaphore)
-        
-    # # TODO: Decide on a stop event when UI gets fleshed out.
-    # async def check_stop(self):
-    #     while self.is_running:
-    #         await asyncio.sleep(10)
-    #         # self.stop()
-    
+
+        instructions = ProblemSolverInstructions(in_key_target = in_key_target,
+                                                 in_keys_features = in_keys_features,
+                                                 do_exclude = do_exclude)
+        self.solver = ProblemSolver(in_data_storage = self.data_storage,
+                                    in_semaphore = self.semaphore,
+                                    in_instructions = instructions)
 
     class Issues(Enum):
         """
@@ -209,7 +180,7 @@ class AutonoMachine:
 
     async def check_issues(self):
         id_issue = self.Issues.NONE
-        while self.is_running:
+        while True:
             await asyncio.sleep(self.delay_for_issue_check)
 
             # Check for an issue if none exist or it has already been identified as an issue.

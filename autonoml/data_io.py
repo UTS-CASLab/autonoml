@@ -16,10 +16,12 @@ class DataPort:
     An object to wrap up a connection to a data source.
     """
     
-    def __init__(self, in_id, in_data_storage):
-        log.info("%s - DataPort '%s' has been initialised." % (Timestamp(), in_id))
-        
-        self.id = in_id     # String to id data port.
+    count = 0
+
+    def __init__(self, in_data_storage):
+        self.name = "Port_" + str(DataPort.count)
+        DataPort.count += 1
+        log.info("%s - Initialising DataPort '%s'." % (Timestamp(), self.name))
         
         # Reference to the DataStorage contained in the AutonoMachine.
         self.data_storage = in_data_storage
@@ -29,10 +31,10 @@ class DataPort:
         
     # TODO: Consider Pandas if it is faster.
     # TODO: Update logs for queries.
-    def ingest_file(self, in_filepath, in_file_has_headers = True, as_query = False):
+    async def ingest_file(self, in_filepath, in_file_has_headers = True, as_query = False):
         
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
-                 % (Timestamp(), self.id, in_filepath))
+                 % (Timestamp(), self.name, in_filepath))
    
         time_start = Timestamp().time
 
@@ -52,7 +54,7 @@ class DataPort:
                     self.keys = [str(num_element) for num_element in range(len(data))]
                     
                 self.data_storage.store_data(in_timestamp = Timestamp(),
-                                             in_data_port_id = self.id,
+                                             in_data_port_id = self.name,
                                              in_keys = self.keys,
                                              in_elements = data,
                                              as_query = as_query)
@@ -62,7 +64,7 @@ class DataPort:
                 
         log.info("%s - DataPort '%s' has acquired and stored %s instances of data.\n"
                  "%s   Time taken: %.3f s" 
-                  % (Timestamp(), self.id, count_instance,
+                  % (Timestamp(), self.name, count_instance,
                      Timestamp(None), time_end - time_start))
 
                 
@@ -98,7 +100,7 @@ class DataPortStream(DataPort):
             try:
                 reader, writer = await asyncio.open_connection(self.target_hostname, self.target_port)
                 log.warning("%s - DataPort '%s' is connected to host %s, port %s." 
-                            % (Timestamp(), self.id, self.target_hostname, self.target_port))
+                            % (Timestamp(), self.name, self.target_hostname, self.target_port))
                 self.ops = [asyncio.create_task(op) for op in [self.send_confirm_to_server(writer),
                                                                self.receive_data_from_server(reader)]]
                 for op in asyncio.as_completed(self.ops):
@@ -112,7 +114,7 @@ class DataPortStream(DataPort):
             except Exception as e:
                 log.debug(e)
                 log.warning("%s - DataPort '%s' cannot connect to host %s, port %s. Retrying." 
-                            % (Timestamp(), self.id, self.target_hostname, self.target_port))
+                            % (Timestamp(), self.name, self.target_hostname, self.target_port))
                 
     async def send_confirm_to_server(self, in_writer):
         while True:
@@ -136,5 +138,5 @@ class DataPortStream(DataPort):
             timestamp = Timestamp()
             self.data_storage.store_data(in_timestamp = timestamp, 
                                          in_elements = data, 
-                                         in_port_id = self.id)
-            log.info("%s - DataPort '%s' received data: %s" % (timestamp, self.id, data))
+                                         in_port_id = self.name)
+            log.info("%s - DataPort '%s' received data: %s" % (timestamp, self.name, data))

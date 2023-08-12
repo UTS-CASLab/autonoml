@@ -91,39 +91,8 @@ class ProblemSolver:
         self.key_target = o1
         self.keys_features = o2
 
-        # Once instructions are processed, begin the problem solving.
-        self.run()
 
-    def run(self):
-        log.info("%s - ProblemSolver '%s' is now running." % (Timestamp(), self.name))
-        self.is_running = True
-        create_async_task_from_sync(self.gather_ops)
-        
-    async def gather_ops(self):
-        self.ops = [create_async_task(self.process_strategy), 
-                    create_async_task(self.process_queries)]
-        group = asyncio.gather(*self.ops)
-        try:
-            await group
-        except Exception as e:
-            log.error("%s - ProblemSolver '%s' encountered an error. "
-                      "Cancelling Asyncio operations." % (Timestamp(), self.name))
-            log.debug(e)
-            for op in self.ops:
-                op.cancel()
-
-        self.is_running = False
-        
-    # def stop(self):
-    #     # Cancel all asynchronous operations.
-    #     if self.ops:
-    #         for op in self.ops:
-    #             op.cancel()
-
-    def add_pipeline(self, in_pipeline):
-        self.pipelines[in_pipeline.name] = in_pipeline
-        
-    async def process_strategy(self):
+        # Set up pipelines.
         # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
         #                              in_key_target = self.key_target))
         self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
@@ -161,11 +130,44 @@ class ProblemSolver:
         #                              in_components = 
         #                              [OnlineStandardScaler(in_hpars = {"batch_size":10}),
         #                               OnlineLinearRegressor(in_hpars = {"batch_size":10})]))
+
+        # Once instructions are processed, begin the problem solving.
+        self.run()
+
+    def run(self):
+        log.info("%s - ProblemSolver '%s' is now running." % (Timestamp(), self.name))
+        self.is_running = True
+        create_async_task_from_sync(self.gather_ops)
         
+    async def gather_ops(self):
+        self.ops = [create_async_task(self.process_strategy), 
+                    create_async_task(self.process_queries)]
+        group = asyncio.gather(*self.ops)
+        try:
+            await group
+        except Exception as e:
+            log.error("%s - ProblemSolver '%s' encountered an error. "
+                      "Cancelling Asyncio operations." % (Timestamp(), self.name))
+            log.debug(e)
+            for op in self.ops:
+                op.cancel()
+
+        self.is_running = False
+        
+    # def stop(self):
+    #     # Cancel all asynchronous operations.
+    #     if self.ops:
+    #         for op in self.ops:
+    #             op.cancel()
+
+    def add_pipeline(self, in_pipeline):
+        self.pipelines[in_pipeline.name] = in_pipeline
+        
+    async def process_strategy(self):
         self.can_query.set_result(True)
 
-        dev_waiting = mp.queue.Queue()
-        dev_done = mp.queue.Queue()
+        # dev_waiting = mp.queue.Queue()
+        # dev_done = mp.queue.Queue()
 
         while True:
 
@@ -207,14 +209,16 @@ class ProblemSolver:
                         log.debug(e)
                         del self.pipelines[pipeline_key]
 
+                    # EXAMINE PROCESS POOL EXECUTOR. loop.run_in_executor()
                     print(1)
-                    process = mp.Process(target=task, args=("woo",))
+                    process = mp.Process(target=task)#, args=(pipeline,))
                     print(2)
                     processes.append(process)
                     process.start()
                     print(3)
 
                 for process in processes:
+                    print("yo")
                     process.join()
 
             # self.can_query.set_result(True)
@@ -404,15 +408,16 @@ class ProblemSolver:
         return key_target, keys_features
 
 
-    def info(self):
+    async def get_figures(self):
         """
-        Utility method to give user info about the task solver and its models.
+        Utility method to get informative figures about the task solver and its models.
         """
-        
+        figs = list()
         for _, pipeline in self.pipelines.items():
-            pipeline.inspect_structure()
-            pipeline.inspect_performance(for_training = True)
-            pipeline.inspect_performance(for_training = False)
+            figs.extend(pipeline.inspect_structure())
+            figs.extend(pipeline.inspect_performance(for_training = True))
+            figs.extend(pipeline.inspect_performance(for_training = False))
+        return figs
         
 
 # class ProblemSolver:

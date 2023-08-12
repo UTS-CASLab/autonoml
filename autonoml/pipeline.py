@@ -6,14 +6,15 @@ Created on Tue Aug  1 12:13:43 2023
 """
 
 from .utils import log, Timestamp
-from .plot import plot_feature_importance, plot_performance
+from .plot import gen_fig_feature_importance, gen_fig_performance
 from .data import DataFormatX, DataFormatY, reformat_y
 from .pool import MLPredictor, MLPreprocessor, DummyRegressor
 
 from copy import deepcopy
 
-def task(in_pipeline):
-    print(in_pipeline)
+def task():#in_semaphore, in_pipeline):
+    print("whoa")
+    # print(in_pipeline)
     # with in_semaphore:
     #     print(in_pipeline.name)
 
@@ -126,15 +127,26 @@ class MLPipeline:
         return response, metric
 
     def inspect_structure(self):
+        """
+        Generate a list of figures that inspect pipeline structure, if available.
+        """
+        figs = list()
         for component in self.components:
             if isinstance(component, MLPredictor):
                 importance = component.get_feature_importance()
                 if not importance is None:
-                    plot_feature_importance(in_keys_features = component.keys_features,
-                                            in_importance = importance,
-                                            in_title = "Feature Importance: " + component.name)
+                    fig = gen_fig_feature_importance(in_keys_features = component.keys_features,
+                                                     in_importance = importance,
+                                                     in_title = "Feature Importance: " + component.name)
+                    figs.append(fig)
+        return figs
             
     def inspect_performance(self, for_training = False):
+        """
+        Generate a list of figures that inspect pipeline performance, if available.
+        """
+        figs = list()
+
         if for_training:
             text_type = "Training"
             vals_response = self.training_y_response
@@ -144,7 +156,11 @@ class MLPipeline:
             vals_response = self.testing_y_response
             vals_true = self.testing_y_true
 
-        title = "Performance (%s): %s\n%s" % (text_type, self.name, self.components_as_string())
-        plot_performance(in_vals_response = vals_response,
-                         in_vals_true = vals_true,
-                         in_title = title)
+        if len(vals_response) > 0 and len(vals_true) > 0:
+            title = "Performance (%s): %s\n%s" % (text_type, self.name, self.components_as_string())
+            fig = gen_fig_performance(in_vals_response = vals_response,
+                                    in_vals_true = vals_true,
+                                    in_title = title)
+            figs.append(fig)
+
+        return figs

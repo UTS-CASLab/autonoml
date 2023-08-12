@@ -12,6 +12,7 @@ from .concurrency import create_async_task_from_sync, create_async_task, schedul
 from .data_storage import DataStorage
 from .data_io import DataPort, DataPortStream
 from .solver import ProblemSolver, ProblemSolverInstructions
+from .plot import plot_figures
 
 import asyncio
 import threading
@@ -138,13 +139,16 @@ class AutonoMachine:
                  % (self.name, len(self.data_ports), "', '".join(self.data_ports.keys())))
         self.data_storage.info()
         
-    @schedule_this
-    async def info_solver(self):
+    def info_solver(self):
         """
         Utility method to give user info about the task solver and its models.
         """
         if self.solver:
-            self.solver.info()
+            log.info("%s - Scheduling request to inspect ProblemSolver '%s' "
+                     "for AutonoMachine '%s'." % (Timestamp(), self.solver.name, self.name))
+            future = create_async_task_from_sync(self.solver.get_figures)
+            figs = future.result()
+            plot_figures(figs)
         else:
             log.error("%s - AutonoMachine '%s' has not been given a task to solve." % (Timestamp(), self.name))
         

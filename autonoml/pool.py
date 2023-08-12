@@ -209,7 +209,7 @@ class RiverPreprocessor(MLPreprocessor):
         self.name += "_RiverPrep"
 
 class OnlineStandardScaler(RiverPreprocessor):
-    def __new__(cls, in_hpars = None, *args, **kwargs):
+    def __new__(cls, in_hpars = None):
 
         cls_this = OnlineStandardScaler
 
@@ -237,7 +237,7 @@ class OnlineStandardScaler(RiverPreprocessor):
             
         # If this method was called with any other class, propagate upwards.
         else:
-            return super(cls_this, cls).__new__(cls, in_hpars, *args, **kwargs)
+            return super(cls_this, cls).__new__(cls)
         
     @staticmethod
     def new_hpars():
@@ -293,7 +293,7 @@ class RiverPredictor(MLPredictor):
         self.name += "_RiverPred"
 
 class OnlineLinearRegressor(RiverPredictor):
-    def __new__(cls, in_hpars = None, *args, **kwargs):
+    def __new__(cls, in_hpars = None):
 
         cls_this = OnlineLinearRegressor
 
@@ -321,7 +321,7 @@ class OnlineLinearRegressor(RiverPredictor):
             
         # If this method was called with any other class, propagate upwards.
         else:
-            return super(cls_this, cls).__new__(cls, in_hpars, *args, **kwargs)
+            return super(cls_this, cls).__new__(cls)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -12,7 +12,16 @@ import pandas as pd
 import seaborn as sns
 import numpy as np
 
-def plot_feature_importance(in_keys_features, in_importance, in_title = None):
+def plot_figures(in_figs):
+    """
+    Plot figures that have been generated elsewhere.
+    This function should be called from the main synchronous thread.
+    Otherwise, the plotting libraries used will not show their figures.
+    """
+    for fig in in_figs:
+        fig.show()
+
+def gen_fig_feature_importance(in_keys_features, in_importance, in_title = None):
 
     x_max = len(in_keys_features)
     y_min = min(in_importance)
@@ -30,9 +39,10 @@ def plot_feature_importance(in_keys_features, in_importance, in_title = None):
         ax.set_xticks(list(range(x_max)), in_keys_features, rotation="vertical")
     ax.set_xlim([0, x_max])
     ax.set_ylim([y_min, y_max])
-    plt.show()
     
-def plot_performance(in_vals_response, in_vals_true, in_title = None):
+    return fig
+    
+def gen_fig_performance(in_vals_response, in_vals_true, in_title = None):
     
     analysis = pd.DataFrame(data={
         "Model Response": in_vals_response,
@@ -57,7 +67,9 @@ def plot_performance(in_vals_response, in_vals_true, in_title = None):
     if in_title:
         g.fig.suptitle(in_title)
     g.fig.tight_layout()
-    g.fig.subplots_adjust(top = 0.9)   # Reduce plot to make room for title. 
+    g.fig.subplots_adjust(top = 0.9)   # Reduce plot to make room for title.
+
+    return g.fig
     
     # fig, ax = plt.subplots()
     # ax.hist2d(in_vals_response, in_vals_true, bins = SS.BINS_HIST, 

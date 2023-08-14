@@ -98,7 +98,6 @@ class AutonoMachine:
                  % (Timestamp(), self.name, in_filepath))
         ref = DataPort(in_data_storage = self.data_storage)
         self.data_ports[ref.name] = ref
-        # self.data_ports[ref.name].ingest_file(in_filepath)
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath)
         
     def query_with_file(self, in_filepath):
@@ -106,7 +105,6 @@ class AutonoMachine:
                  % (Timestamp(), self.name, in_filepath))
         ref = DataPort(in_data_storage = self.data_storage)
         self.data_ports[ref.name] = ref
-        # self.data_ports[ref.name].ingest_file(in_filepath, as_query = True)
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
                                     as_query = True)
         

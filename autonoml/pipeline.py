@@ -12,18 +12,33 @@ from .pool import MLPredictor, MLPreprocessor, DummyRegressor
 
 from copy import deepcopy
 
-def process_pipeline(in_pipeline, in_x, in_y, in_info_process):
+def train_pipeline(in_pipeline, in_observations, in_info_process):
     """
-    A wrapper for pipeline processing to be called from a ProblemSolver.
+    A wrapper for pipeline training to be called from a ProblemSolver.
     This is designed for multiprocessing.
     """
+    
+    keys_features = in_info_process["keys_features"]
+    key_target = in_info_process["key_target"]
+    idx_start = in_info_process["idx_start"]
+    idx_end = in_info_process["idx_end"]
 
     time_start = Timestamp().time
-    _, metric = in_pipeline.process(in_x, in_y, do_remember = True, for_training = True)
+    x, y = in_observations.get_data(in_keys_features = keys_features,
+                                    in_key_target = key_target,
+                                    in_idx_start = idx_start,
+                                    in_idx_end = idx_end)
     time_end = Timestamp().time
+    duration_prep = time_end - time_start
+
+    time_start = Timestamp().time
+    _, metric = in_pipeline.process(x, y, do_remember = True, for_training = True)
+    time_end = Timestamp().time
+    duration_proc = time_end - time_start
 
     in_info_process["metric"] = metric
-    in_info_process["duration_proc"] = time_end - time_start
+    in_info_process["duration_prep"] = duration_prep
+    in_info_process["duration_proc"] = duration_proc
 
     return in_pipeline, in_info_process
 

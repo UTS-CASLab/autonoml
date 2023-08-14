@@ -30,21 +30,64 @@ def infer_data_type(in_element):
     
     return data_type
 
+
+
+class DataCollection:
+    def __init__(self):
+        self.timestamps = list()
+        self.data = dict()
+
+    def get_data(self, in_keys_features, in_key_target,
+                 in_format_x = None, in_format_y = None,
+                 in_idx_start = 0, in_idx_end = None):
+
+        source = self.data
+            
+        # Copy out the required data in default DataFormatX and DataFormatY style.
+        x = {key_feature:deepcopy(source[key_feature][in_idx_start:in_idx_end]) 
+                for key_feature in in_keys_features}
+        y = deepcopy(source[in_key_target][in_idx_start:in_idx_end])
+
+        if in_format_x is None:
+            in_format_x = DataFormatX(0)
+        if in_format_y is None:
+            in_format_y = DataFormatY(0)
+
+        # Reformat the data.
+        # If formats were not specified, the data is retrieved in 'standard' format.
+        x = reformat_x(in_data = x, 
+                        in_format_old = DataFormatX(0),
+                        in_format_new = in_format_x,
+                        in_keys_features = in_keys_features)
+        y = reformat_y(in_data = y, 
+                        in_format_old = DataFormatY(0),
+                        in_format_new = in_format_y)
+
+        return x, y
+    
+    def get_amount(self):
+        return len(self.timestamps)
+
+
+
 # TODO: Consider how the data is best stored, including preallocated arrays.
 # TODO: Update comments.
 class DataStorage:
     """
-    A collection of data that supplies machine learning processes.
+    A container that manages collections of data used for machine learning processes.
     """
     
     def __init__(self):
         log.info("%s - Initialising DataStorage." % Timestamp())
         
-        self.timestamps_data = list()
-        self.data = dict()          # Stored data arranged in keyed lists.
+        self.observations = DataCollection()
+        self.queries = DataCollection()
+
+        # self.timestamps_observations = list()
+        # self.observations = dict()          # Stored data arranged in keyed lists.
         
-        self.timestamps_queries = list()
-        self.queries = dict()       # Stored queries arranged in keyed lists.
+        # self.timestamps_queries = list()
+        # self.queries = dict()       # Stored queries arranged in keyed lists.
         
         self.data_types = dict()    # The data types for each keyed list.
         # Note: Data types are actual types not strings.
@@ -58,15 +101,15 @@ class DataStorage:
         
         # Set up a variable that can be awaited elsewhere.
         # This 'switch', when flicked, signals learners to ingest new data.
-        self.has_new_data = asyncio.Future()
+        self.has_new_observations = asyncio.Future()
         self.has_new_queries = asyncio.Future()
     
     # # Add a key to both the data and query storage with associated data type.
     # # Fill associated lists thus far with None.
     # def add_data_key(self, in_key, in_type):
         
-    #     if not in_key in self.data:
-    #         self.data[in_key] = [None]*len(self.timestamps)
+    #     if not in_key in self.observations:
+    #         self.observations[in_key] = [None]*len(self.timestamps)
     #     if not in_key in self.queries:
     #         self.queries[in_key] = [None]*len(self.timestamps)
         
@@ -74,11 +117,11 @@ class DataStorage:
     def store_data(self, in_timestamp, in_data_port_id, in_keys, in_elements, as_query = False):
 
         if as_query:
-            timestamps = self.timestamps_queries
-            dict_storage = self.queries
+            timestamps = self.queries.timestamps
+            dict_storage = self.queries.data
         else:
-            timestamps = self.timestamps_data
-            dict_storage = self.data
+            timestamps = self.observations.timestamps
+            dict_storage = self.observations.data
             
         timestamps.append(in_timestamp)
         
@@ -106,13 +149,13 @@ class DataStorage:
             dkey = self.ikeys_to_dkeys[ikey]
             
             # Both data/queries must have the same keys.
-            if not dkey in self.data:
+            if not dkey in self.observations.data:
                 if count_dkey_new < SS.MAX_ALERTS_DKEY_NEW:
                     log.info("%s   DataStorage has begun storing elements of "
                              "data/queries in a list with key '%s'." 
                              % (Timestamp(None), dkey))
-                self.data[dkey] = [None]*len(self.timestamps_data)
-                self.queries[dkey] = [None]*len(self.timestamps_queries)
+                self.observations.data[dkey] = [None]*len(self.observations.timestamps)
+                self.queries.data[dkey] = [None]*len(self.queries.timestamps)
                 
                 # The first element in a list determines its data type.
                 self.data_types[dkey] = infer_data_type(element)
@@ -143,8 +186,8 @@ class DataStorage:
             self.has_new_queries.set_result(True)
             self.has_new_queries = asyncio.Future()
         else:
-            self.has_new_data.set_result(True)
-            self.has_new_data = asyncio.Future()
+            self.has_new_observations.set_result(True)
+            self.has_new_observations = asyncio.Future()
         
     def info(self):
         """
@@ -205,7 +248,7 @@ class DataStorage:
     #             data_type_old = self.data_types[key_storage_old]
                 
     #             # Handle merging with pre-existing lists.
-    #             if key_storage in self.data:
+    #             if key_storage in self.observations:
     #                 data_type_existing = self.data_types[key_storage]
                     
     #                 # Refuse for clashing data types.
@@ -220,11 +263,11 @@ class DataStorage:
     #                                 "Proceeding to overwrite with list '%s' where values exist."
     #                                 % (Timestamp(), key_storage, key_storage_old))
     #                     self.data_types.pop(key_storage_old)
-    #                     list_old = self.data.pop(key_storage_old)
+    #                     list_old = self.observations.pop(key_storage_old)
     #                     for count_element in range(len(list_old)):
     #                         element = list_old[count_element]
     #                         if element is not None:
-    #                             self.data[key_storage][count_element] = element
+    #                             self.observations[key_storage][count_element] = element
                         
     #                     # Update directions for the DataPort.
     #                     self.ikeys_to_dkeys[key_port] = key_storage
@@ -232,7 +275,7 @@ class DataStorage:
     #             # Handle what is effectively the renaming of a list.
     #             else:
     #                 self.data_types[key_storage] = self.data_types.pop(key_storage_old)
-    #                 self.data[key_storage] = self.data.pop(key_storage_old)
+    #                 self.observations[key_storage] = self.observations.pop(key_storage_old)
                     
     #                 # Update directions for the DataPort.
     #                 self.ikeys_to_dkeys[key_port] = key_storage
@@ -243,39 +286,47 @@ class DataStorage:
                  in_idx_start = 0, in_idx_end = None,
                  from_queries = False):
 
-        source = self.data
+        source = self.observations
         if from_queries:
             source = self.queries
+
+        return source.get_data(in_keys_features = in_keys_features,
+                               in_key_target = in_key_target,
+                               in_format_x = in_format_x,
+                               in_format_y = in_format_y,
+                               in_idx_start = in_idx_start,
+                               in_idx_end = in_idx_end)
+
             
-        # Copy out the required data in default DataFormatX and DataFormatY style.
-        x = {key_feature:deepcopy(source[key_feature][in_idx_start:in_idx_end]) 
-             for key_feature in in_keys_features}
-        y = deepcopy(source[in_key_target][in_idx_start:in_idx_end])
+        # # Copy out the required data in default DataFormatX and DataFormatY style.
+        # x = {key_feature:deepcopy(source[key_feature][in_idx_start:in_idx_end]) 
+        #      for key_feature in in_keys_features}
+        # y = deepcopy(source[in_key_target][in_idx_start:in_idx_end])
 
-        if in_format_x is None:
-            in_format_x = DataFormatX(0)
-        if in_format_y is None:
-            in_format_y = DataFormatY(0)
+        # if in_format_x is None:
+        #     in_format_x = DataFormatX(0)
+        # if in_format_y is None:
+        #     in_format_y = DataFormatY(0)
 
-        # Reformat the data.
-        # If formats were not specified, the data is retrieved in 'standard' format.
-        x = reformat_x(in_data = x, 
-                       in_format_old = DataFormatX(0),
-                       in_format_new = in_format_x,
-                       in_keys_features = in_keys_features)
-        y = reformat_y(in_data = y, 
-                       in_format_old = DataFormatY(0),
-                       in_format_new = in_format_y)
+        # # Reformat the data.
+        # # If formats were not specified, the data is retrieved in 'standard' format.
+        # x = reformat_x(in_data = x, 
+        #                in_format_old = DataFormatX(0),
+        #                in_format_new = in_format_x,
+        #                in_keys_features = in_keys_features)
+        # y = reformat_y(in_data = y, 
+        #                in_format_old = DataFormatY(0),
+        #                in_format_new = in_format_y)
 
-        return x, y
+        # return x, y
         
     # def get_dataframe(self, from_queries = False):
     #     """
     #     A utility method converting data dictionary into a Pandas dataframe.
     #     This is slow and should be called sparingly.
     #     """
-    #     source = self.data
-    #     timestamps = self.timestamps_data
+    #     source = self.observations
+    #     timestamps = self.timestamps_observations
     #     if from_queries:
     #         source = self.queries
     #         timestamps = self.timestamps_queries

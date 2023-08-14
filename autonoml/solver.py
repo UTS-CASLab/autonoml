@@ -6,8 +6,8 @@ Created on Mon May 22 21:58:33 2023
 """
 
 from .utils import log, Timestamp
-from .concurrency import create_async_task_from_sync, create_async_task, inspect_loop
-from .pipeline import MLPipeline, task
+from .concurrency import create_async_task_from_sync, create_async_task, inspect_loop, loop_autonoml
+from .pipeline import MLPipeline, process_pipeline
 from .pool import (StandardScaler,
                    PartialLeastSquaresRegressor,
                    LinearRegressor,
@@ -16,8 +16,12 @@ from .pool import (StandardScaler,
                    OnlineLinearRegressor)
 
 import asyncio
+import concurrent.futures
+# import dill
 import multiprocess as mp
 from copy import deepcopy
+
+import time
 
 # def task(in_pipeline):
 #     print(in_pipeline)
@@ -40,13 +44,13 @@ class ProblemSolver:
 
     count = 0
     
-    def __init__(self, in_data_storage, in_semaphore, in_instructions):
+    def __init__(self, in_data_storage, in_n_procs, in_instructions):
         self.name = "Sol_" + str(ProblemSolver.count)
         ProblemSolver.count += 1
         log.info("%s - Initialising ProblemSolver '%s'." % (Timestamp(), self.name))
 
         # Keep a reference to a common semaphore used to control multiprocessing.
-        self.semaphore = in_semaphore
+        self.n_procs = in_n_procs
         
         self.data_storage = in_data_storage
         
@@ -60,6 +64,9 @@ class ProblemSolver:
         
         self.pipelines = dict()         # MLPipelines that are in production.
         self.pipelines_dev = dict()     # MLPipelines that are in development.
+
+        # The queue variable cannot be instantiated as an asyncio queue until in a coroutine.
+        self.pipelines_queue = None
         
         # Keep track of the data-storage instance up to which model has used.
         # TODO: Consider variant starting points for the model and update log messages.
@@ -91,45 +98,48 @@ class ProblemSolver:
         self.key_target = o1
         self.keys_features = o2
 
+        # Instantiate the queue now so that it is linked to the right event loop.
+        self.pipelines_queue = asyncio.Queue()
 
         # Set up pipelines.
-        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-        #                              in_key_target = self.key_target))
-        self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target))
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
                                      in_key_target = self.key_target,
                                      in_components = [PartialLeastSquaresRegressor()]))
-        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-        #                              in_key_target = self.key_target,
-        #                              in_components = [StandardScaler(),
-        #                                               PartialLeastSquaresRegressor()]))
-        self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target,
+                                     in_components = [StandardScaler(),
+                                                      PartialLeastSquaresRegressor()]))
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
                                      in_key_target = self.key_target,
                                      in_components = [LinearRegressor()]))
-        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-        #                              in_key_target = self.key_target,
-        #                              in_components = [LinearSupportVectorRegressor()]))
-        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-        #                              in_key_target = self.key_target,
-        #                              in_components = [StandardScaler(),
-        #                                               LinearSupportVectorRegressor()]))
-        self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target,
+                                     in_components = [LinearSupportVectorRegressor()]))
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target,
+                                     in_components = [StandardScaler(),
+                                                      LinearSupportVectorRegressor()]))
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
                                      in_key_target = self.key_target,
                                      in_components = [OnlineLinearRegressor()]))
-        self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
                                      in_key_target = self.key_target,
                                      in_components = [OnlineLinearRegressor(in_hpars = {"batch_size":10000})]))
-        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-        #                              in_key_target = self.key_target,
-        #                              in_components = [OnlineStandardScaler(),
-        #                                               OnlineLinearRegressor()]))
-        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-        #                              in_key_target = self.key_target,
-        #                              in_components = [StandardScaler(),
-        #                                               OnlineLinearRegressor()]))
-        # self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-        #                              in_components = 
-        #                              [OnlineStandardScaler(in_hpars = {"batch_size":10}),
-        #                               OnlineLinearRegressor(in_hpars = {"batch_size":10})]))
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target,
+                                     in_components = [OnlineStandardScaler(),
+                                                      OnlineLinearRegressor()]))
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                     in_key_target = self.key_target,
+                                     in_components = [StandardScaler(),
+                                                      OnlineLinearRegressor()]))
+        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                           in_key_target = self.key_target,
+                                           in_components = 
+                                           [OnlineStandardScaler(in_hpars = {"batch_size":10}),
+                                            OnlineLinearRegressor(in_hpars = {"batch_size":10})]))
 
         # Once instructions are processed, begin the problem solving.
         self.run()
@@ -140,7 +150,8 @@ class ProblemSolver:
         create_async_task_from_sync(self.gather_ops)
         
     async def gather_ops(self):
-        self.ops = [create_async_task(self.process_strategy), 
+        self.ops = [create_async_task(self.process_pipelines),
+                    create_async_task(self.process_strategy), 
                     create_async_task(self.process_queries)]
         group = asyncio.gather(*self.ops)
         try:
@@ -160,9 +171,76 @@ class ProblemSolver:
     #         for op in self.ops:
     #             op.cancel()
 
-    def add_pipeline(self, in_pipeline):
-        self.pipelines[in_pipeline.name] = in_pipeline
-        
+    async def add_pipeline(self, in_pipeline):
+        # self.pipelines[in_pipeline.name] = in_pipeline
+        await self.pipelines_queue.put(in_pipeline)
+
+    async def process_pipelines(self):
+        log.info("%s - ProblemSolver '%s' has launched a process pool "
+                 "to train MLPipelines." % (Timestamp(), self.name))
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ProcessPoolExecutor(max_workers = self.n_procs) as executor:
+            while True:
+                pipeline = await self.pipelines_queue.get()
+
+                idx_start = 0
+                idx_end = None
+                if idx_end is None:
+                    idx_end = len(self.data_storage.timestamps_data)
+
+                time_start = Timestamp().time
+                x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
+                                                  in_key_target = self.key_target,
+                                                  in_idx_start = idx_start,
+                                                  in_idx_end = idx_end)
+                time_end = Timestamp().time
+                duration_prep = time_end - time_start
+
+                info_process = {"idx_start": idx_start,
+                                "idx_end": idx_end,
+                                "duration_prep": duration_prep}
+
+                future_pipeline = loop.run_in_executor(executor, process_pipeline, pipeline, 
+                                                       deepcopy(x), deepcopy(y), info_process)
+                create_async_task(self.push_to_production, future_pipeline)
+
+                # Check if anything else is waiting after submitting a pipeline for processing.
+                await asyncio.sleep(0)
+
+    async def push_to_production(self, in_future_pipeline):
+        try:
+            pipeline, info_process = await in_future_pipeline
+
+            idx_start = info_process["idx_start"]
+            idx_end = info_process["idx_end"]
+            duration_prep = info_process["duration_prep"]
+            duration_proc = info_process["duration_proc"]
+            metric = info_process["metric"]
+            y_last = pipeline.training_y_true[-1]
+            y_pred_last = pipeline.training_y_response[-1]
+
+            log.info("%s - Pipeline '%s' has learned from a total of %i observations.\n"
+                     "%s   Structure: %s\n"
+                     "%s   Time taken to retrieve data: %.3f s\n"
+                     "%s   Time taken to train/score pipeline on data: %.3f s\n"
+                     "%s   Score on those observations: %f\n"
+                     "%s   Last observation: Prediction '%s' vs True Value '%s'"
+                     % (Timestamp(), pipeline.name, idx_end - idx_start,
+                        Timestamp(None), pipeline.components_as_string(),
+                        Timestamp(None), duration_prep,
+                        Timestamp(None), duration_proc,
+                        Timestamp(None), metric,
+                        Timestamp(None), y_pred_last, y_last))
+            
+            self.pipelines[pipeline.name] = pipeline
+            log.info("%s   Pipeline '%s' is pushed to production." % (Timestamp(None), pipeline.name))
+        except Exception as e:
+            log.error("%s - ProblemSolver '%s' failed to process an MLPipeline." 
+                      % (Timestamp(), self.name))
+            log.debug(e)
+        finally:
+            self.pipelines_queue.task_done()
+
     async def process_strategy(self):
         self.can_query.set_result(True)
 
@@ -180,46 +258,48 @@ class ProblemSolver:
                 # df = df.sample(frac = 1)
                 # print(df)
                 
-                processes = list()
-                for pipeline_key in list(self.pipelines.keys()):
-                    pipeline = self.pipelines[pipeline_key]
-                    try:
-                        time_start = Timestamp().time
-                        x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
-                                                          in_key_target = self.key_target,
-                                                          in_idx_end = 2)
-                        _, metric = pipeline.process(x, y, do_remember = True, for_training = True)
-                        time_end = Timestamp().time
-                        y_last = pipeline.training_y_true[-1]
-                        y_pred_last = pipeline.training_y_response[-1]
+                # processes = list()
+                # for pipeline_key in list(self.pipelines.keys()):
+                #     pipeline = self.pipelines[pipeline_key]
+                #     try:
+                #         time_start = Timestamp().time
+                #         x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
+                #                                           in_key_target = self.key_target,
+                #                                           in_idx_end = 2)
+                #         _, metric = pipeline.process(x, y, do_remember = True, for_training = True)
+                #         time_end = Timestamp().time
+                #         y_last = pipeline.training_y_true[-1]
+                #         y_pred_last = pipeline.training_y_response[-1]
                 
-                        log.info("%s - Pipeline '%s' has learned from a total of %i observations.\n"
-                                "%s   Structure: %s\n"
-                                "%s   Time taken to retrieve, learn and score pipeline on data: %.3f s\n"
-                                "%s   Score on those observations: %f\n"
-                                "%s   Last observation: Prediction '%s' vs True Value '%s'"
-                                % (Timestamp(), pipeline.name, self.idx_data,
-                                    Timestamp(None), pipeline.components_as_string(),
-                                    Timestamp(None), time_end - time_start,
-                                    Timestamp(None), metric,
-                                    Timestamp(None), y_pred_last, y_last))
-                    except Exception as e:
-                        log.error("%s - Pipeline '%s' failed to process data while learning. "
-                                  "Deleting it and continuing." % (Timestamp(), pipeline_key))
-                        log.debug(e)
-                        del self.pipelines[pipeline_key]
+                #         log.info("%s - Pipeline '%s' has learned from a total of %i observations.\n"
+                #                 "%s   Structure: %s\n"
+                #                 "%s   Time taken to retrieve, learn and score pipeline on data: %.3f s\n"
+                #                 "%s   Score on those observations: %f\n"
+                #                 "%s   Last observation: Prediction '%s' vs True Value '%s'"
+                #                 % (Timestamp(), pipeline.name, self.idx_data,
+                #                     Timestamp(None), pipeline.components_as_string(),
+                #                     Timestamp(None), time_end - time_start,
+                #                     Timestamp(None), metric,
+                #                     Timestamp(None), y_pred_last, y_last))
+                #     except Exception as e:
+                #         log.error("%s - Pipeline '%s' failed to process data while learning. "
+                #                   "Deleting it and continuing." % (Timestamp(), pipeline_key))
+                #         log.debug(e)
+                #         del self.pipelines[pipeline_key]
 
-                    # EXAMINE PROCESS POOL EXECUTOR. loop.run_in_executor()
-                    print(1)
-                    process = mp.Process(target=task)#, args=(pipeline,))
-                    print(2)
-                    processes.append(process)
-                    process.start()
-                    print(3)
+                    # await self.pipelines_queue.put(pipeline)
 
-                for process in processes:
-                    print("yo")
-                    process.join()
+                #     # EXAMINE PROCESS POOL EXECUTOR. loop.run_in_executor()
+                #     print(1)
+                #     process = mp.Process(target=task)#, args=(pipeline,))
+                #     print(2)
+                #     processes.append(process)
+                #     process.start()
+                #     print(3)
+
+                # for process in processes:
+                #     print("yo")
+                #     process.join()
 
             # self.can_query.set_result(True)
                 

@@ -12,11 +12,20 @@ from .pool import MLPredictor, MLPreprocessor, DummyRegressor
 
 from copy import deepcopy
 
-def task():#in_semaphore, in_pipeline):
-    print("whoa")
-    # print(in_pipeline)
-    # with in_semaphore:
-    #     print(in_pipeline.name)
+def process_pipeline(in_pipeline, in_x, in_y, in_info_process):
+    """
+    A wrapper for pipeline processing to be called from a ProblemSolver.
+    This is designed for multiprocessing.
+    """
+
+    time_start = Timestamp().time
+    _, metric = in_pipeline.process(in_x, in_y, do_remember = True, for_training = True)
+    time_end = Timestamp().time
+
+    in_info_process["metric"] = metric
+    in_info_process["duration_proc"] = time_end - time_start
+
+    return in_pipeline, in_info_process
 
 # TODO: Upgrade to DAGs.
 class MLPipeline:

@@ -37,7 +37,8 @@ class AutonoMachine:
             n_procs = mp.cpu_count() - 1
         log.info("%s   Leveraging %i out of %i processors." 
                  % (Timestamp(None), n_procs, mp.cpu_count()))
-        self.semaphore = mp.Semaphore(n_procs)
+        # self.semaphore = mp.Semaphore(n_procs)
+        self.n_procs = n_procs
 
         self.data_storage = DataStorage()
         self.data_ports = dict()
@@ -170,7 +171,7 @@ class AutonoMachine:
                                                  in_keys_features = in_keys_features,
                                                  do_exclude = do_exclude)
         self.solver = ProblemSolver(in_data_storage = self.data_storage,
-                                    in_semaphore = self.semaphore,
+                                    in_n_procs = self.n_procs,
                                     in_instructions = instructions)
 
     class Issues(Enum):

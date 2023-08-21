@@ -7,7 +7,8 @@ Created on Wed Apr  5 20:39:37 2023
 
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
-from .concurrency import create_async_task_from_sync, create_async_task, schedule_this
+from .concurrency import (create_async_task_from_sync, create_async_task, 
+                          schedule_this)#, skip_in_other_processes)
 
 from .data_storage import DataStorage
 from .data_io import DataPort, DataPortStream
@@ -28,16 +29,21 @@ class AutonoMachine:
 
     count = 0
     
-    def __init__(self, n_procs = None):
+    def __init__(self, do_mp = False, n_procs = None):
         self.name = "Autono_" + str(AutonoMachine.count)
         AutonoMachine.count += 1
         log.info("%s - Initialising AutonoMachine '%s'." % (Timestamp(), self.name))
 
+        self.do_mp = do_mp
+        
+        if self.do_mp:
+            text_concurrency = "multiprocessing"
+        else:
+            text_concurrency = "multithreading"
         if n_procs is None:
             n_procs = mp.cpu_count() - 1
-        log.info("%s   Leveraging %i out of %i processors." 
-                 % (Timestamp(None), n_procs, mp.cpu_count()))
-        # self.semaphore = mp.Semaphore(n_procs)
+        log.info("%s   Leveraging %i out of %i processors for %s." 
+                 % (Timestamp(None), n_procs, mp.cpu_count(), text_concurrency))        
         self.n_procs = n_procs
 
         self.data_storage = DataStorage()
@@ -49,12 +55,13 @@ class AutonoMachine:
         
         self.ops = None
         
-        self.is_running = False
+        self.is_running = False     # TODO: Decide whether this variable is useful.
         self.run()
 
     def __del__(self):
         log.debug("Finalising Autonomachine '%s'." % self.name)
 
+    # @skip_in_other_processes
     def run(self):
         log.info("%s - AutonoMachine '%s' is now running." % (Timestamp(), self.name))
         self.is_running = True
@@ -93,6 +100,7 @@ class AutonoMachine:
     #     for id in list(self.data_ports.keys()):
     #         del self.data_ports[id]
             
+    # @skip_in_other_processes
     def ingest_file(self, in_filepath):
         log.info("%s - Scheduling request for AutonoMachine '%s' to ingest data file: %s" 
                  % (Timestamp(), self.name, in_filepath))
@@ -100,6 +108,7 @@ class AutonoMachine:
         self.data_ports[ref.name] = ref
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath)
         
+    # @skip_in_other_processes
     def query_with_file(self, in_filepath):
         log.info("%s - Scheduling request to query AutonoMachine '%s' with file: %s" 
                  % (Timestamp(), self.name, in_filepath))
@@ -129,6 +138,7 @@ class AutonoMachine:
     #              % (Timestamp(), self.name))
     #     asyncio_task_from_method(self.async_info_storage,
     
+    # @skip_in_other_processes
     @schedule_this
     async def info_storage(self):
         """
@@ -138,6 +148,7 @@ class AutonoMachine:
                  % (self.name, len(self.data_ports), "', '".join(self.data_ports.keys())))
         self.data_storage.info()
         
+    # @skip_in_other_processes
     def info_solver(self):
         """
         Utility method to give user info about the task solver and its models.
@@ -163,14 +174,17 @@ class AutonoMachine:
     #         # TODO: Relax this constraint eventually.
     #         log.error("%s - DataStorage cannot be updated while a ProblemSolver exists." % Timestamp())
         
-    def learn(self, in_key_target, in_keys_features = None, do_exclude = False):
+    # @skip_in_other_processes
+    def learn(self, in_key_target, in_keys_features = None, do_exclude = False, in_strategy = None):
 
         instructions = ProblemSolverInstructions(in_key_target = in_key_target,
                                                  in_keys_features = in_keys_features,
-                                                 do_exclude = do_exclude)
+                                                 do_exclude = do_exclude,
+                                                 in_strategy = in_strategy)
         self.solver = ProblemSolver(in_data_storage = self.data_storage,
+                                    in_instructions = instructions,
                                     in_n_procs = self.n_procs,
-                                    in_instructions = instructions)
+                                    do_mp = self.do_mp)
 
     class Issues(Enum):
         """

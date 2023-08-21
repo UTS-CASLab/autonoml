@@ -4,12 +4,6 @@ AutonoML root module.
 
 import sys
 import logging
-import asyncio
-
-# #%% 
-# if "win32" in sys.platform:
-#     # Windows specific event-loop policy & cmd
-#     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 #%% Set up a module-level logger.
 log = logging.getLogger("autonoml")
@@ -44,11 +38,22 @@ if not log.handlers:
 
 #%% Ensure all required functions are available upon importing the root module.
 
+# IMPORTANT...
+# All functions/variables below are exposed to a user and can be used when scripting.
+# This codebase leverages multiprocessing, so user scripts must be neutralised in child processes.
+# Critically, process spawners should be blocked off or recursion will crash CPUs!
+# CPU-intensive functions should also be blocked off.
+# However, ideally, it should not be up to the user to use multiprocessing guards.
+# Hence, it is up to codebase developers to intercept such calls, within reason.
+# TODO: See if this is even possible.
+
 from .core import *
 from .streamer import *
+
 from .settings import *
 from .utils import *
 from .concurrency import *
+from .strategy import *
 
 # # Display version information using logging
 

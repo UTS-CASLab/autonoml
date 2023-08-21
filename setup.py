@@ -40,9 +40,12 @@ setup(
     install_requires=[
         "dill",
         "multiprocess",
+        "numpy",
         "pandas",
         "matplotlib",
         "seaborn",
+        # "wheel",
+        "hpbandster",
         "scikit-learn",
         "river"
         # "aioconsole",

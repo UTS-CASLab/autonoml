@@ -148,6 +148,18 @@ def schedule_this(bound_method):
         create_async_task_from_sync(bound_method_with_instance, *args, **kwargs)
     return wrapper_decorator
 
+# import multiprocess as mp
+
+# # TODO: Consider ensuring returns that do not break a user script, if there are returns.
+# def skip_in_other_processes(func):
+#     @functools.wraps(func)
+#     def wrapper(*args, **kwargs):
+#         if mp.current_process().name == "MainProcess":
+#             return func(*args, **kwargs)
+#         else:
+#             pass
+#     return wrapper
+
 
 
 async def user_pause(in_duration):

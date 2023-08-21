@@ -8,12 +8,12 @@ Created on Mon May 22 21:58:33 2023
 from .utils import log, Timestamp
 from .concurrency import create_async_task_from_sync, create_async_task, inspect_loop, loop_autonoml
 from .pipeline import MLPipeline, train_pipeline
-from .pool import (StandardScaler,
-                   PartialLeastSquaresRegressor,
-                   LinearRegressor,
-                   LinearSupportVectorRegressor,
-                   OnlineStandardScaler,
-                   OnlineLinearRegressor)
+# from .component import (StandardScaler,
+#                    PartialLeastSquaresRegressor,
+#                    LinearRegressor,
+#                    LinearSupportVectorRegressor,
+#                    OnlineStandardScaler,
+#                    OnlineLinearRegressor)
 
 import asyncio
 import concurrent.futures
@@ -29,24 +29,25 @@ import time
 #     #     print(in_pipeline.name)
 
 class ProblemSolverInstructions:
-    def __init__(self, in_key_target, in_keys_features = None, do_exclude = False):
+    def __init__(self, in_key_target, in_keys_features = None, do_exclude = False, in_strategy = None):
         self.key_target = in_key_target
         self.keys_features = in_keys_features
         self.do_exclude = do_exclude
 
+        # TODO: Extract from strategy.
         self.do_query_after_complete = True
+        self.do_hpo = False
 
 class ProblemSolver:
     """
     A wrapper for pipelines and components that learn from data and respond to queries.
     Stores references to attributes of an AutonoMachine:
         - DataStorage, for passing data and queries to pipelines.
-        - Semaphore, for distributing operations across multiple processors.
     """
 
     count = 0
     
-    def __init__(self, in_data_storage, in_n_procs, in_instructions):
+    def __init__(self, in_data_storage, in_instructions, in_n_procs, do_mp):
         self.name = "Sol_" + str(ProblemSolver.count)
         ProblemSolver.count += 1
         log.info("%s - Initialising ProblemSolver '%s'." % (Timestamp(), self.name))
@@ -54,7 +55,8 @@ class ProblemSolver:
         # Keep a copy of the instructions that drive this ProblemSolver.
         self.instructions = in_instructions
 
-        # Keep a reference to how many processors are available.
+        # Note whether to use multiprocessing and how many processors are available.
+        self.do_mp = do_mp
         self.n_procs = in_n_procs
 
         self.data_storage = in_data_storage
@@ -98,45 +100,48 @@ class ProblemSolver:
         # Instantiate the queue now so that it is linked to the right event loop.
         self.queue_pipelines = asyncio.Queue()
 
-        # Set up pipelines.
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target))
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target,
-                                     in_components = [PartialLeastSquaresRegressor()]))
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target,
-                                     in_components = [StandardScaler(),
-                                                      PartialLeastSquaresRegressor()]))
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target,
-                                     in_components = [LinearRegressor()]))
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target,
-                                     in_components = [LinearSupportVectorRegressor()]))
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target,
-                                     in_components = [StandardScaler(),
-                                                      LinearSupportVectorRegressor()]))
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target,
-                                     in_components = [OnlineLinearRegressor()]))
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target,
-                                     in_components = [OnlineLinearRegressor(in_hpars = {"batch_size":10000})]))
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target,
-                                     in_components = [OnlineStandardScaler(),
-                                                      OnlineLinearRegressor()]))
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                     in_key_target = self.key_target,
-                                     in_components = [StandardScaler(),
-                                                      OnlineLinearRegressor()]))
-        await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                           in_key_target = self.key_target,
-                                           in_components = 
-                                           [OnlineStandardScaler(in_hpars = {"batch_size":10}),
-                                            OnlineLinearRegressor(in_hpars = {"batch_size":10})]))
+        if self.instructions.do_hpo:
+            pass
+        else:
+            # Set up pipelines.
+            await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+                                        in_key_target = self.key_target))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                             in_key_target = self.key_target,
+            #                             in_components = [PartialLeastSquaresRegressor()]))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                             in_key_target = self.key_target,
+            #                             in_components = [StandardScaler(),
+            #                                             PartialLeastSquaresRegressor()]))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                             in_key_target = self.key_target,
+            #                             in_components = [LinearRegressor()]))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                             in_key_target = self.key_target,
+            #                             in_components = [LinearSupportVectorRegressor()]))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                             in_key_target = self.key_target,
+            #                             in_components = [StandardScaler(),
+            #                                             LinearSupportVectorRegressor()]))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                             in_key_target = self.key_target,
+            #                             in_components = [OnlineLinearRegressor()]))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                             in_key_target = self.key_target,
+            #                             in_components = [OnlineLinearRegressor(in_hpars = {"batch_size":10000})]))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                             in_key_target = self.key_target,
+            #                             in_components = [OnlineStandardScaler(),
+            #                                             OnlineLinearRegressor()]))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                             in_key_target = self.key_target,
+            #                             in_components = [StandardScaler(),
+            #                                             OnlineLinearRegressor()]))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                                 in_key_target = self.key_target,
+            #                                 in_components = 
+            #                                 [OnlineStandardScaler(in_hpars = {"batch_size":10}),
+            #                                     OnlineLinearRegressor(in_hpars = {"batch_size":10})]))
 
         # Once instructions are processed, begin the problem solving.
         self.run()
@@ -147,9 +152,13 @@ class ProblemSolver:
         create_async_task_from_sync(self.gather_ops)
         
     async def gather_ops(self):
-        self.ops = [create_async_task(self.process_pipelines),
-                    create_async_task(self.process_strategy), 
-                    create_async_task(self.process_queries)]
+        self.ops = list()
+        if self.instructions.do_hpo:
+            self.ops.append(create_async_task(self.process_hpo))
+        else:
+            self.ops.append(create_async_task(self.process_pipelines))
+        self.ops.extend([create_async_task(self.process_strategy),
+                         create_async_task(self.process_queries)])
         group = asyncio.gather(*self.ops)
         try:
             await group
@@ -161,22 +170,24 @@ class ProblemSolver:
                 op.cancel()
 
         self.is_running = False
-        
-    # def stop(self):
-    #     # Cancel all asynchronous operations.
-    #     if self.ops:
-    #         for op in self.ops:
-    #             op.cancel()
 
     async def add_pipeline(self, in_pipeline):
-        # self.pipelines[in_pipeline.name] = in_pipeline
+        self.p = in_pipeline
         await self.queue_pipelines.put(in_pipeline)
 
     async def process_pipelines(self):
-        log.info("%s - ProblemSolver '%s' has launched a process pool "
-                 "to train MLPipelines." % (Timestamp(), self.name))
+        if self.do_mp:
+            executor_class = concurrent.futures.ProcessPoolExecutor
+            text_executor = "process"
+        else:
+            executor_class = concurrent.futures.ThreadPoolExecutor
+            text_executor = "thread"
+
+        log.info("%s - ProblemSolver '%s' has launched a %s pool "
+                "to train MLPipelines." % (Timestamp(), self.name, text_executor))
         loop = asyncio.get_event_loop()
-        with concurrent.futures.ProcessPoolExecutor(max_workers = self.n_procs) as executor:
+
+        with executor_class(max_workers = self.n_procs) as executor:
             while True:
                 pipeline = await self.queue_pipelines.get()
 
@@ -185,31 +196,36 @@ class ProblemSolver:
                 if idx_end is None:
                     idx_end = self.data_storage.observations.get_amount()
 
-                # time_start = Timestamp().time
-                # x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
-                #                                   in_key_target = self.key_target,
-                #                                   in_idx_start = idx_start,
-                #                                   in_idx_end = idx_end)
-                # time_end = Timestamp().time
-                # duration_prep = time_end - time_start
-
-                # info_process = {"idx_start": idx_start,
-                #                 "idx_end": idx_end,
-                #                 "duration_prep": duration_prep}
-
                 info_process = {"keys_features": self.keys_features,
                                 "key_target": self.key_target,
                                 "idx_start": idx_start,
                                 "idx_end": idx_end}
 
-                # future_pipeline = loop.run_in_executor(executor, process_pipeline, pipeline, 
-                #                                        deepcopy(x), deepcopy(y), info_process)
                 future_pipeline = loop.run_in_executor(executor, train_pipeline, pipeline,
                                                        self.data_storage.observations, info_process)
                 create_async_task(self.push_to_production, future_pipeline)
 
-                # # Check if anything else is waiting after submitting a pipeline for processing.
-                # await asyncio.sleep(0)
+    async def process_hpo(self):
+        log.info("%s - ProblemSolver '%s' has launched a process pool "
+                 "to run HPO." % (Timestamp(), self.name))
+        # loop = asyncio.get_event_loop()
+        # with concurrent.futures.ProcessPoolExecutor(max_workers = self.n_procs) as executor:
+        #     while True:
+        #         pipeline = await self.queue_pipelines.get()
+
+        #         idx_start = 0
+        #         idx_end = None
+        #         if idx_end is None:
+        #             idx_end = self.data_storage.observations.get_amount()
+
+        #         info_process = {"keys_features": self.keys_features,
+        #                         "key_target": self.key_target,
+        #                         "idx_start": idx_start,
+        #                         "idx_end": idx_end}
+
+        #         future_pipeline = loop.run_in_executor(executor, train_pipeline, pipeline,
+        #                                                self.data_storage.observations, info_process)
+        #         create_async_task(self.push_to_production, future_pipeline)
 
     async def push_to_production(self, in_future_pipeline):
         try:

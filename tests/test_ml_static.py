@@ -13,7 +13,9 @@ dir_data = "./data"
 filename_substring = "sps_quality_1000_events"
 
 if __name__ == '__main__':
-    proj = aml.AutonoMachine()
+    strategy = aml.plan_strategy()
+
+    proj = aml.AutonoMachine(do_mp = True)
     proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_1p2uW_3000cps.csv")
     # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_2p5uW_4000cps.csv")
     # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_4uW_4100cps.csv")
@@ -28,8 +30,10 @@ if __name__ == '__main__':
     #         proj.ingest_file(in_filepath = os.path.join(dir_data, filename))
     # proj.load_strategy()
     proj.info_storage()
+
     proj.learn(in_key_target = "estimate",
-            in_keys_features = ["best"], do_exclude = True)
+            in_keys_features = ["best"], do_exclude = True,
+            in_strategy = strategy)
     # aml.inspect_loop()
     proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_1p2uW_3000cps.csv")
     # proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_2p5uW_4000cps.csv")

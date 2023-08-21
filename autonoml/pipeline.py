@@ -8,7 +8,8 @@ Created on Tue Aug  1 12:13:43 2023
 from .utils import log, Timestamp
 from .plot import gen_fig_feature_importance, gen_fig_performance
 from .data import DataFormatX, DataFormatY, reformat_y
-from .pool import MLPredictor, MLPreprocessor, DummyRegressor
+from .component import MLPredictor, MLPreprocessor
+from .components.sklearn import DummyRegressor      # TODO: Revisit this import.
 
 from copy import deepcopy
 

@@ -8,23 +8,35 @@ Created on Wed Jun 28 17:16:42 2023
 from .utils import log, Timestamp
 from .data import reformat_x, reformat_y
 
+import numpy as np
+
 class Hyperparameter:
     """
     A class containing information for a hyperparameter of an MLComponent.
     This information guides hyperparameter optimisation (HPO).
     """
 
-    def __init__(self, in_val = None, in_default = None):
-        self.min = None
-        self.max = None
+    def __init__(self, in_val = None,
+                 in_default = None, in_min = None, in_max = None, is_exponential = False):
         self.default = in_default
-
-
+        self.min = in_min
+        self.max = in_max
+        self.is_exponential = is_exponential
 
         if in_val is None:
             self.val = self.default
         else:
             self.val = in_val
+
+    def randomise(self):
+        try:
+            if self.is_exponential:
+                val = np.exp(np.random.uniform(np.log(self.min), np.log(self.max)))
+            else:
+                val = np.random.uniform(self.min, self.max)
+            self.val = val
+        except:
+            pass
 
 
 class MLComponent:
@@ -34,13 +46,17 @@ class MLComponent:
     
     count = 0
     
-    def __init__(self, in_hpars = None, *args, **kwargs):
+    def __init__(self, in_hpars = None, do_random_hpars = False, *args, **kwargs):
         self.model = None
         self.name = str(MLComponent.count)
         MLComponent.count += 1
 
         # Every component has a default dictionary of hyperparameters.
+        # Their values will be the defaults unless randomised.
         self.hpars = self.new_hpars()
+        if do_random_hpars:
+            for key in self.hpars:
+                self.hpars[key].randomise()
 
         # Overwrite the defaults with custom specifications provided as a dict.
         if not in_hpars is None:
@@ -65,6 +81,9 @@ class MLComponent:
     @staticmethod
     def new_hpars():
         return dict()
+    
+    def hpars_as_string(self):
+        return ", ".join(key + ": " + str(self.hpars[key].val) for key in self.hpars)
 
     def learn(self, x, y):
         raise NotImplementedError

@@ -87,8 +87,13 @@ class MLPipeline:
         self.testing_y_true = list()
         self.testing_y_response = list()
 
-    def components_as_string(self):
-        return " -> ".join([component.name for component in self.components])
+    def components_as_string(self, do_hpars = False):
+        if do_hpars:
+            text = " -> ".join([component.name + "(" + component.hpars_as_string() + ")" 
+                                for component in self.components])
+        else:
+            text = " -> ".join([component.name for component in self.components])
+        return text
 
     def process(self, x, y, in_format_x = None, in_format_y = None, 
                 do_learn = True, do_query = True, do_score = True,
@@ -182,7 +187,8 @@ class MLPipeline:
             vals_true = self.testing_y_true
 
         if len(vals_response) > 0 and len(vals_true) > 0:
-            title = "Performance (%s): %s\n%s" % (text_type, self.name, self.components_as_string())
+            title = "Performance (%s): %s\n%s" % (text_type, self.name, 
+                                                  self.components_as_string(do_hpars = True))
             fig = gen_fig_performance(in_vals_response = vals_response,
                                     in_vals_true = vals_true,
                                     in_title = title)

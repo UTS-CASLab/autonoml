@@ -14,11 +14,12 @@ from .pipeline import MLPipeline, train_pipeline
 #                    LinearSupportVectorRegressor,
 #                    OnlineStandardScaler,
 #                    OnlineLinearRegressor)
+from .strategy import create_pipeline_random
 
 import asyncio
 import concurrent.futures
 # import dill
-import multiprocess as mp
+# import multiprocess as mp
 from copy import deepcopy
 
 import time
@@ -103,9 +104,13 @@ class ProblemSolver:
         if self.instructions.do_hpo:
             pass
         else:
+            for count_pipeline in range(10):
+                await self.add_pipeline(create_pipeline_random(in_keys_features = self.keys_features,
+                                                               in_key_target = self.key_target))
+
             # Set up pipelines.
-            await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-                                        in_key_target = self.key_target))
+            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
+            #                             in_key_target = self.key_target))
             # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
             #                             in_key_target = self.key_target,
             #                             in_components = [PartialLeastSquaresRegressor()]))
@@ -172,7 +177,6 @@ class ProblemSolver:
         self.is_running = False
 
     async def add_pipeline(self, in_pipeline):
-        self.p = in_pipeline
         await self.queue_pipelines.put(in_pipeline)
 
     async def process_pipelines(self):
@@ -246,7 +250,7 @@ class ProblemSolver:
                      "%s   Score on those observations: %f\n"
                      "%s   Last observation: Prediction '%s' vs True Value '%s'"
                      % (Timestamp(), pipeline.name, idx_end - idx_start,
-                        Timestamp(None), pipeline.components_as_string(),
+                        Timestamp(None), pipeline.components_as_string(do_hpars = True),
                         Timestamp(None), duration_prep,
                         Timestamp(None), duration_proc,
                         Timestamp(None), metric,

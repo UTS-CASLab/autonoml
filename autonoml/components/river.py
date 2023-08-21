@@ -20,7 +20,7 @@ class RiverPreprocessor(MLPreprocessor):
         self.name += "_RiverPrep"
 
 class OnlineStandardScaler(RiverPreprocessor):
-    def __new__(cls, in_hpars = None):
+    def __new__(cls, in_hpars = None, *args, **kwargs):
 
         cls_this = OnlineStandardScaler
 
@@ -53,7 +53,7 @@ class OnlineStandardScaler(RiverPreprocessor):
     @staticmethod
     def new_hpars():
         hpars = dict()
-        hpars["batch_size"] = Hyperparameter(in_default = 1)
+        hpars["batch_size"] = Hyperparameter(in_default = 1, in_min = 1)
         return hpars
 
     def __init__(self, *args, **kwargs):
@@ -110,7 +110,7 @@ class RiverPredictor(MLPredictor):
         self.name += "_RiverPred"
 
 class OnlineLinearRegressor(RiverPredictor):
-    def __new__(cls, in_hpars = None):
+    def __new__(cls, in_hpars = None, *args, **kwargs):
 
         cls_this = OnlineLinearRegressor
 
@@ -145,10 +145,18 @@ class OnlineLinearRegressor(RiverPredictor):
         self.model = linear_model.LinearRegression()
         self.name += "_LinearRegressor"
 
+        # Update the SGD weight optimiser and intercept learning rate.
+        self.model.intercept_lr.learning_rate = float(self.hpars["learning_rate"].val)
+        self.model.optimizer.lr.learning_rate = float(self.hpars["learning_rate"].val)
+
     @staticmethod
     def new_hpars():
         hpars = dict()
-        hpars["batch_size"] = Hyperparameter(in_default = 1)
+        hpars["batch_size"] = Hyperparameter(in_default = 1, in_min = 1)
+        # TODO: Let the user define the range.
+        hpars["learning_rate"] = Hyperparameter(in_default = 0.01, 
+                                                in_min = 0.0001, in_max = 1,
+                                                is_exponential = True)
         return hpars
 
     def score(self, x, y):

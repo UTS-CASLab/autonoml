@@ -1,5 +1,5 @@
 # autonoml
- A framework for continous automated machine learning.
+ A framework for continuous automated machine learning.
  
  Notes:
  - Function ainput from aioconsole does not work with Spyder (iPython).

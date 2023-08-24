@@ -13,7 +13,7 @@ dir_data = "./data"
 filename_substring = "sps_quality_1000_events"
 
 if __name__ == '__main__':
-    strategy = aml.plan_strategy()
+    strategy = aml.import_strategy()
 
     proj = aml.AutonoMachine(do_mp = True)
     proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_1p2uW_3000cps.csv")

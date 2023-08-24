@@ -45,6 +45,7 @@ setup(
         "matplotlib",
         "seaborn",
         # "wheel",
+        "configspace>=0.7",
         "hpbandster",
         "scikit-learn",
         "river"

@@ -15,6 +15,7 @@ from .pipeline import MLPipeline, train_pipeline
 #                    OnlineStandardScaler,
 #                    OnlineLinearRegressor)
 from .strategy import create_pipeline_random
+from .hpo import run_hpo
 
 import asyncio
 import concurrent.futures
@@ -37,7 +38,7 @@ class ProblemSolverInstructions:
 
         # TODO: Extract from strategy.
         self.do_query_after_complete = True
-        self.do_hpo = False
+        self.do_hpo = True
 
 class ProblemSolver:
     """
@@ -210,26 +211,36 @@ class ProblemSolver:
                 create_async_task(self.push_to_production, future_pipeline)
 
     async def process_hpo(self):
-        log.info("%s - ProblemSolver '%s' has launched a process pool "
-                 "to run HPO." % (Timestamp(), self.name))
+        # pass
+        # if self.do_mp:
+        #     executor_class = concurrent.futures.ProcessPoolExecutor
+        #     text_executor = "process"
+        # else:
+        #     executor_class = concurrent.futures.ThreadPoolExecutor
+        #     text_executor = "thread"
+
+        # log.info("%s - ProblemSolver '%s' has launched a %s pool "
+        #         "to train MLPipelines." % (Timestamp(), self.name, text_executor))
         # loop = asyncio.get_event_loop()
-        # with concurrent.futures.ProcessPoolExecutor(max_workers = self.n_procs) as executor:
-        #     while True:
-        #         pipeline = await self.queue_pipelines.get()
 
-        #         idx_start = 0
-        #         idx_end = None
-        #         if idx_end is None:
-        #             idx_end = self.data_storage.observations.get_amount()
+        # with executor_class(max_workers = 1) as executor:
+            # while True:
+                # pipeline = await self.queue_pipelines.get()
 
-        #         info_process = {"keys_features": self.keys_features,
-        #                         "key_target": self.key_target,
-        #                         "idx_start": idx_start,
-        #                         "idx_end": idx_end}
+        idx_start = 0
+        idx_end = None
+        if idx_end is None:
+            idx_end = self.data_storage.observations.get_amount()
 
-        #         future_pipeline = loop.run_in_executor(executor, train_pipeline, pipeline,
-        #                                                self.data_storage.observations, info_process)
-        #         create_async_task(self.push_to_production, future_pipeline)
+        info_process = {"keys_features": self.keys_features,
+                        "key_target": self.key_target,
+                        "idx_start": idx_start,
+                        "idx_end": idx_end}
+
+        # future_pipeline = loop.run_in_executor(executor, run_hpo,
+        #                                         self.data_storage.observations, info_process)
+        future_pipeline = run_hpo(self.data_storage.observations, info_process)
+        create_async_task(self.push_to_production, future_pipeline)
 
     async def push_to_production(self, in_future_pipeline):
         try:

@@ -97,7 +97,7 @@ class HPOWorker(Worker):
         # config_space.add_hyperparameter(CS.UniformFloatHyperparameter('x', lower=0, upper=1))
         return(config_space)
 
-async def run_hpo(in_observations, in_info_process):
+async def run_hpo(in_observations, in_info_process, in_n_procs, do_mp):
 
     run_id = "optimise"
     name_server_host = "127.0.0.1"
@@ -109,15 +109,24 @@ async def run_hpo(in_observations, in_info_process):
 
     # Start a worker attached to the name server that runs in the background.
     # It waits for hyperparameter configurations to evaluate.
-    worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
-                       nameserver = name_server_host, run_id = run_id)
-    worker.run(background=True)
+    if do_mp:
+        pass
+    else:
+        workers = list()
+        for idx_worker in range(in_n_procs):
+            worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
+                               nameserver = name_server_host, run_id = run_id, id = idx_worker)
+            worker.run(background = True)
+            workers.append(worker)
 
     # Create the optimiser and start the run.
     optimiser = BOHB(configspace = worker.get_configspace(),
                     run_id = run_id, nameserver = name_server_host,
                     min_budget = min_budget, max_budget = max_budget)
-    result = optimiser.run(n_iterations = n_iterations)
+    if do_mp:
+        result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_procs)
+    else:
+        result = optimiser.run(n_iterations = n_iterations)
 
     # Shutdown the optimiser and name server once complete.
     optimiser.shutdown(shutdown_workers = True)
@@ -130,13 +139,15 @@ async def run_hpo(in_observations, in_info_process):
     # Here we simply print out the best config and some statistics about the performed runs.
     id2config = result.get_id2config_mapping()
     incumbent = result.get_incumbent_id()
+    all_runs = result.get_all_runs()
 
     print(id2config)
 
     print('Best found configuration:', id2config[incumbent]['config'])
     print('A total of %i unique configurations were sampled.' % len(id2config.keys()))
-    print('A total of %i runs were executed.' % len(result.get_all_runs()))
-    print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in result.get_all_runs()])/max_budget))
+    print('A total of %i runs were executed.' % len(all_runs))
+    print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/max_budget))
+    print('The run took %.1f seconds to complete.'%(all_runs[-1].time_stamps['finished'] - all_runs[0].time_stamps['started']))
 
     keys_features = in_info_process["keys_features"]
     key_target = in_info_process["key_target"]

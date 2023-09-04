@@ -5,7 +5,7 @@ Created on Mon Aug 21 19:30:58 2023
 @author: David J. Kedziora
 """
 
-def plan_strategy():
+def import_strategy():
 
     strategy = None
 

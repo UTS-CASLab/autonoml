@@ -58,7 +58,7 @@ class ProblemSolver:
         self.instructions = in_instructions
 
         # Note whether to use multiprocessing and how many processors are available.
-        self.do_mp = do_mp
+        self.do_mp = False#do_mp
         self.n_procs = in_n_procs
 
         self.data_storage = in_data_storage
@@ -68,7 +68,8 @@ class ProblemSolver:
         
         self.pipelines = dict()         # MLPipelines that are in production.
         self.queue_pipelines = None     # MLPipelines that are in development.
-        # Note: This queue must not be instantiated as an asyncio queue until within a coroutine.
+        self.queue_hpo = None           # HPO runs that in development.
+        # Note: These queues must not be instantiated as asyncio queues until within a coroutine.
         
         # Keep track of the data-storage instance up to which model has used.
         # TODO: Consider variant starting points for the model and update log messages.
@@ -99,11 +100,13 @@ class ProblemSolver:
         self.key_target = o1
         self.keys_features = o2
         
-        # Instantiate the queue now so that it is linked to the right event loop.
+        # Instantiate the queues now that this code is running in the right event loop.
         self.queue_pipelines = asyncio.Queue()
+        self.queue_hpo = asyncio.Queue()
 
         if self.instructions.do_hpo:
-            pass
+            # TODO: Come up with better HPO instructions.
+            await self.queue_hpo.put(True)
         else:
             for count_pipeline in range(10):
                 await self.add_pipeline(create_pipeline_random(in_keys_features = self.keys_features,
@@ -159,10 +162,8 @@ class ProblemSolver:
         
     async def gather_ops(self):
         self.ops = list()
-        if self.instructions.do_hpo:
-            self.ops.append(create_async_task(self.process_hpo))
-        else:
-            self.ops.append(create_async_task(self.process_pipelines))
+        self.ops.append(create_async_task(self.process_hpo))
+        self.ops.append(create_async_task(self.process_pipelines))
         self.ops.extend([create_async_task(self.process_strategy),
                          create_async_task(self.process_queries)])
         group = asyncio.gather(*self.ops)
@@ -183,16 +184,18 @@ class ProblemSolver:
     async def process_pipelines(self):
         if self.do_mp:
             executor_class = concurrent.futures.ProcessPoolExecutor
-            text_executor = "process"
+            text_executor = "processes"
         else:
             executor_class = concurrent.futures.ThreadPoolExecutor
-            text_executor = "thread"
+            text_executor = "threads"
 
-        log.info("%s - ProblemSolver '%s' has launched a %s pool "
-                "to train MLPipelines." % (Timestamp(), self.name, text_executor))
+        # TODO: Work out how to dynamically distribute workers between pipelines and HPO.
+        n_procs_pipelines = max(int(self.n_procs/2), 1)
+        log.info("%s - ProblemSolver '%s' has launched a pool of %i %s "
+                "to train MLPipelines." % (Timestamp(), self.name, n_procs_pipelines, text_executor))
         loop = asyncio.get_event_loop()
 
-        with executor_class(max_workers = self.n_procs) as executor:
+        with executor_class(max_workers = n_procs_pipelines) as executor:
             while True:
                 pipeline = await self.queue_pipelines.get()
 
@@ -227,22 +230,31 @@ class ProblemSolver:
             # while True:
                 # pipeline = await self.queue_pipelines.get()
 
-        idx_start = 0
-        idx_end = None
-        if idx_end is None:
-            idx_end = self.data_storage.observations.get_amount()
+        # TODO: Work out how to dynamically distribute workers between pipelines and HPO.
+        n_procs_hpo = max(self.n_procs - int(self.n_procs/2), 1)
 
-        info_process = {"keys_features": self.keys_features,
-                        "key_target": self.key_target,
-                        "idx_start": idx_start,
-                        "idx_end": idx_end}
+        while True:
+            hpo_instructions = await self.queue_hpo.get()
 
-        # future_pipeline = loop.run_in_executor(executor, run_hpo,
-        #                                         self.data_storage.observations, info_process)
-        future_pipeline = run_hpo(self.data_storage.observations, info_process)
-        create_async_task(self.push_to_production, future_pipeline)
+            idx_start = 0
+            idx_end = None
+            if idx_end is None:
+                idx_end = self.data_storage.observations.get_amount()
 
-    async def push_to_production(self, in_future_pipeline):
+            info_process = {"keys_features": self.keys_features,
+                            "key_target": self.key_target,
+                            "idx_start": idx_start,
+                            "idx_end": idx_end}
+
+            # future_pipeline = loop.run_in_executor(executor, run_hpo,
+            #                                         self.data_storage.observations, info_process)
+            future_pipeline = run_hpo(in_observations = self.data_storage.observations, 
+                                    in_info_process = info_process,
+                                    in_n_procs = n_procs_hpo,
+                                    do_mp = self.do_mp)
+            create_async_task(self.push_to_production, future_pipeline, True)
+
+    async def push_to_production(self, in_future_pipeline, from_hpo = False):
         try:
             pipeline, info_process = await in_future_pipeline
 
@@ -274,7 +286,10 @@ class ProblemSolver:
                       % (Timestamp(), self.name))
             log.debug(e)
         finally:
-            self.queue_pipelines.task_done()
+            if from_hpo:
+                self.queue_hpo.task_done()
+            else:
+                self.queue_pipelines.task_done()
 
     async def process_strategy(self):
         # self.can_query.set_result(True)
@@ -387,6 +402,7 @@ class ProblemSolver:
             # If required, ensure no pipelines are awaiting development before querying.
             if self.instructions.do_query_after_complete:
                 await self.queue_pipelines.join()
+                await self.queue_hpo.join()
 
             # Check if there are more queries in storage than have been processed.
             # If not, wait until new queries arive.

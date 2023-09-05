@@ -5,16 +5,14 @@ Created on Tue Aug 15 10:29:42 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp
+from .utils import log, setup_logger, Timestamp
 from .pipeline import MLPipeline, train_pipeline
 from .components.river import OnlineLinearRegressor
 
+from .data_storage import DataCollection
+
+import time
 import ConfigSpace as CS
-
-# from pipeline import MLPipeline, train_pipeline
-# from components.sklearn import OnlineLinearRegressor
-
-import asyncio
 
 import hpbandster.core.nameserver as hpns
 import hpbandster.core.result as hpres
@@ -22,9 +20,124 @@ import hpbandster.core.result as hpres
 from hpbandster.optimizers import BOHB as BOHB
 from hpbandster.examples.commons import Worker, MyWorker
 
-min_budget = 9
-max_budget = 243
-n_iterations = 1 #4
+class HPOInstructions:
+    """
+    A class containing instructions that direct a hyperparameter optimiser.
+    """
+    count = 0
+
+    def __init__(self):
+        self.name = "HPO_" + str(HPOInstructions.count)
+        HPOInstructions.count += 1
+        log.info("%s - Requesting HPO run '%s'." % (Timestamp(), self.name))
+
+        self.name_server_host = "127.0.0.1"
+        self.name_server_port = None
+
+        self.budget_min = 9
+        self.budget_max = 243
+        self.n_iterations = 1 #4
+
+def add_hpo_worker(in_hpo_instructions: HPOInstructions, in_observations: DataCollection,
+                   in_info_process, in_idx: int):
+    """
+    Supplements a current HPO run with an additional worker.
+    The worker should terminate when the name server is done with the run.
+    This is designed for multiprocessing.
+    """
+
+    run_id = in_hpo_instructions.name
+    name_server_host = in_hpo_instructions.name_server_host
+
+    time.sleep(5)   # Artificial delay to ensure the name server is already running.
+    worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
+                       nameserver = name_server_host, run_id = run_id, id = in_idx)
+    worker.run(background = False)
+
+def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollection, 
+            in_info_process, in_n_workers: int):
+    """
+    Runs a hyperparameter optimisation according to specified instructions.
+    During this run, configured pipelines are trained on a set of provided observations.
+
+    In detail, a name server is first set up to manage a specified number of workers.
+    This function even constructs the first HPO worker to operate in the background.
+    However, the other workers must be constructed via another function.
+    If there are not enough workers, HPO will not run.
+    """
+
+    run_id = in_hpo_instructions.name
+    name_server_host = in_hpo_instructions.name_server_host
+    name_server_port = in_hpo_instructions.name_server_port
+    budget_min = in_hpo_instructions.budget_min
+    budget_max = in_hpo_instructions.budget_max
+    n_iterations = in_hpo_instructions.n_iterations
+
+    # Start a name server that manages concurrent running workers across all possible processes/threads.
+    name_server = hpns.NameServer(run_id = run_id, host = name_server_host, port = name_server_port)
+    name_server.start()
+
+    # # Start workers attached to the name server that runs in the background.
+    # # It waits for hyperparameter configurations to evaluate.
+    # if do_mp:
+    #     pass
+    # else:
+    #     workers = list()
+    #     for idx_worker in range(in_n_procs):
+    #         worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
+    #                            nameserver = name_server_host, run_id = run_id, id = idx_worker)
+    #         worker.run(background = True)
+    #         workers.append(worker)
+
+    # The main thread/process can run a worker in the background around the name server.
+    worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
+                       nameserver = name_server_host, run_id = run_id, id = 0)
+    worker.run(background = True)
+
+    # Create the optimiser and start the run.
+    optimiser = BOHB(configspace = worker.get_configspace(),
+                     run_id = run_id, nameserver = name_server_host,
+                     min_budget = budget_min, max_budget = budget_max)
+    result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_workers)
+
+    # if do_mp:
+    #     result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_procs)
+    # else:
+    #     result = optimiser.run(n_iterations = n_iterations)
+
+    # Shutdown the optimiser and name server once complete.
+    optimiser.shutdown(shutdown_workers = True)
+    name_server.shutdown()
+
+    # Step 5: Analysis
+    # Each optimizer returns a hpbandster.core.result.Result object.
+    # It holds informations about the optimization run like the incumbent (=best) configuration.
+    # For further details about the Result object, see its documentation.
+    # Here we simply print out the best config and some statistics about the performed runs.
+    id2config = result.get_id2config_mapping()
+    incumbent = result.get_incumbent_id()
+    all_runs = result.get_all_runs()
+
+    print(id2config)
+
+    print('Best found configuration:', id2config[incumbent]['config'])
+    print('A total of %i unique configurations were sampled.' % len(id2config.keys()))
+    print('A total of %i runs were executed.' % len(all_runs))
+    print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/budget_max))
+    print('The run took %.1f seconds to complete.'%(all_runs[-1].time_stamps['finished'] - all_runs[0].time_stamps['started']))
+
+    keys_features = in_info_process["keys_features"]
+    key_target = in_info_process["key_target"]
+    config = id2config[incumbent]["config"]
+    pipeline = MLPipeline(in_keys_features = keys_features, in_key_target = key_target,
+                              in_components = [OnlineLinearRegressor(in_hpars = {"batch_size": config["batch_size"],
+                                                                                "learning_rate": config["learning_rate"]})])
+    pipeline, info_process = train_pipeline(in_pipeline = pipeline,
+                                            in_observations = in_observations,
+                                            in_info_process = in_info_process)
+
+    return pipeline, in_info_process
+
 
 
 class HPOWorker(Worker):
@@ -96,67 +209,3 @@ class HPOWorker(Worker):
         })
         # config_space.add_hyperparameter(CS.UniformFloatHyperparameter('x', lower=0, upper=1))
         return(config_space)
-
-async def run_hpo(in_observations, in_info_process, in_n_procs, do_mp):
-
-    run_id = "optimise"
-    name_server_host = "127.0.0.1"
-    name_server_port = None
-
-    # Start a name server that manages concurrent running workers across all possible threads.
-    name_server = hpns.NameServer(run_id = run_id, host = name_server_host, port = name_server_port)
-    name_server.start()
-
-    # Start a worker attached to the name server that runs in the background.
-    # It waits for hyperparameter configurations to evaluate.
-    if do_mp:
-        pass
-    else:
-        workers = list()
-        for idx_worker in range(in_n_procs):
-            worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
-                               nameserver = name_server_host, run_id = run_id, id = idx_worker)
-            worker.run(background = True)
-            workers.append(worker)
-
-    # Create the optimiser and start the run.
-    optimiser = BOHB(configspace = worker.get_configspace(),
-                    run_id = run_id, nameserver = name_server_host,
-                    min_budget = min_budget, max_budget = max_budget)
-    if do_mp:
-        result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_procs)
-    else:
-        result = optimiser.run(n_iterations = n_iterations)
-
-    # Shutdown the optimiser and name server once complete.
-    optimiser.shutdown(shutdown_workers = True)
-    name_server.shutdown()
-
-    # Step 5: Analysis
-    # Each optimizer returns a hpbandster.core.result.Result object.
-    # It holds informations about the optimization run like the incumbent (=best) configuration.
-    # For further details about the Result object, see its documentation.
-    # Here we simply print out the best config and some statistics about the performed runs.
-    id2config = result.get_id2config_mapping()
-    incumbent = result.get_incumbent_id()
-    all_runs = result.get_all_runs()
-
-    print(id2config)
-
-    print('Best found configuration:', id2config[incumbent]['config'])
-    print('A total of %i unique configurations were sampled.' % len(id2config.keys()))
-    print('A total of %i runs were executed.' % len(all_runs))
-    print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/max_budget))
-    print('The run took %.1f seconds to complete.'%(all_runs[-1].time_stamps['finished'] - all_runs[0].time_stamps['started']))
-
-    keys_features = in_info_process["keys_features"]
-    key_target = in_info_process["key_target"]
-    config = id2config[incumbent]["config"]
-    pipeline = MLPipeline(in_keys_features = keys_features, in_key_target = key_target,
-                              in_components = [OnlineLinearRegressor(in_hpars = {"batch_size": config["batch_size"],
-                                                                                "learning_rate": config["learning_rate"]})])
-    pipeline, info_process = train_pipeline(in_pipeline = pipeline, 
-                                                in_observations = in_observations, 
-                                                in_info_process = in_info_process)
-
-    return pipeline, in_info_process

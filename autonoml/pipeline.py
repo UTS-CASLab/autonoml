@@ -5,43 +5,15 @@ Created on Tue Aug  1 12:13:43 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp
+from .utils import log, setup_logger, Timestamp
 from .plot import gen_fig_feature_importance, gen_fig_performance
 from .data import DataFormatX, DataFormatY, reformat_y
 from .component import MLPredictor, MLPreprocessor
 from .components.sklearn import DummyRegressor      # TODO: Revisit this import.
 
+from .data_storage import DataCollection
+
 from copy import deepcopy
-
-def train_pipeline(in_pipeline, in_observations, in_info_process):
-    """
-    A wrapper for pipeline training to be called from a ProblemSolver.
-    This is designed for multiprocessing.
-    """
-    
-    keys_features = in_info_process["keys_features"]
-    key_target = in_info_process["key_target"]
-    idx_start = in_info_process["idx_start"]
-    idx_end = in_info_process["idx_end"]
-
-    time_start = Timestamp().time
-    x, y = in_observations.get_data(in_keys_features = keys_features,
-                                    in_key_target = key_target,
-                                    in_idx_start = idx_start,
-                                    in_idx_end = idx_end)
-    time_end = Timestamp().time
-    duration_prep = time_end - time_start
-
-    time_start = Timestamp().time
-    _, metric = in_pipeline.process(x, y, do_remember = True, for_training = True)
-    time_end = Timestamp().time
-    duration_proc = time_end - time_start
-
-    in_info_process["metric"] = metric
-    in_info_process["duration_prep"] = duration_prep
-    in_info_process["duration_proc"] = duration_proc
-
-    return in_pipeline, in_info_process
 
 # TODO: Upgrade to DAGs.
 class MLPipeline:
@@ -195,3 +167,37 @@ class MLPipeline:
             figs.append(fig)
 
         return figs
+
+
+
+def train_pipeline(in_pipeline: MLPipeline, 
+                   in_observations: DataCollection, 
+                   in_info_process):
+    """
+    A wrapper for pipeline training to be called from a ProblemSolver or elsewhere.
+    This is designed for multiprocessing.
+    """
+    
+    keys_features = in_info_process["keys_features"]
+    key_target = in_info_process["key_target"]
+    idx_start = in_info_process["idx_start"]
+    idx_end = in_info_process["idx_end"]
+
+    time_start = Timestamp().time
+    x, y = in_observations.get_data(in_keys_features = keys_features,
+                                    in_key_target = key_target,
+                                    in_idx_start = idx_start,
+                                    in_idx_end = idx_end)
+    time_end = Timestamp().time
+    duration_prep = time_end - time_start
+
+    time_start = Timestamp().time
+    _, metric = in_pipeline.process(x, y, do_remember = True, for_training = True)
+    time_end = Timestamp().time
+    duration_proc = time_end - time_start
+
+    in_info_process["metric"] = metric
+    in_info_process["duration_prep"] = duration_prep
+    in_info_process["duration_proc"] = duration_proc
+
+    return in_pipeline, in_info_process

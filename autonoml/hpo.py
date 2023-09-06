@@ -5,7 +5,7 @@ Created on Tue Aug 15 10:29:42 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, setup_logger, Timestamp
+from .utils import log, Timestamp
 from .pipeline import MLPipeline, train_pipeline
 from .components.river import OnlineLinearRegressor
 
@@ -13,12 +13,11 @@ from .data_storage import DataCollection
 
 import time
 import ConfigSpace as CS
+from copy import deepcopy
 
 import hpbandster.core.nameserver as hpns
-import hpbandster.core.result as hpres
-
+from hpbandster.core.worker import Worker
 from hpbandster.optimizers import BOHB as BOHB
-from hpbandster.examples.commons import Worker, MyWorker
 
 class HPOInstructions:
     """
@@ -34,9 +33,14 @@ class HPOInstructions:
         self.name_server_host = "127.0.0.1"
         self.name_server_port = None
 
-        self.budget_min = 9
-        self.budget_max = 243
-        self.n_iterations = 1 #4
+        # Successive 'halving' tests candidate configurations for a number of iterations.
+        # Budgets, usually representing dataset size, range from minimum to maximum over the iterations.
+        # Only one of the number of partitions per iteration advances.
+        # The actual number of candidate tests may vary; refer to HPO package documentation for details.
+        self.n_partitions = 3
+        self.n_iterations = 4
+        self.budget_min = 1/(self.n_partitions**self.n_iterations)
+        self.budget_max = 1
 
 def add_hpo_worker(in_hpo_instructions: HPOInstructions, in_observations: DataCollection,
                    in_info_process, in_idx: int):
@@ -51,7 +55,7 @@ def add_hpo_worker(in_hpo_instructions: HPOInstructions, in_observations: DataCo
 
     time.sleep(5)   # Artificial delay to ensure the name server is already running.
     worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
-                       nameserver = name_server_host, run_id = run_id, id = in_idx)
+                       nameserver = name_server_host, run_id = run_id, id = in_idx, logger = log)
     worker.run(background = False)
 
 def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollection, 
@@ -69,9 +73,10 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
     run_id = in_hpo_instructions.name
     name_server_host = in_hpo_instructions.name_server_host
     name_server_port = in_hpo_instructions.name_server_port
+    n_partitions = in_hpo_instructions.n_partitions
+    n_iterations = in_hpo_instructions.n_iterations
     budget_min = in_hpo_instructions.budget_min
     budget_max = in_hpo_instructions.budget_max
-    n_iterations = in_hpo_instructions.n_iterations
 
     # Start a name server that manages concurrent running workers across all possible processes/threads.
     name_server = hpns.NameServer(run_id = run_id, host = name_server_host, port = name_server_port)
@@ -91,13 +96,13 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
 
     # The main thread/process can run a worker in the background around the name server.
     worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
-                       nameserver = name_server_host, run_id = run_id, id = 0)
+                       nameserver = name_server_host, run_id = run_id, id = 0, logger = log)
     worker.run(background = True)
 
     # Create the optimiser and start the run.
     optimiser = BOHB(configspace = worker.get_configspace(),
-                     run_id = run_id, nameserver = name_server_host,
-                     min_budget = budget_min, max_budget = budget_max)
+                     run_id = run_id, nameserver = name_server_host, logger = log,
+                     min_budget = budget_min, max_budget = budget_max, eta = n_partitions)
     result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_workers)
 
     # if do_mp:
@@ -118,7 +123,7 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
     incumbent = result.get_incumbent_id()
     all_runs = result.get_all_runs()
 
-    print(id2config)
+    # print(id2config)
 
     print('Best found configuration:', id2config[incumbent]['config'])
     print('A total of %i unique configurations were sampled.' % len(id2config.keys()))
@@ -129,9 +134,10 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
     keys_features = in_info_process["keys_features"]
     key_target = in_info_process["key_target"]
     config = id2config[incumbent]["config"]
-    pipeline = MLPipeline(in_keys_features = keys_features, in_key_target = key_target,
-                              in_components = [OnlineLinearRegressor(in_hpars = {"batch_size": config["batch_size"],
-                                                                                "learning_rate": config["learning_rate"]})])
+    pipeline = MLPipeline(in_name = "Pipe_" + run_id,
+                          in_keys_features = keys_features, in_key_target = key_target,
+                          in_components = [OnlineLinearRegressor(in_hpars = {"batch_size": config["batch_size"],
+                                                                             "learning_rate": config["learning_rate"]})])
     pipeline, info_process = train_pipeline(in_pipeline = pipeline,
                                             in_observations = in_observations,
                                             in_info_process = in_info_process)
@@ -142,11 +148,11 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
 
 class HPOWorker(Worker):
 
-    def __init__(self, in_observations, in_info_process, *args, **kwargs):
+    def __init__(self, in_observations: DataCollection, in_info_process, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.observations = in_observations
-        self.info_process = in_info_process
+        self.info_process = deepcopy(in_info_process)   # Deepcopy as budgets will differ.
 
 
 
@@ -164,6 +170,7 @@ class HPOWorker(Worker):
         #         'loss' (scalar)
         #         'info' (dict)
         # """
+        print(budget)
 
         keys_features = self.info_process["keys_features"]
         key_target = self.info_process["key_target"]
@@ -187,10 +194,12 @@ class HPOWorker(Worker):
         # in_info_process["duration_prep"] = duration_prep
         # in_info_process["duration_proc"] = duration_proc
 
-        pipeline = MLPipeline(in_keys_features = keys_features, in_key_target = key_target,
+        pipeline = MLPipeline(in_name = "Test",
+                              in_keys_features = keys_features, in_key_target = key_target, do_increment_count = False,
                               in_components = [OnlineLinearRegressor(in_hpars = {"batch_size": config["batch_size"],
                                                                                 "learning_rate": config["learning_rate"]})])
 
+        self.info_process["fraction"] = budget
         pipeline, info_process = train_pipeline(in_pipeline = pipeline, 
                                                 in_observations = self.observations, 
                                                 in_info_process = self.info_process)

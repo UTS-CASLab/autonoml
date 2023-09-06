@@ -23,11 +23,16 @@ class MLPipeline:
     The last must be a predictor.
     """
 
-    count = 0
+    count = 0   # Used only for naming unnamed pipelines.
 
-    def __init__(self, in_keys_features, in_key_target, in_components = None):
-        self.name = "Pipe_" + str(MLPipeline.count)
-        MLPipeline.count += 1
+    def __init__(self, in_keys_features, in_key_target, in_components = None,
+                 in_name: str = None, do_increment_count: bool = True):
+        if in_name is None:
+            self.name = "Pipe_" + str(MLPipeline.count)
+            if do_increment_count:
+                MLPipeline.count += 1
+        else:
+            self.name = in_name
 
         log.info("%s - Constructing MLPipeline '%s'." % (Timestamp(), self.name))
 
@@ -182,12 +187,17 @@ def train_pipeline(in_pipeline: MLPipeline,
     key_target = in_info_process["key_target"]
     idx_start = in_info_process["idx_start"]
     idx_end = in_info_process["idx_end"]
+    if "fraction" in in_info_process:
+        fraction = in_info_process["fraction"]
+    else:
+        fraction = 1
 
     time_start = Timestamp().time
     x, y = in_observations.get_data(in_keys_features = keys_features,
                                     in_key_target = key_target,
                                     in_idx_start = idx_start,
-                                    in_idx_end = idx_end)
+                                    in_idx_end = idx_end,
+                                    in_fraction = fraction)
     time_end = Timestamp().time
     duration_prep = time_end - time_start
 

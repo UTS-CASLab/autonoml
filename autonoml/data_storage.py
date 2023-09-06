@@ -11,9 +11,9 @@ from .data import DataFormatX, DataFormatY, reformat_x, reformat_y
 
 import asyncio
 import ast
+import random
 from copy import deepcopy
 
-import pandas as pd
 import numpy as np
 
 # TODO: Redesign so the inference/conversion is done at DataPort interface?
@@ -37,9 +37,10 @@ class DataCollection:
         self.timestamps = list()
         self.data = dict()
 
-    def get_data(self, in_keys_features, in_key_target,
-                 in_format_x = None, in_format_y = None,
-                 in_idx_start = 0, in_idx_end = None):
+    def get_data(self, in_keys_features, in_key_target: str,
+                 in_format_x: DataFormatX = None, in_format_y: DataFormatY = None,
+                 in_idx_start: int = 0, in_idx_end: int = None,
+                 in_fraction: float = 1):
 
         source = self.data
             
@@ -47,6 +48,15 @@ class DataCollection:
         x = {key_feature:deepcopy(source[key_feature][in_idx_start:in_idx_end]) 
                 for key_feature in in_keys_features}
         y = deepcopy(source[in_key_target][in_idx_start:in_idx_end])
+
+        # Randomly sample a fraction of the data if desired.
+        if in_fraction < 1:
+            amount_selected = self.get_amount(in_idx_start, in_idx_end)
+            size_sample = max(1, int(in_fraction * amount_selected))
+            idx_list = random.sample(range(amount_selected), size_sample)
+
+            x = {key:[x[key][idx] for idx in idx_list] for key in x}
+            y = [y[idx] for idx in idx_list]
 
         if in_format_x is None:
             in_format_x = DataFormatX(0)
@@ -65,8 +75,8 @@ class DataCollection:
 
         return x, y
     
-    def get_amount(self):
-        return len(self.timestamps)
+    def get_amount(self, in_idx_start: int = 0, in_idx_end: int = None):
+        return len(self.timestamps[in_idx_start:in_idx_end])
 
 
 

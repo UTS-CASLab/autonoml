@@ -10,7 +10,7 @@ from .pipeline import MLPipeline, train_pipeline
 from .components.river import OnlineLinearRegressor
 
 from .hyperparameter import HPInt, HPFloat
-from .strategy import Strategy, pool_predictors, pool_preprocessors
+from .strategy import Strategy, SearchSpace, pool_predictors, pool_preprocessors
 from .data_storage import DataCollection
 
 import time
@@ -39,15 +39,16 @@ class HPOInstructions:
         # Budgets, usually representing dataset size, range from minimum to maximum over the iterations.
         # Only one of the number of partitions per iteration advances.
         # The actual number of candidate tests may vary; refer to HPO package documentation for details.
+        # TODO: Make these values come from a user-specified .strat file.
         self.n_partitions = 3
-        self.n_iterations = 1#4
+        self.n_iterations = 4
         self.budget_min = 1/(self.n_partitions**self.n_iterations)
         self.budget_max = 1
 
         if in_strategy is None:
-            self.hpo_space = None
+            self.search_space = SearchSpace()
         else:
-            self.hpo_space = in_strategy.hpo_space
+            self.search_space = in_strategy.search_space
 
 def config_to_pipeline_structure(in_config):
 
@@ -57,9 +58,9 @@ def config_to_pipeline_structure(in_config):
 
     config_hpars = dict()
     for key_hpar in pool_predictors[key_predictor][1]:
-        if key_hpar in in_config():
+        if key_hpar in in_config:
             config_hpars[key_hpar] = in_config[key_hpar]
-        structure.append(type_predictor(in_hpars = config_hpars))
+    structure.append(type_predictor(in_hpars = config_hpars))
 
     return structure
 
@@ -74,50 +75,15 @@ class HPOWorker(Worker):
         self.observations = in_observations
         self.info_process = deepcopy(in_info_process)   # Deepcopy as budgets will differ.
 
-
-
+    # TODO: Consider when budget is so small that columns outnumber rows, i.e. runtime warning for linear regressor.
+    # TODO: Consider folding time taken into the metric.
+    # TODO: Consider if stopping process if too long is possible.
     def compute(self, config, budget, **kwargs):
-        # """
-        # Simple example for a compute function
-        # The loss is just a the config + some noise (that decreases with the budget)
-
-        # Args:
-        #     config: dictionary containing the sampled configurations by the optimizer
-        #     budget: (float) amount of time/epochs/etc. the model can use to train
-
-        # Returns:
-        #     dictionary with mandatory fields:
-        #         'loss' (scalar)
-        #         'info' (dict)
-        # """
-        print(budget)
 
         keys_features = self.info_process["keys_features"]
         key_target = self.info_process["key_target"]
-        # idx_start = in_info_process["idx_start"]
-        # idx_end = in_info_process["idx_end"]
-
-        # time_start = Timestamp().time
-        # x, y = in_observations.get_data(in_keys_features = keys_features,
-        #                                 in_key_target = key_target,
-        #                                 in_idx_start = idx_start,
-        #                                 in_idx_end = idx_end)
-        # time_end = Timestamp().time
-        # duration_prep = time_end - time_start
-
-        # time_start = Timestamp().time
-        # _, metric = in_pipeline.process(x, y, do_remember = True, for_training = True)
-        # time_end = Timestamp().time
-        # duration_proc = time_end - time_start
-
-        # in_info_process["metric"] = metric
-        # in_info_process["duration_prep"] = duration_prep
-        # in_info_process["duration_proc"] = duration_proc
 
         # TODO: Maybe ID the test names according to configuration number.
-        # pipeline = MLPipeline(in_name = "Test",
-        #                       in_keys_features = keys_features, in_key_target = key_target, do_increment_count = False,
-        #                       in_components = in_structure)
         pipeline = MLPipeline(in_name = "Test",
                               in_keys_features = keys_features, in_key_target = key_target, do_increment_count = False,
                               in_components = config_to_pipeline_structure(in_config = config))
@@ -127,14 +93,12 @@ class HPOWorker(Worker):
                                                 in_observations = self.observations, 
                                                 in_info_process = self.info_process)
         metric = info_process["metric"]
-        # metric = 0
-
-        print(metric)
 
         return {"loss": 1 - metric, "info": info_process}
     
+    # TODO: Deal with preprocessors.
     @staticmethod
-    def get_configspace(in_hpo_space):
+    def get_configspace(in_search_space: SearchSpace):
 
         cs = CS.ConfigurationSpace()
 
@@ -143,20 +107,15 @@ class HPOWorker(Worker):
 
         pool, categories = pool_predictors, categories_predictors
 
-        # Check which components to include in the config space.
-        for typename_component in in_hpo_space:
-            do_include = CustomBool(in_hpo_space[typename_component]["Include"])
-            if do_include:
-                if typename_component in pool:
-                    categories.append(typename_component)
+        categories_predictors = in_search_space.list_predictors()
         
         predictor = CS.CategoricalHyperparameter("predictor", categories_predictors)
         cs.add_hyperparameter(predictor)
 
         # Check whether to include any associated hyperparameters in the config space.
         for typename_component in categories_predictors:
-            if "Hpars" in in_hpo_space[typename_component]:
-                dict_hpars = in_hpo_space[typename_component]["Hpars"]
+            if "Hpars" in in_search_space[typename_component]:
+                dict_hpars = in_search_space[typename_component]["Hpars"]
                 for name_hpar in dict_hpars:
                     do_vary = CustomBool(dict_hpars[name_hpar]["Vary"])
 
@@ -229,7 +188,7 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
     n_iterations = in_hpo_instructions.n_iterations
     budget_min = in_hpo_instructions.budget_min
     budget_max = in_hpo_instructions.budget_max
-    hpo_space = in_hpo_instructions.hpo_space
+    search_space = in_hpo_instructions.search_space
 
     # Start a name server that manages concurrent running workers across all possible processes/threads.
     name_server = hpns.NameServer(run_id = run_id, host = name_server_host, port = name_server_port)
@@ -253,7 +212,7 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
     worker.run(background = True)
 
     # Create the optimiser and start the run.
-    optimiser = BOHB(configspace = worker.get_configspace(in_hpo_space = hpo_space),
+    optimiser = BOHB(configspace = worker.get_configspace(in_search_space = search_space),
                      run_id = run_id, nameserver = name_server_host, logger = log,
                      min_budget = budget_min, max_budget = budget_max, eta = n_partitions)
     result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_workers)

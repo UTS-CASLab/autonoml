@@ -26,13 +26,13 @@ Search Space:
         Min: 0.0001
         Max: 1.0
   DummyRegressor:
-    Include: y
+    Include: n
   LinearRegressor:
-    Include: y
+    Include: n
   LinearSupportVectorRegressor:
-    Include: y
+    Include: n
   PartialLeastSquaresRegressor:
-    Include: y
+    Include: n
 Custom Pipelines:
 - a
 - b

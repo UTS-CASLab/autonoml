@@ -21,7 +21,7 @@ import concurrent.futures
 from copy import deepcopy
 
 class ProblemSolverInstructions:
-    def __init__(self, in_key_target, in_keys_features = None, do_exclude = False, 
+    def __init__(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False, 
                  in_strategy: Strategy = None):
         
         self.key_target = in_key_target
@@ -38,12 +38,12 @@ class ProblemSolverInstructions:
 
         # if in_strategy is None:
         #     self.do_hpo = False
-        #     self.hpo_space = None
+        #     self.search_space = None
 
         #     self.do_custom = False
         # else:
         #     self.do_hpo = in_strategy.do_hpo
-        #     self.hpo_space = in_strategy.hpo_space
+        #     self.search_space = in_strategy.search_space
 
         #     self.do_custom = in_strategy.do_custom
 
@@ -113,17 +113,32 @@ class ProblemSolver:
 
         strategy = self.instructions.strategy
 
+        if strategy.do_hpo:
+            if len(strategy.search_space.list_predictors()) > 0:
+                await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+            else:
+                text_warning = ("The Strategy for ProblemSolver '%s' does not suggest "
+                                "any predictors in its search space.") % self.name
+                log.warning("%s - %s" % (Timestamp(), text_warning))
+        else:
+            text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
+                         "running HPO.") % self.name
+            log.info("%s - %s" % (Timestamp(), text_info))
+
+        # TODO: Do something genuine with custom pipelines.
         if strategy.do_custom:
             for count_pipeline in range(1):
                 await self.add_pipeline(create_pipeline_random(in_keys_features = self.keys_features,
                                                                in_key_target = self.key_target))
-        if strategy.do_hpo:
-            await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+        else:
+            text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
+                         "running custom pipelines.") % self.name
+            log.info("%s - %s" % (Timestamp(), text_info))
 
         if self.queue_dev.qsize() == 0:
             # TODO: Perhaps wrap this up in a utils error function.
             text_error = ("ProblemSolver '%s' cannot continue. "
-                          "Strategy does not suggest any pipelines.") % self.name
+                          "Its Strategy does not suggest any pipelines.") % self.name
             log.error("%s - %s" % (Timestamp(), text_error))
             raise Exception(text_error)
 

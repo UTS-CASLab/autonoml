@@ -6,7 +6,7 @@ Created on Mon Aug 21 19:30:58 2023
 """
 
 from . import components
-from .hyperparameter import Hyperparameter
+from .hyperparameter import HPInt, HPFloat
 from .component import MLComponent, MLPredictor, MLPreprocessor
 from .pipeline import MLPipeline
 from .utils import log, Timestamp, CustomBool
@@ -44,12 +44,28 @@ for importer, module_name, is_pkg in pkgutil.iter_modules(components.__path__):
                     elif issubclass(obj, MLPredictor):
                         pool_predictors[obj.__name__] = (obj, obj.new_hpars())
 
-class Strategy:
-    def __init__(self):
-        self.do_hpo = False
-        self.hpo_space = None
+class SearchSpace(dict):
 
-        self.do_custom = False
+    def list_predictors(self):
+        categories = list()
+        for typename_component in self:
+            do_include = CustomBool(self[typename_component]["Include"])
+            if do_include:
+                if typename_component in pool_predictors:
+                    categories.append(typename_component)
+        return categories
+
+class Strategy:
+
+    def __init__(self, in_search_space: SearchSpace = None,
+                 do_hpo: bool = False, do_custom: bool = False):
+        
+        self.search_space = SearchSpace()
+        if not in_search_space is None:
+            self.search_space = in_search_space
+
+        self.do_hpo = do_hpo
+        self.do_custom = do_custom
 
 # print(pool_preprocessors)
 # print(pool_predictors)
@@ -118,12 +134,13 @@ def custom_bool_representer(dumper, data):
 CustomDumper.add_representer(CustomBool, custom_bool_representer)
 
 def template_strategy(in_filepath: str = "./template.strat", 
-                      do_all_components = False, do_all_hyperparameters = False):
+                      do_all_components = True, do_all_hyperparameters = True):
 
     # Create/overwrite the YAML dumper Hyperparameter representer based on user requirements.
     def hyperparameter_representer(dumper, data):
         return dumper.represent_dict(data.to_dict_config(do_vary = do_all_hyperparameters))
-    CustomDumper.add_representer(Hyperparameter, hyperparameter_representer)
+    CustomDumper.add_representer(HPInt, hyperparameter_representer)
+    CustomDumper.add_representer(HPFloat, hyperparameter_representer)
 
     config_space = dict()
     count_component = 0
@@ -138,9 +155,9 @@ def template_strategy(in_filepath: str = "./template.strat",
             count_component += 1
 
     strategy = {"Strategy": 
-                {"Do HPO": CustomBool(False),
+                {"Do HPO": CustomBool(True),
                  "Do Custom Pipelines": CustomBool(False)},
-                "HPO Space": config_space,
+                "Search Space": config_space,
                 "Custom Pipelines": ["a", "b"]}
 
     with open(in_filepath, "w") as file:
@@ -149,22 +166,18 @@ def template_strategy(in_filepath: str = "./template.strat",
     log.info("%s - Template strategy generated at: %s" 
              % (Timestamp(), os.path.abspath(in_filepath)))
 
-    # TODO: No returns.
-    return strategy
-
 def import_strategy(in_filepath: str):
 
     with open(in_filepath, "r") as file:
         specs = yaml.safe_load(file)
 
-    strategy = Strategy()
-    strategy.do_hpo = bool(CustomBool(specs["Strategy"]["Do HPO"]))
-    strategy.do_custom = bool(CustomBool(specs["Strategy"]["Do Custom Pipelines"]))
-    strategy.hpo_space = specs["HPO Space"]
+    strategy = Strategy(in_search_space = SearchSpace(specs["Search Space"]),
+                        do_hpo = bool(CustomBool(specs["Strategy"]["Do HPO"])),
+                        do_custom = bool(CustomBool(specs["Strategy"]["Do Custom Pipelines"])))
 
     return strategy
 
-
+# TODO: Make truly random.
 def create_pipeline_random(in_keys_features, in_key_target):
 
     predictor_cls = np.random.choice(list(tuple[0] for tuple in pool_predictors.values()))

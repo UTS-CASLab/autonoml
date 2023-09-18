@@ -13,10 +13,10 @@ dir_data = "./data"
 filename_substring = "sps_quality_1000_events"
 
 if __name__ == '__main__':
-    strategy = aml.import_strategy("./template.strat")
+    strategy = aml.import_strategy("./test_ml_static.strat")
 #     strategy = None
 
-    proj = aml.AutonoMachine(do_mp = False)
+    proj = aml.AutonoMachine(do_mp = True)
     proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_1p2uW_3000cps.csv")
     # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_2p5uW_4000cps.csv")
     # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_4uW_4100cps.csv")

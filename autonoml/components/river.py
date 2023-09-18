@@ -54,7 +54,8 @@ class OnlineStandardScaler(RiverPreprocessor):
     @staticmethod
     def new_hpars():
         hpars = dict()
-        hpars["batch_size"] = HPInt(in_default = 1, in_min = 1)
+        hpars["batch_size"] = HPInt(in_default = 1, in_min = 1,
+                                    is_log_scale = True)
         return hpars
 
     def __init__(self, *args, **kwargs):
@@ -153,10 +154,10 @@ class OnlineLinearRegressor(RiverPredictor):
     @staticmethod
     def new_hpars():
         hpars = dict()
-        hpars["batch_size"] = HPInt(in_default = 1, in_min = 1)
-        hpars["learning_rate"] = HPFloat(in_default = 0.01, 
-                                                in_min = 0.0001, in_max = 1,
-                                                is_log_scale = True)
+        hpars["batch_size"] = HPInt(in_default = 1, in_min = 1,
+                                    is_log_scale = True)
+        hpars["learning_rate"] = HPFloat(in_default = 0.01, in_min = 0.0001, in_max = 1,
+                                         is_log_scale = True)
         return hpars
 
     def score(self, x, y):

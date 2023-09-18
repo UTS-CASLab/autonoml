@@ -37,3 +37,9 @@ class SystemSettings:
     #%% Plot settings.
     MAX_LABELS_BAR = 25     # If there are more bars in a chart, label a fraction of them.
     BINS_HIST = 100         # Number of bins for a histogram to show.
+
+    #%% Hyperparameter settings.
+    INT_MIN = -int(1e9)
+    INT_MAX = int(1e9)
+    FLOAT_MIN = -float(1e9)
+    FLOAT_MAX = float(1e9)

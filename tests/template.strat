@@ -1,0 +1,38 @@
+Strategy:
+  Do HPO: y
+  Do Custom Pipelines: n
+HPO Space:
+  OnlineStandardScaler:
+    Include: n
+    Hpars:
+      batch_size:
+        Vary: n
+        Default: 1
+        Min: 1
+        Max: null
+  StandardScaler:
+    Include: n
+  OnlineLinearRegressor:
+    Include: n
+    Hpars:
+      batch_size:
+        Vary: n
+        Default: 1
+        Min: 1
+        Max: null
+      learning_rate:
+        Vary: n
+        Default: 0.01
+        Min: 0.0001
+        Max: 1
+  DummyRegressor:
+    Include: n
+  LinearRegressor:
+    Include: n
+  LinearSupportVectorRegressor:
+    Include: n
+  PartialLeastSquaresRegressor:
+    Include: n
+Custom Pipelines:
+- a
+- b

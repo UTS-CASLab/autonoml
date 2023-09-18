@@ -5,7 +5,8 @@ Created on Mon Aug 21 19:49:12 2023
 @author: David J. Kedziora
 """
 
-from ..component import MLPreprocessor, MLPredictor, Hyperparameter
+from ..hyperparameter import Hyperparameter, HPInt, HPFloat
+from ..component import MLPreprocessor, MLPredictor
 from ..data import DataFormatX, DataFormatY
 
 import numpy as np
@@ -53,7 +54,7 @@ class OnlineStandardScaler(RiverPreprocessor):
     @staticmethod
     def new_hpars():
         hpars = dict()
-        hpars["batch_size"] = Hyperparameter(in_default = 1, in_min = 1)
+        hpars["batch_size"] = HPInt(in_default = 1, in_min = 1)
         return hpars
 
     def __init__(self, *args, **kwargs):
@@ -152,11 +153,10 @@ class OnlineLinearRegressor(RiverPredictor):
     @staticmethod
     def new_hpars():
         hpars = dict()
-        hpars["batch_size"] = Hyperparameter(in_default = 1, in_min = 1)
-        # TODO: Let the user define the range.
-        hpars["learning_rate"] = Hyperparameter(in_default = 0.01, 
+        hpars["batch_size"] = HPInt(in_default = 1, in_min = 1)
+        hpars["learning_rate"] = HPFloat(in_default = 0.01, 
                                                 in_min = 0.0001, in_max = 1,
-                                                is_exponential = True)
+                                                is_log_scale = True)
         return hpars
 
     def score(self, x, y):

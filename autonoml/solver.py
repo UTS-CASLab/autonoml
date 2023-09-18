@@ -5,17 +5,11 @@ Created on Mon May 22 21:58:33 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp
+from .utils import log, Timestamp, identify_error
 from .concurrency import create_async_task_from_sync, create_async_task, inspect_loop, loop_autonoml
 from .pipeline import MLPipeline, train_pipeline
 from .hpo import HPOInstructions, run_hpo, add_hpo_worker
-# from .component import (StandardScaler,
-#                    PartialLeastSquaresRegressor,
-#                    LinearRegressor,
-#                    LinearSupportVectorRegressor,
-#                    OnlineStandardScaler,
-#                    OnlineLinearRegressor)
-from .strategy import create_pipeline_random
+from .strategy import Strategy, create_pipeline_random
 
 from .data_storage import DataStorage
 
@@ -27,25 +21,43 @@ import concurrent.futures
 from copy import deepcopy
 
 class ProblemSolverInstructions:
-    def __init__(self, in_key_target, in_keys_features = None, do_exclude = False, in_strategy = None):
+    def __init__(self, in_key_target, in_keys_features = None, do_exclude = False, 
+                 in_strategy: Strategy = None):
+        
         self.key_target = in_key_target
         self.keys_features = in_keys_features
         self.do_exclude = do_exclude
 
-        # TODO: Extract from strategy.
         self.do_query_after_complete = True
-        self.do_hpo = True
+
+        # Create a default strategy if user did not provide one.
+        if in_strategy is None:
+            self.strategy = Strategy()
+        else:
+            self.strategy = in_strategy
+
+        # if in_strategy is None:
+        #     self.do_hpo = False
+        #     self.hpo_space = None
+
+        #     self.do_custom = False
+        # else:
+        #     self.do_hpo = in_strategy.do_hpo
+        #     self.hpo_space = in_strategy.hpo_space
+
+        #     self.do_custom = in_strategy.do_custom
 
 class ProblemSolver:
     """
-    A wrapper for pipelines and components that learn from data and respond to queries.
-    Stores references to attributes of an AutonoMachine:
-        - DataStorage, for passing data and queries to pipelines.
+    A manager for pipelines and components that learn from data and respond to queries.
     """
 
     count = 0
     
-    def __init__(self, in_data_storage: DataStorage, in_instructions, in_n_procs, do_mp):
+    def __init__(self, in_data_storage: DataStorage, 
+                 in_instructions: ProblemSolverInstructions, 
+                 in_n_procs: int, do_mp: bool):
+        
         self.name = "Sol_" + str(ProblemSolver.count)
         ProblemSolver.count += 1
         log.info("%s - Initialising ProblemSolver '%s'." % (Timestamp(), self.name))
@@ -57,15 +69,15 @@ class ProblemSolver:
         self.do_mp = do_mp
         self.n_procs = in_n_procs
 
+        # Store a reference to the DataStorage in the AutonoMachine.
         self.data_storage = in_data_storage
 
         self.key_target = None
         self.keys_features = None
         
         self.pipelines = dict()         # MLPipelines that are in production.
-        self.queue_dev = None     # MLPipelines and HPO runs that are in development.
-        # self.queue_hpo = None           # HPO runs that in development.
-        # Note: These queues must not be instantiated as asyncio queues until within a coroutine.
+        self.queue_dev = None           # MLPipelines and HPO runs that are in development.
+        # Note: This queue must not be instantiated as an asyncio queue until within a coroutine.
         
         # Keep track of the data-storage instance up to which model has used.
         # TODO: Consider variant starting points for the model and update log messages.
@@ -96,58 +108,24 @@ class ProblemSolver:
         self.key_target = o1
         self.keys_features = o2
         
-        # Instantiate the queues now that this code is running in the right event loop.
+        # Instantiate the development queue now that this code is running internally within an event loop.
         self.queue_dev = asyncio.Queue()
-        self.queue_hpo = asyncio.Queue()
 
-        if True:
+        strategy = self.instructions.strategy
+
+        if strategy.do_custom:
             for count_pipeline in range(1):
                 await self.add_pipeline(create_pipeline_random(in_keys_features = self.keys_features,
                                                                in_key_target = self.key_target))
-        if self.instructions.do_hpo:
-            await self.queue_dev.put(HPOInstructions())
-            await self.queue_dev.put(HPOInstructions())
-            pass
+        if strategy.do_hpo:
+            await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
 
-            # Set up pipelines.
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                             in_key_target = self.key_target))
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                             in_key_target = self.key_target,
-            #                             in_components = [PartialLeastSquaresRegressor()]))
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                             in_key_target = self.key_target,
-            #                             in_components = [StandardScaler(),
-            #                                             PartialLeastSquaresRegressor()]))
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                             in_key_target = self.key_target,
-            #                             in_components = [LinearRegressor()]))
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                             in_key_target = self.key_target,
-            #                             in_components = [LinearSupportVectorRegressor()]))
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                             in_key_target = self.key_target,
-            #                             in_components = [StandardScaler(),
-            #                                             LinearSupportVectorRegressor()]))
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                             in_key_target = self.key_target,
-            #                             in_components = [OnlineLinearRegressor()]))
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                             in_key_target = self.key_target,
-            #                             in_components = [OnlineLinearRegressor(in_hpars = {"batch_size":10000})]))
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                             in_key_target = self.key_target,
-            #                             in_components = [OnlineStandardScaler(),
-            #                                             OnlineLinearRegressor()]))
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                             in_key_target = self.key_target,
-            #                             in_components = [StandardScaler(),
-            #                                             OnlineLinearRegressor()]))
-            # await self.add_pipeline(MLPipeline(in_keys_features = self.keys_features,
-            #                                 in_key_target = self.key_target,
-            #                                 in_components = 
-            #                                 [OnlineStandardScaler(in_hpars = {"batch_size":10}),
-            #                                     OnlineLinearRegressor(in_hpars = {"batch_size":10})]))
+        if self.queue_dev.qsize() == 0:
+            # TODO: Perhaps wrap this up in a utils error function.
+            text_error = ("ProblemSolver '%s' cannot continue. "
+                          "Strategy does not suggest any pipelines.") % self.name
+            log.error("%s - %s" % (Timestamp(), text_error))
+            raise Exception(text_error)
 
         # Once instructions are processed, begin the problem solving.
         self.run()
@@ -167,9 +145,9 @@ class ProblemSolver:
         try:
             await group
         except Exception as e:
-            log.error("%s - ProblemSolver '%s' encountered an error. "
-                      "Cancelling Asyncio operations." % (Timestamp(), self.name))
-            log.debug(e)
+            text_alert = ("%s - ProblemSolver '%s' encountered an error. "
+                          "Cancelling Asyncio operations." % (Timestamp(), self.name))
+            identify_error(e, text_alert)
             for op in self.ops:
                 op.cancel()
 
@@ -249,9 +227,8 @@ class ProblemSolver:
             self.pipelines[pipeline.name] = pipeline
             log.info("%s   Pipeline '%s' is pushed to production." % (Timestamp(None), pipeline.name))
         except Exception as e:
-            log.error("%s - ProblemSolver '%s' failed to process an MLPipeline." 
-                      % (Timestamp(), self.name))
-            log.debug(e)
+            text_alert = "%s - ProblemSolver '%s' failed to process an MLPipeline." % (Timestamp(), self.name)
+            identify_error(e, text_alert)
         finally:
             self.queue_dev.task_done()
 
@@ -404,7 +381,7 @@ class ProblemSolver:
                             "%s   Score on those queries: %f\n"
                             "%s   Last query: Prediction '%s' vs True Value '%s'"
                             % (Timestamp(), pipeline.name, idx_stop - self.idx_queries,
-                            Timestamp(None), pipeline.components_as_string(),
+                            Timestamp(None), pipeline.components_as_string(do_hpars = True),
                             Timestamp(None), time_end - time_start,
                             Timestamp(None), metric,
                             Timestamp(None), y_pred_last, y_last))

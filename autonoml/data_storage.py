@@ -53,6 +53,7 @@ class DataCollection:
         if in_fraction < 1:
             amount_selected = self.get_amount(in_idx_start, in_idx_end)
             size_sample = max(1, int(in_fraction * amount_selected))
+            random.seed(0)
             idx_list = random.sample(range(amount_selected), size_sample)
 
             x = {key:[x[key][idx] for idx in idx_list] for key in x}

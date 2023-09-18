@@ -10,6 +10,7 @@ import logging
 import sys
 import os
 import time
+import traceback
 
 from typing import Type
 
@@ -70,7 +71,7 @@ class Timestamp:
         self.ms = None
         if is_real:
             self.time = time.time()
-            self.ms = repr(self.time).split('.')[1][:3]
+            self.ms = repr(self.time).split(".")[1][:3]
         
     def __str__(self):
         if self.time:
@@ -81,4 +82,25 @@ class Timestamp:
     
     def update_from(self, in_timestamp: Type["Timestamp"]):
         self.time = in_timestamp.time
-        self.ms = repr(self.time).split('.')[1][:3]
+        self.ms = repr(self.time).split(".")[1][:3]
+
+class CustomBool:
+    def __init__(self, value):
+        value = str(value).lower()
+        if value in ("0", "false", "n", "no"):
+            self.value = False
+        elif value in ("1", "true", "y", "yes"):
+            self.value = True
+        else:
+            raise ValueError("Invalid value for CustomBool.")
+
+    def __bool__(self):
+        return self.value
+
+    def __repr__(self):
+        return "y" if self.value else "n"
+    
+def identify_error(in_exception: Exception, in_text_alert: str):
+    log.error(in_text_alert)
+    log.debug("Exception: %s" % str(in_exception))
+    log.debug("Traceback: %s" % "".join(traceback.format_tb(in_exception.__traceback__)))

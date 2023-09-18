@@ -44,7 +44,7 @@ setup(
         "pandas",
         "matplotlib",
         "seaborn",
-        # "wheel",
+        # "ruamel.yaml",
         "configspace>=0.7",
         "hpbandster",
         "scikit-learn",

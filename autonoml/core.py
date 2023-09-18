@@ -5,7 +5,7 @@ Created on Wed Apr  5 20:39:37 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp
+from .utils import log, Timestamp, identify_error
 from .settings import SystemSettings as SS
 from .concurrency import (create_async_task_from_sync, create_async_task, 
                           schedule_this)#, skip_in_other_processes)
@@ -73,9 +73,9 @@ class AutonoMachine:
         try:
             await group
         except Exception as e:
-            log.error("%s - AutonoMachine '%s' encountered an error. "
-                      "Cancelling Asyncio operations." % (Timestamp(), self.name))
-            log.debug(e)
+            text_alert = ("%s - AutonoMachine '%s' encountered an error. "
+                          "Cancelling Asyncio operations." % (Timestamp(), self.name))
+            identify_error(e, text_alert)
             for op in self.ops:
                 op.cancel()
                 

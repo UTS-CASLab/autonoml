@@ -12,7 +12,6 @@ Created on Thu Aug  3 18:59:35 2023
 """
 
 import autonoml as aml
-import asyncio
 
 proj_1 = aml.AutonoMachine()
 proj_2 = aml.AutonoMachine()

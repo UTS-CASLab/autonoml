@@ -5,7 +5,7 @@ Created on Tue Aug  1 12:13:43 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, setup_logger, Timestamp
+from .utils import log, Timestamp
 from .plot import gen_fig_feature_importance, gen_fig_performance
 from .data import DataFormatX, DataFormatY, reformat_y
 from .component import MLPredictor, MLPreprocessor

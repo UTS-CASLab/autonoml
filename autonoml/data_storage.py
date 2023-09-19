@@ -7,6 +7,7 @@ Created on Fri May 12 22:21:05 2023
 
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
+from .concurrency import create_async_task_from_sync
 from .data import DataFormatX, DataFormatY, reformat_x, reformat_y
 
 import asyncio
@@ -110,8 +111,16 @@ class DataStorage:
         # This directs elements of incoming data to the right list.
         self.ikeys_to_dkeys = dict()
         
-        # Set up a variable that can be awaited elsewhere.
-        # This 'switch', when flicked, signals learners to ingest new data.
+        # Set up variables that can be awaited elsewhere.
+        # These 'switches', when flicked, signals learners to ingest new data.
+        self.has_new_observations = None
+        self.has_new_queries = None
+        # Note: These futures must be instantiated on the right loop, i.e. only within a coroutine.
+
+        create_async_task_from_sync(self.prepare)
+
+    async def prepare(self):
+        # Instantiate the futures now that this code is running internally within an event loop.
         self.has_new_observations = asyncio.Future()
         self.has_new_queries = asyncio.Future()
     

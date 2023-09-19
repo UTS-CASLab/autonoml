@@ -8,6 +8,8 @@ Created on Thu Jul  6 19:00:56 2023
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
 
+from .data_storage import DataStorage
+
 import asyncio
 
 # TODO: Extend this beyond .csv files.
@@ -18,7 +20,7 @@ class DataPort:
     
     count = 0
 
-    def __init__(self, in_data_storage):
+    def __init__(self, in_data_storage: DataStorage):
         self.name = "Port_" + str(DataPort.count)
         DataPort.count += 1
         log.info("%s - Initialising DataPort '%s'." % (Timestamp(), self.name))
@@ -31,10 +33,16 @@ class DataPort:
         
     # TODO: Consider Pandas if it is faster.
     # TODO: Update logs for queries.
-    async def ingest_file(self, in_filepath, in_file_has_headers = True, as_query = False):
-        
+    async def ingest_file(self, in_filepath, in_tags = None, 
+                          in_file_has_headers: bool = True, as_query: bool = False):
+
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
                  % (Timestamp(), self.name, in_filepath))
+        
+        if in_tags is None:
+            tags = dict()
+        else:
+            tags = in_tags
    
         time_start = Timestamp().time
 
@@ -44,14 +52,25 @@ class DataPort:
                 line = data_file.readline()
                 self.keys = line.rstrip().split(",")
 
+                # Add the custom tags to keys.
+                for key_tag in tags:
+                    self.keys.append(key_tag)
+
             count_instance = 0
             for line in data_file:
                 data = line.rstrip().split(",")
                 
                 # If there are no headers...
-                # Inflow keys enumerate the inflow data elements encountered.
+                # Create inflow keys to enumerate the data elements encountered.
                 if count_instance == 0 and not in_file_has_headers:
                     self.keys = [str(num_element) for num_element in range(len(data))]
+
+                    # Add the custom tags to keys.
+                    for key_tag in tags:
+                        self.keys.append(key_tag)
+
+                for key_tag in tags:
+                    data.append(tags[key_tag])
                     
                 self.data_storage.store_data(in_timestamp = Timestamp(),
                                              in_data_port_id = self.name,

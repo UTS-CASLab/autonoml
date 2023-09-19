@@ -1,17 +1,13 @@
 Strategy:
   Do HPO: y
-  Do Custom Pipelines: n
+Optimiser:
+  BOHB:
+    Note: For i iterations and p partitions, BOHB seeks to sample p^i models on 1/p^i
+      of data at the 1st iteration, then propagate the best 1/p models to the next
+      iteration.
+    Iterations: 1
+    Partitions: 3
 Search Space:
-  OnlineStandardScaler:
-    Include: y
-    Hpars:
-      batch_size:
-        Vary: y
-        Default: 1
-        Min: 1
-        Max: 1000000000
-  StandardScaler:
-    Include: y
   OnlineLinearRegressor:
     Include: y
     Hpars:
@@ -19,20 +15,17 @@ Search Space:
         Vary: y
         Default: 1
         Min: 1
-        Max: 1000000000
+        Max: 1000
       learning_rate:
         Vary: y
-        Default: 0.01
-        Min: 0.0001
+        Default: 0.001
+        Min: 1.0e-06
         Max: 1.0
   DummyRegressor:
-    Include: n
+    Include: y
   LinearRegressor:
-    Include: n
+    Include: y
   LinearSupportVectorRegressor:
-    Include: n
+    Include: y
   PartialLeastSquaresRegressor:
-    Include: n
-Custom Pipelines:
-- a
-- b
+    Include: y

@@ -6,10 +6,10 @@ Created on Mon May 22 21:58:33 2023
 """
 
 from .utils import log, Timestamp, identify_error
-from .concurrency import create_async_task_from_sync, create_async_task, inspect_loop, loop_autonoml
+from .concurrency import create_async_task_from_sync, create_async_task, inspect_loop
 from .pipeline import MLPipeline, train_pipeline
 from .hpo import HPOInstructions, run_hpo, add_hpo_worker
-from .strategy import Strategy, create_pipeline_random
+from .strategy import Strategy
 
 from .data_storage import DataStorage
 
@@ -35,17 +35,6 @@ class ProblemSolverInstructions:
             self.strategy = Strategy()
         else:
             self.strategy = in_strategy
-
-        # if in_strategy is None:
-        #     self.do_hpo = False
-        #     self.search_space = None
-
-        #     self.do_custom = False
-        # else:
-        #     self.do_hpo = in_strategy.do_hpo
-        #     self.search_space = in_strategy.search_space
-
-        #     self.do_custom = in_strategy.do_custom
 
 class ProblemSolver:
     """
@@ -125,15 +114,15 @@ class ProblemSolver:
                          "running HPO.") % self.name
             log.info("%s - %s" % (Timestamp(), text_info))
 
-        # TODO: Do something genuine with custom pipelines.
-        if strategy.do_custom:
-            for count_pipeline in range(1):
-                await self.add_pipeline(create_pipeline_random(in_keys_features = self.keys_features,
-                                                               in_key_target = self.key_target))
-        else:
-            text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
-                         "running custom pipelines.") % self.name
-            log.info("%s - %s" % (Timestamp(), text_info))
+        # # TODO: Do something genuine with custom pipelines.
+        # if strategy.do_custom:
+        #     for count_pipeline in range(1):
+        #         await self.add_pipeline(create_pipeline_random(in_keys_features = self.keys_features,
+        #                                                        in_key_target = self.key_target))
+        # else:
+        #     text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
+        #                  "running custom pipelines.") % self.name
+        #     log.info("%s - %s" % (Timestamp(), text_info))
 
         if self.queue_dev.qsize() == 0:
             # TODO: Perhaps wrap this up in a utils error function.
@@ -353,7 +342,6 @@ class ProblemSolver:
             # If required, ensure no pipelines are awaiting development before querying.
             if self.instructions.do_query_after_complete:
                 await self.queue_dev.join()
-                # await self.queue_hpo.join()
 
             # Check if there are more queries in storage than have been processed.
             # If not, wait until new queries arive.

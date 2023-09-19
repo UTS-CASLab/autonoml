@@ -101,21 +101,23 @@ class AutonoMachine:
     #         del self.data_ports[id]
             
     # @skip_in_other_processes
-    def ingest_file(self, in_filepath):
+    def ingest_file(self, in_filepath, in_tags = None):
+
         log.info("%s - Scheduling request for AutonoMachine '%s' to ingest data file: %s" 
                  % (Timestamp(), self.name, in_filepath))
         ref = DataPort(in_data_storage = self.data_storage)
         self.data_ports[ref.name] = ref
-        create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath)
+        create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
+                                    in_tags = in_tags)
         
     # @skip_in_other_processes
-    def query_with_file(self, in_filepath):
+    def query_with_file(self, in_filepath, in_tags = None):
         log.info("%s - Scheduling request to query AutonoMachine '%s' with file: %s" 
                  % (Timestamp(), self.name, in_filepath))
         ref = DataPort(in_data_storage = self.data_storage)
         self.data_ports[ref.name] = ref
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
-                                    as_query = True)
+                                    in_tags = in_tags, as_query = True)
         
     # def ingest_stream(self, in_hostname, in_port):
     #     self.open_data_port(in_hostname = in_hostname, in_port = in_port)

@@ -6,60 +6,40 @@ Created on Mon Jun 26 14:52:35 2023
 """
 
 import autonoml as aml
-import os
 
-# filename_data = "./data/mixed_0101_abrupto.csv"
 dir_data = "./data"
 filename_substring = "sps_quality_1000_events"
+experimental_contexts = ["1p2uW_3000cps",
+                        #  "2p5uW_4000cps",
+                        #  "4uW_4100cps",
+                        #  "8uW_5100cps",
+                        #  "10uW_6000cps",
+                        #  "10uW_12000cps",
+                        #  "20uW_7000cps",
+                        #  "30uW_7000cps",
+                         None]         
 
 if __name__ == '__main__':
-    strategy = aml.import_strategy("./test_ml_static.strat")
-#     strategy = None
 
-    proj = aml.AutonoMachine(do_mp = True)
-    proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_1p2uW_3000cps.csv")
-    # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_2p5uW_4000cps.csv")
-    # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_4uW_4100cps.csv")
-    # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_8uW_5100cps.csv")
-    # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_10uW_6000cps.csv")
-    # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_10uW_12000cps.csv")
-    # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_20uW_7000cps.csv")
-    # proj.ingest_file(in_filepath = "./data/train_sps_quality_1000_events_30uW_7000cps.csv")
-    # for filename in os.listdir(dir_data):
-    #     if filename.startswith("train_" + filename_substring):
-    #         filepath = os.path.join(dir_data, filename)
-    #         proj.ingest_file(in_filepath = os.path.join(dir_data, filename))
-    # proj.load_strategy()
+    strategy = aml.import_strategy("./test_ml_static.strat")
+
+    proj = aml.AutonoMachine(do_mp = False)
+
+    for experimental_context in experimental_contexts:
+        if not experimental_context is None:
+            proj.ingest_file(in_filepath = "%s/train_%s_%s.csv" % (dir_data, filename_substring, 
+                                                                   experimental_context), 
+                             in_tags = {"context": experimental_context})
+            
     proj.info_storage()
 
     proj.learn(in_key_target = "estimate",
-            in_keys_features = ["best"], do_exclude = True,
-            in_strategy = strategy)
-    # aml.inspect_loop()
-    proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_1p2uW_3000cps.csv")
-    # proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_2p5uW_4000cps.csv")
-    # proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_4uW_4100cps.csv")
-    # proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_8uW_5100cps.csv")
-    # proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_10uW_6000cps.csv")
-    # proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_10uW_12000cps.csv")
-    # proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_20uW_7000cps.csv")
-    # proj.query_with_file(in_filepath = "./data/test_sps_quality_1000_events_30uW_7000cps.csv")
-    # for filename in os.listdir(dir_data):
-    #     if filename.startswith("test_" + filename_substring):
-    #         filepath = os.path.join(dir_data, filename)
-    #         proj.query_with_file(in_filepath = os.path.join(dir_data, filename))
-    # proj.data_storage.info()
-    # print(proj.data_storage.get_dataframe())
-    # proj.info_solver()
-    # proj.stop()
-
-    # pipe = proj.solver.pipelines["Pipe_2"]
-    # comp = pipe.components[-1]
-    # model = comp.model
-
-    # x, y = proj.data_storage.get_data(in_keys_features = comp.keys_features, 
-    #                                   in_key_target = comp.key_target,
-    #                                   in_format_x = comp.format_x, 
-    #                                   in_format_y = comp.format_y,
-    #                                   in_idx_start = -1)
-    # print(model.debug_one(x[-1]))
+               in_keys_features = ["best", "context"], do_exclude = True,
+               in_strategy = strategy)#,
+            #    ensemble_for = {("context", -1), "num_events"})
+    
+    for experimental_context in experimental_contexts:
+        if not experimental_context is None:
+            proj.query_with_file(in_filepath = "%s/test_%s_%s.csv" % (dir_data, filename_substring, 
+                                                                      experimental_context), 
+                                 in_tags = {"context": experimental_context})

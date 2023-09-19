@@ -19,7 +19,7 @@ from copy import deepcopy
 
 import hpbandster.core.nameserver as hpns
 from hpbandster.core.worker import Worker
-from hpbandster.optimizers import BOHB as BOHB
+from hpbandster.optimizers import BOHB
 
 class HPOInstructions:
     """
@@ -40,8 +40,8 @@ class HPOInstructions:
         # Only one of the number of partitions per iteration advances.
         # The actual number of candidate tests may vary; refer to HPO package documentation for details.
         # TODO: Make these values come from a user-specified .strat file.
-        self.n_partitions = 3
-        self.n_iterations = 4
+        self.n_iterations = 4 if in_strategy is None else in_strategy.n_iterations
+        self.n_partitions = 3 if in_strategy is None else in_strategy.n_partitions
         self.budget_min = 1/(self.n_partitions**self.n_iterations)
         self.budget_max = 1
 
@@ -64,9 +64,6 @@ def config_to_pipeline_structure(in_config):
 
     return structure
 
-    # [OnlineLinearRegressor(in_hpars = {"batch_size": config["batch_size"],
-    #                                    "learning_rate": config["learning_rate"]})]
-
 class HPOWorker(Worker):
 
     def __init__(self, in_observations: DataCollection, in_info_process, *args, **kwargs):
@@ -75,9 +72,9 @@ class HPOWorker(Worker):
         self.observations = in_observations
         self.info_process = deepcopy(in_info_process)   # Deepcopy as budgets will differ.
 
-    # TODO: Consider when budget is so small that columns outnumber rows, i.e. runtime warning for linear regressor.
+    # TODO: Consider the divide by zero runtime warnings generated seemingly when using categoricals.
     # TODO: Consider folding time taken into the metric.
-    # TODO: Consider if stopping process if too long is possible.
+    # TODO: Consider if stopping process is possible if takes too long.
     def compute(self, config, budget, **kwargs):
 
         keys_features = self.info_process["keys_features"]
@@ -146,11 +143,6 @@ class HPOWorker(Worker):
                         cond = CS.EqualsCondition(hp, predictor, typename_component)
                         cs.add_condition(cond)
 
-        # config_space = CS.ConfigurationSpace({
-        #     "batch_size": CS.Integer("batch_size", default = 1, bounds = (1, 1000)),
-        #     "learning_rate": CS.Float("learning_rate", default = 0.01, bounds = (1e-9, 1), log = True)
-        # })
-        # config_space.add_hyperparameter(CS.UniformFloatHyperparameter('x', lower=0, upper=1))
         return(cs)
 
 def add_hpo_worker(in_hpo_instructions: HPOInstructions, in_observations: DataCollection,
@@ -194,18 +186,6 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
     name_server = hpns.NameServer(run_id = run_id, host = name_server_host, port = name_server_port)
     name_server.start()
 
-    # # Start workers attached to the name server that runs in the background.
-    # # It waits for hyperparameter configurations to evaluate.
-    # if do_mp:
-    #     pass
-    # else:
-    #     workers = list()
-    #     for idx_worker in range(in_n_procs):
-    #         worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
-    #                            nameserver = name_server_host, run_id = run_id, id = idx_worker)
-    #         worker.run(background = True)
-    #         workers.append(worker)
-
     # The main thread/process can run a worker in the background around the name server.
     worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
                        nameserver = name_server_host, run_id = run_id, id = 0, logger = log)
@@ -217,20 +197,12 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
                      min_budget = budget_min, max_budget = budget_max, eta = n_partitions)
     result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_workers)
 
-    # if do_mp:
-    #     result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_procs)
-    # else:
-    #     result = optimiser.run(n_iterations = n_iterations)
-
     # Shutdown the optimiser and name server once complete.
     optimiser.shutdown(shutdown_workers = True)
     name_server.shutdown()
 
-    # Step 5: Analysis
-    # Each optimizer returns a hpbandster.core.result.Result object.
-    # It holds informations about the optimization run like the incumbent (=best) configuration.
-    # For further details about the Result object, see its documentation.
-    # Here we simply print out the best config and some statistics about the performed runs.
+    # Each optimiser returns a hpbandster.core.result.Result object.
+    # It holds information about the run like the incumbent (best) configuration.
     id2config = result.get_id2config_mapping()
     incumbent = result.get_incumbent_id()
     all_runs = result.get_all_runs()

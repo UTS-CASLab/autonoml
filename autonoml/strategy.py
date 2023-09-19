@@ -16,9 +16,6 @@ import importlib
 import os
 
 import yaml
-# from ruamel.yaml import YAML
-
-import numpy as np
 
 pool_preprocessors = dict()
 pool_predictors = dict()
@@ -58,75 +55,18 @@ class SearchSpace(dict):
 class Strategy:
 
     def __init__(self, in_search_space: SearchSpace = None,
-                 do_hpo: bool = False, do_custom: bool = False):
+                 do_hpo: bool = False,
+                 in_n_iterations: int = 4, in_n_partitions: int = 3):
         
-        self.search_space = SearchSpace()
-        if not in_search_space is None:
+        if in_search_space is None:
+            self.search_space = SearchSpace()
+        else:
             self.search_space = in_search_space
 
         self.do_hpo = do_hpo
-        self.do_custom = do_custom
 
-# print(pool_preprocessors)
-# print(pool_predictors)
-
-# def hyperparameter_constructor(loader, node):
-#     values = loader.construct_mapping(node)
-#     return Hyperparameter(**values)
-
-# # Define a custom representer for the Hyperparameter class.
-# def hyperparameter_representer(dumper, data):
-#     return dumper.represent_dict(data.to_dict())
-
-# class YAMLConstructor(ruamel.yaml.SafeConstructor): pass
-# class YAMLRepresenter(ruamel.yaml.SafeRepresenter): pass
-
-# YAMLConstructor.add_constructor("!Hyperparameter", hyperparameter_constructor)
-# YAMLRepresenter.add_representer(Hyperparameter, hyperparameter_representer)
-# yaml = ruamel.yaml.YAML()
-# yaml.default_flow_style = False
-# # yaml.sort_keys = False
-# # yaml.Constructor = YAMLConstructor
-# yaml.Representer = YAMLRepresenter
-
-# def template_strategy(in_filepath: str = "./template.strat"):
-#     global yaml
-
-#     strategy = {component_name: tuple_component[1] 
-#                 for component_name, tuple_component in pool_predictors.items()}
-    
-#     # strategy = OrderedDict([(component_name, tuple_component[1]) 
-#     #                         for component_name, tuple_component in pool_predictors.items()])
-
-#     with open(in_filepath, "w") as file:
-#         yaml.dump(strategy, file)
-#     log.info("%s - Template strategy generated at: %s" 
-#              % (Timestamp(), os.path.abspath(in_filepath)))
-
-#     # TODO: No returns.
-#     return strategy
-
-# def import_strategy(in_filepath: str):
-#     global yaml
-
-#     with open(in_filepath, "r") as file:
-#         strategy = yaml.safe_load(file)
-
-#     return strategy
-
-
-# def hyperparameter_constructor(loader, node):
-#     values = loader.construct_mapping(node)
-#     return Hyperparameter(**values)
-
-# # Define a custom representer for the Hyperparameter class.
-# def hyperparameter_representer(dumper, data):
-#     return dumper.represent_dict(data.to_dict_config())
-
-# yaml.add_representer(Hyperparameter, hyperparameter_representer)
-
-# yaml = YAML()
-# yaml.representer.add_representer(Hyperparameter, hyperparameter_representer)
+        self.n_iterations = in_n_iterations
+        self.n_partitions = in_n_partitions
 
 class CustomDumper(yaml.Dumper): pass
 def custom_bool_representer(dumper, data):
@@ -144,21 +84,22 @@ def template_strategy(in_filepath: str = "./template.strat",
 
     config_space = dict()
     count_component = 0
-    for pool in [pool_preprocessors, pool_predictors]:
+    # TODO: Re-enable preprocessors when they work in HPO.
+    for pool in [pool_predictors]:#, pool_preprocessors]:
         for typename_component, tuple_component in pool.items():
             hpars = tuple_component[1]
             hpar_space = {"Include": CustomBool(do_all_components)}
             if hpars:
                 hpar_space["Hpars"] = hpars
-            # config_space["&c" + str(count_component) + " " + typename_component] = hpar_space
             config_space[typename_component] = hpar_space
             count_component += 1
 
-    strategy = {"Strategy": 
-                {"Do HPO": CustomBool(True),
-                 "Do Custom Pipelines": CustomBool(False)},
-                "Search Space": config_space,
-                "Custom Pipelines": ["a", "b"]}
+    strategy = {"Strategy": {"Do HPO": CustomBool(True)},
+                "Optimiser": {"BOHB": {"Note": ("For i iterations and p partitions, "
+                                       "BOHB seeks to sample p^i models on 1/p^i of data at the 1st iteration, "
+                                       "then propagate the best 1/p models to the next iteration."),
+                                       "Iterations": 4, "Partitions": 3}},
+                "Search Space": config_space}
 
     with open(in_filepath, "w") as file:
         yaml.dump(strategy, file, default_flow_style = False, sort_keys = False,
@@ -173,18 +114,19 @@ def import_strategy(in_filepath: str):
 
     strategy = Strategy(in_search_space = SearchSpace(specs["Search Space"]),
                         do_hpo = bool(CustomBool(specs["Strategy"]["Do HPO"])),
-                        do_custom = bool(CustomBool(specs["Strategy"]["Do Custom Pipelines"])))
+                        in_n_iterations = int(specs["Optimiser"]["BOHB"]["Iterations"]),
+                        in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]))
 
     return strategy
 
-# TODO: Make truly random.
-def create_pipeline_random(in_keys_features, in_key_target):
+# # TODO: Make truly random.
+# def create_pipeline_random(in_keys_features, in_key_target):
 
-    predictor_cls = np.random.choice(list(tuple[0] for tuple in pool_predictors.values()))
-    predictor_cls = pool_predictors["OnlineLinearRegressor"][0]
-    structure = [predictor_cls(do_random_hpars = True)]
+#     predictor_cls = np.random.choice(list(tuple[0] for tuple in pool_predictors.values()))
+#     predictor_cls = pool_predictors["OnlineLinearRegressor"][0]
+#     structure = [predictor_cls(do_random_hpars = True)]
 
-    pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target, 
-                          in_components = structure)
+#     pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target, 
+#                           in_components = structure)
     
-    return pipeline
+#     return pipeline

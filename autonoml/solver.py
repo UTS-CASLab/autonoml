@@ -13,13 +13,15 @@ from .strategy import Strategy
 
 from .data_storage import DataStorage
 
-import __main__
+# import __main__
 import asyncio
 import concurrent.futures
 # import dill
 # import multiprocess as mp
 # from copy import deepcopy
 import time
+
+
 
 class ProblemSolverInstructions:
     def __init__(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False, 
@@ -36,6 +38,29 @@ class ProblemSolverInstructions:
             self.strategy = Strategy()
         else:
             self.strategy = in_strategy
+
+        self.n_challengers = 2
+
+class ProblemSolution:
+    """
+    A container for all learners currently in production.
+    """
+    def __init__(self, in_instructions: ProblemSolverInstructions):
+        self.learners = dict()
+        self.learners[0] = list()
+
+        self.n_challengers = in_instructions.n_challengers
+
+    def insert_learner(self, in_pipeline: MLPipeline, in_tags = None):
+        list_pipelines = self.learners[0]
+        list_pipelines.append(in_pipeline)
+        self.learners[0] = sorted(list_pipelines, key=lambda p: p.loss)
+        log.debug(["%s: %0.2f" % (pipeline.name, pipeline.loss) for pipeline in self.learners[0]])
+        if len(self.learners[0]) > self.n_challengers + 1:
+            pipeline_removed = self.learners[0].pop()
+            log.debug("Removing uncompetitive challenger pipeline '%s' with loss: %0.2f" 
+                      % (pipeline_removed.name, pipeline_removed.loss))
+
 
 class ProblemSolver:
     """
@@ -65,7 +90,8 @@ class ProblemSolver:
         self.key_target = None
         self.keys_features = None
         
-        self.pipelines = dict()         # MLPipelines that are in production.
+        self.solution = ProblemSolution(in_instructions = in_instructions)
+        # self.solution = dict()         # MLPipelines that are in production.
         self.queue_dev = None           # MLPipelines and HPO runs that are in development.
         # Note: This queue must not be instantiated as an asyncio queue until within a coroutine.
         self.hpo_runs_active = dict()   # A dictionary to track what HPO runs are active.
@@ -106,6 +132,9 @@ class ProblemSolver:
 
         if strategy.do_hpo:
             if len(strategy.search_space.list_predictors()) > 0:
+                await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+                await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+                await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
                 await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
             else:
                 text_warning = ("The Strategy for ProblemSolver '%s' does not suggest "
@@ -228,7 +257,7 @@ class ProblemSolver:
                              % (Timestamp(None), 1 - object_dev.frac_validation, object_dev.frac_validation, duration))
 
                     # Activate the HPO run.
-                    log.info("%s - Launching %i-worker HPO run '%s' with HPO worker 0." 
+                    log.info("%s - Launching %i-worker HPO run '%s'." 
                              % (Timestamp(), n_procs_hpo, name_hpo))
                     future_pipeline = loop.run_in_executor(executor, run_hpo, object_dev, observations,
                                                            sets_training, sets_validation, info_process)
@@ -236,35 +265,73 @@ class ProblemSolver:
 
                     # Add HPO workers to the run.
                     for idx_worker in range(1, n_procs_hpo):
-                        add_attempts = 0
-                        while True:
-                            try:
-                                log.info("%s - Attempting to add HPO worker %i." % (Timestamp(), idx_worker))
-                                loop.run_in_executor(executor, add_hpo_worker, object_dev,
-                                                     sets_training, sets_validation, info_process, idx_worker)
-                                break
-                            # A connection inability means the worker manager has not started or already ended.
-                            except ConnectionRefusedError as e:
-                                log.warning("%s - Failed to add HPO worker. Considering a reattempt." % Timestamp())
-                                # If the HPO run is no longer active, forget about it.
-                                if not name_hpo in self.hpo_runs_active:
-                                    log.warning("%s   However, HPO run '%s' is no longer active." 
-                                                % (Timestamp(None), name_hpo))
-                                    break
-                                elif add_attempts > 5:
-                                    log.warning("%s   However, too many attempts have been made." 
-                                                % (Timestamp(None), name_hpo))
-                                    break
-                                # If the HPO run is active, the manager is delayed. Try again.
-                                time.sleep(1)
-                            except Exception as e:
-                                raise e
-                            add_attempts += 1
+                        # if name_hpo in self.hpo_runs_active:
+                        create_async_task(self.support_hpo, executor, idx_worker, object_dev,
+                                          sets_training, sets_validation, info_process)
+                        # else:
+                        #     log.info("%s - HPO run '%s' is inactive and needs no further support.")
+                        # add_attempts = 0
+                        # while True:
+                        #     try:
+                        #         log.info("%s - Attempting to add HPO worker %i." % (Timestamp(), idx_worker))
+                        #         loop.run_in_executor(executor, add_hpo_worker, object_dev,
+                        #                              sets_training, sets_validation, info_process, idx_worker)
+                        #         break
+                        #     # A connection inability means the worker manager has not started or already ended.
+                        #     except Exception as e:
+                        #         log.warning("%s - Failed to add and run HPO worker. Considering a reattempt." % Timestamp())
+                        #         # If the HPO run is no longer active, forget about it.
+                        #         if not name_hpo in self.hpo_runs_active:
+                        #             log.warning("%s   However, HPO run '%s' is no longer active." 
+                        #                         % (Timestamp(None), name_hpo))
+                        #             break
+                        #         elif add_attempts > 5:
+                        #             log.warning("%s   However, too many attempts have been made." 
+                        #                         % (Timestamp(None), name_hpo))
+                        #             break
+                        #         # If the HPO run is active, the manager is delayed. Try again.
+                        #         time.sleep(1)
+                        #     add_attempts += 1
                 create_async_task(self.push_to_production, future_pipeline, name_hpo)
 
-    async def push_to_production(self, in_future_pipeline, in_name_hpo = None):
+    async def support_hpo(self, in_executor, in_idx_worker: int, in_hpo_instructions, 
+                          in_sets_training, in_sets_validation, in_info_process):
+        
+        loop = asyncio.get_event_loop()
+        name_hpo = in_hpo_instructions.name
+
+        add_attempts = 0
+        while True:
+            # log.debug("%s - Attempting to add worker %i of HPO run '%s'." 
+            #          % (Timestamp(), in_idx_worker, name_hpo))
+            result = await loop.run_in_executor(in_executor, add_hpo_worker, in_hpo_instructions, 
+                                    in_sets_training, in_sets_validation, in_info_process, in_idx_worker)
+            
+            if not isinstance(result, Exception):
+                break
+            else:
+                log.warning("%s - Failed to add worker %i of HPO run '%s'. "
+                            "Considering a reattempt." % (Timestamp(), in_idx_worker, name_hpo))
+                # If the HPO run is no longer active, forget about it.
+                if not name_hpo in self.hpo_runs_active:
+                    log.warning("%s   However, HPO run '%s' is no longer active." 
+                                % (Timestamp(None), name_hpo))
+                    break
+                elif add_attempts > 5:
+                    log.warning("%s   However, too many attempts have been made." 
+                                % (Timestamp(None), name_hpo))
+                    break
+                # If the HPO run is active, the manager is delayed in starting up. Try again.
+                time.sleep(1)
+            add_attempts += 1
+
+
+    async def push_to_production(self, in_future_pipeline, in_name_hpo: str = None):
         try:
             pipeline, info_process = await in_future_pipeline
+
+            if "text_hpo" in info_process:
+                log.info(info_process["text_hpo"])
 
             idx_start = info_process["idx_start"]
             idx_stop = info_process["idx_stop"]
@@ -287,7 +354,7 @@ class ProblemSolver:
                         Timestamp(None), metric,
                         Timestamp(None), y_pred_last, y_last))
             
-            self.pipelines[pipeline.name] = pipeline
+            self.solution.insert_learner(pipeline)
             log.info("%s   Pipeline '%s' is pushed to production." % (Timestamp(None), pipeline.name))
         except Exception as e:
             text_alert = "%s - ProblemSolver '%s' failed to process an MLPipeline." % (Timestamp(), self.name)
@@ -295,9 +362,10 @@ class ProblemSolver:
         finally:
             # Mark the HPO run as inactive, if applicable.
             if not in_name_hpo is None:
-                log.info("%s - Noting that HPO run '%s' has concluded." 
-                         % (Timestamp(), in_name_hpo))
+                # log.info("%s - Noting that HPO run '%s' has concluded." 
+                #          % (Timestamp(), in_name_hpo))
                 del self.hpo_runs_active[in_name_hpo]
+
             self.queue_dev.task_done()
 
     async def process_strategy(self):
@@ -307,97 +375,9 @@ class ProblemSolver:
             if self.idx_data < self.data_storage.observations.get_amount():
                 self.idx_data = self.data_storage.observations.get_amount()
                 
-                # df = self.data_storage.get_dataframe()
-                # print(df)
-                # df = df.sample(frac = 1)
-                # print(df)
-                
-                # processes = list()
-                # for pipeline_key in list(self.pipelines.keys()):
-                #     pipeline = self.pipelines[pipeline_key]
-                #     try:
-                #         time_start = Timestamp().time
-                #         x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
-                #                                           in_key_target = self.key_target,
-                #                                           in_idx_stop = 2)
-                #         _, metric = pipeline.process(x, y, do_remember = True, for_training = True)
-                #         time_end = Timestamp().time
-                #         y_last = pipeline.training_y_true[-1]
-                #         y_pred_last = pipeline.training_y_response[-1]
-                
-                #         log.info("%s - Pipeline '%s' has learned from a total of %i observations.\n"
-                #                 "%s   Structure: %s\n"
-                #                 "%s   Time taken to retrieve, learn and score pipeline on data: %.3f s\n"
-                #                 "%s   Score on those observations: %f\n"
-                #                 "%s   Last observation: Prediction '%s' vs True Value '%s'"
-                #                 % (Timestamp(), pipeline.name, self.idx_data,
-                #                     Timestamp(None), pipeline.components_as_string(),
-                #                     Timestamp(None), time_end - time_start,
-                #                     Timestamp(None), metric,
-                #                     Timestamp(None), y_pred_last, y_last))
-                #     except Exception as e:
-                #         log.error("%s - Pipeline '%s' failed to process data while learning. "
-                #                   "Deleting it and continuing." % (Timestamp(), pipeline_key))
-                #         log.debug(e)
-                #         del self.pipelines[pipeline_key]
-
-                    # await self.queue_dev.put(pipeline)
-
-                #     # EXAMINE PROCESS POOL EXECUTOR. loop.run_in_executor()
-                #     print(1)
-                #     process = mp.Process(target=task)#, args=(pipeline,))
-                #     print(2)
-                #     processes.append(process)
-                #     process.start()
-                #     print(3)
-
-                # for process in processes:
-                #     print("yo")
-                #     process.join()
-
-            # self.can_query.set_result(True)
+            # TODO: Add things to the development queue as required.
                 
             await self.data_storage.has_new_observations
-        
-        # while True:
-        #     # Check for new data and learn from it.
-        #     if self.idx_data < self.data_storage.observations.get_amount():
-        #         self.idx_data = self.data_storage.observations.get_amount()
-                
-        #         # df = self.data_storage.get_dataframe()
-        #         # print(df)
-        #         # df = df.sample(frac = 1)
-        #         # print(df)
-                        
-        #         for pipeline_key in list(self.pipelines.keys()):
-        #             pipeline = self.pipelines[pipeline_key]
-        #             try:
-        #                 time_start = Timestamp().time
-        #                 x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
-        #                                                   in_key_target = self.key_target,
-        #                                                   in_idx_stop = 2)
-        #                 _, metric = pipeline.process(x, y, do_remember = True, for_training = True)
-        #                 time_end = Timestamp().time
-        #                 y_last = pipeline.training_y_true[-1]
-        #                 y_pred_last = pipeline.training_y_response[-1]
-                
-        #                 log.info("%s - Pipeline '%s' has learned from a total of %i observations.\n"
-        #                         "%s   Structure: %s\n"
-        #                         "%s   Time taken to retrieve, learn and score pipeline on data: %.3f s\n"
-        #                         "%s   Score on those observations: %f\n"
-        #                         "%s   Last observation: Prediction '%s' vs True Value '%s'"
-        #                         % (Timestamp(), pipeline.name, self.idx_data,
-        #                             Timestamp(None), pipeline.components_as_string(),
-        #                             Timestamp(None), time_end - time_start,
-        #                             Timestamp(None), metric,
-        #                             Timestamp(None), y_pred_last, y_last))
-        #             except Exception as e:
-        #                 log.error("%s - Pipeline '%s' failed to process data while learning. "
-        #                           "Deleting it and continuing." % (Timestamp(), pipeline_key))
-        #                 log.debug(e)
-        #                 del self.pipelines[pipeline_key]
-                
-        #     await self.data_storage.has_new_observations
 
     async def process_queries(self):
         
@@ -425,47 +405,42 @@ class ProblemSolver:
             queries, _ = self.data_storage.queries.split_by_range(in_idx_start = self.idx_queries,
                                                                   in_idx_stop = idx_stop)
 
-            # # Extract the queries to process.
-            # x, y = self.data_storage.get_data(in_keys_features = self.keys_features,
-            #                                   in_key_target = self.key_target,
-            #                                   in_idx_start = self.idx_queries,
-            #                                   in_idx_stop = idx_stop,
-            #                                   from_queries = True)
-
             # Go through every pipeline in production and process the queries.
             # TODO: Ensemble them to derive a single set of responses.
-            for pipeline_key in list(self.pipelines.keys()):
-                try:
-                    pipeline = self.pipelines[pipeline_key]
-                except Exception as e:
-                    log.warning("%s - Pipeline '%s' disappeared in the middle of a query phase. "
-                                "Continuing to query the next pipeline." % (Timestamp(), pipeline_key))
-                    log.debug(e)
-                    continue
+            for tags, list_pipelines in self.solution.learners.items():
+                # try:
+                #     pipeline = self.solution[pipeline_key]
+                # except Exception as e:
+                #     log.warning("%s - Pipeline '%s' disappeared in the middle of a query phase. "
+                #                 "Continuing to query the next pipeline." % (Timestamp(), pipeline_key))
+                #     log.debug(e)
+                #     continue
 
-                pipeline, metric = test_pipeline(in_pipeline = pipeline, in_data_collection = queries, 
-                                                 in_info_process = info_process)
+                for pipeline in list_pipelines:
 
-                idx_start = info_process["idx_start"]
-                idx_stop = info_process["idx_stop"]
-                duration_prep = info_process["duration_prep"]
-                duration_proc = info_process["duration_proc"]
-                metric = info_process["metric"]
-                y_last = pipeline.testing_y_true[-1]
-                y_pred_last = pipeline.testing_y_response[-1]
+                    pipeline, metric = test_pipeline(in_pipeline = pipeline, in_data_collection = queries, 
+                                                    in_info_process = info_process)
 
-                log.info("%s - Pipeline '%s' has responded to a total of %i queries.\n"
-                        "%s   Structure: %s\n"
-                        "%s   Time taken to retrieve data: %.3f s\n"
-                        "%s   Time taken to query/score pipeline on data: %.3f s\n"
-                        "%s   Score on those queries: %f\n"
-                        "%s   Last observation: Prediction '%s' vs True Value '%s'"
-                        % (Timestamp(), pipeline.name, idx_stop - idx_start,
-                            Timestamp(None), pipeline.components_as_string(do_hpars = True),
-                            Timestamp(None), duration_prep,
-                            Timestamp(None), duration_proc,
-                            Timestamp(None), metric,
-                            Timestamp(None), y_pred_last, y_last))
+                    idx_start = info_process["idx_start"]
+                    idx_stop = info_process["idx_stop"]
+                    duration_prep = info_process["duration_prep"]
+                    duration_proc = info_process["duration_proc"]
+                    metric = info_process["metric"]
+                    y_last = pipeline.testing_y_true[-1]
+                    y_pred_last = pipeline.testing_y_response[-1]
+
+                    log.info("%s - Pipeline '%s' has responded to a total of %i queries.\n"
+                            "%s   Structure: %s\n"
+                            "%s   Time taken to retrieve data: %.3f s\n"
+                            "%s   Time taken to query/score pipeline on data: %.3f s\n"
+                            "%s   Score on those queries: %f\n"
+                            "%s   Last observation: Prediction '%s' vs True Value '%s'"
+                            % (Timestamp(), pipeline.name, idx_stop - idx_start,
+                                Timestamp(None), pipeline.components_as_string(do_hpars = True),
+                                Timestamp(None), duration_prep,
+                                Timestamp(None), duration_proc,
+                                Timestamp(None), metric,
+                                Timestamp(None), y_pred_last, y_last))
                 
             # Update an index to acknowledge the queries that have been processed.
             self.idx_queries = idx_stop
@@ -517,8 +492,9 @@ class ProblemSolver:
         Utility method to get informative figures about the task solver and its models.
         """
         figs = list()
-        for _, pipeline in self.pipelines.items():
-            figs.extend(pipeline.inspect_structure())
-            figs.extend(pipeline.inspect_performance(for_training = True))
-            figs.extend(pipeline.inspect_performance(for_training = False))
+        for tags, list_pipelines in self.solution.learners.items():
+            for pipeline in list_pipelines:
+                figs.extend(pipeline.inspect_structure())
+                figs.extend(pipeline.inspect_performance(for_training = True))
+                figs.extend(pipeline.inspect_performance(for_training = False))
         return figs

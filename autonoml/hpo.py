@@ -191,9 +191,11 @@ def add_hpo_worker(in_hpo_instructions: HPOInstructions,
     worker = HPOWorker(in_sets_training = in_sets_training, in_sets_validation = in_sets_validation,
                        in_info_process = in_info_process,
                        nameserver = name_server_host, run_id = run_id, id = in_idx, logger = log)
-    worker.run(background = do_background)
-
-    return worker
+    try:
+        worker.run(background = do_background)
+        return worker
+    except Exception as e:
+        return e
 
 def run_hpo(in_hpo_instructions: HPOInstructions,
             in_observations: DataCollection,
@@ -237,7 +239,6 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     optimiser = BOHB(configspace = worker.get_configspace(in_search_space = search_space),
                      run_id = run_id, nameserver = name_server_host, logger = log,
                      min_budget = budget_min, max_budget = budget_max, eta = n_partitions)
-    # result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_workers)
     result = optimiser.run(n_iterations = n_iterations)
 
     # Shutdown the optimiser and name server once complete.
@@ -245,27 +246,48 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     name_server.shutdown()
 
     # Each optimiser returns a hpbandster.core.result.Result object.
-    # It holds information about the run like the incumbent (best) configuration.
-    id2config = result.get_id2config_mapping()
-    incumbent = result.get_incumbent_id()
+    # It holds information about the run like the incumbent configuration.
+    # TODO: Deal with failed HPO, e.g. when id_best is None.
     all_runs = result.get_all_runs()
+    id_to_config = result.get_id2config_mapping()
 
-    # print(id2config)
+    id_best = result.get_incumbent_id()
+    run_best = result.get_runs_by_id(id_best)[-1]
 
-    print('Best found configuration:', id2config[incumbent]['config'])
-    print('A total of %i unique configurations were sampled.' % len(id2config.keys()))
-    print('A total of %i runs were executed.' % len(all_runs))
-    print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/budget_max))
-    print('The run took %.1f seconds to complete.'%(all_runs[-1].time_stamps['finished'] - all_runs[0].time_stamps['started']))
+    config_best = id_to_config[id_best]["config"]
+    loss_best = run_best.loss
+    _ = run_best.info   # TODO: Do something with the information.
 
+    text_hpo = ("%s - HPO run '%s' has sampled %i pipelines with %i unique configurations.\n"
+                "%s   Equivalent fully trained pipelines based on net budget: %.3f\n"
+                "%s   Best found max-budget configuration: %s\n"
+                "%s   Best found max-budget validation loss: %s\n"
+                "%s   Time taken to run HPO: %0.3f s"
+                % (Timestamp(), run_id, len(all_runs), len(id_to_config.keys()),
+                Timestamp(None), sum([run.budget for run in all_runs])/budget_max,
+                Timestamp(None), config_best,
+                Timestamp(None), loss_best,
+                Timestamp(None), all_runs[-1].time_stamps["finished"] - all_runs[0].time_stamps["started"]))
+
+    # log.info('Best found configuration:', id2config[incumbent]['config'])
+    # print('A total of %i unique configurations were sampled.' % len(id2config.keys()))
+    # print('A total of %i runs were executed.' % len(all_runs))
+    # print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/budget_max))
+    # print('The run took %.1f seconds to complete.'%(all_runs[-1].time_stamps['finished'] - all_runs[0].time_stamps['started']))
+
+    # Based on the best configuration, create a new pipeline.
     keys_features = in_info_process["keys_features"]
     key_target = in_info_process["key_target"]
-    config = id2config[incumbent]["config"]
     pipeline = MLPipeline(in_name = "Pipe_" + run_id,
                           in_keys_features = keys_features, in_key_target = key_target,
-                          in_components = config_to_pipeline_structure(in_config = config))
+                          in_components = config_to_pipeline_structure(in_config = config_best))
     pipeline, info_process = train_pipeline(in_pipeline = pipeline,
                                             in_data_collection = in_observations,
                                             in_info_process = in_info_process)
+    
+    # Short of further testing, its starting loss is the validation score it received during HPO.
+    pipeline.loss = loss_best
+    
+    info_process["text_hpo"] = text_hpo
 
     return pipeline, info_process

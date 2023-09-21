@@ -15,6 +15,8 @@ from .data_storage import DataCollection
 
 from copy import deepcopy
 
+import numpy as np
+
 # TODO: Upgrade to DAGs.
 class MLPipeline:
     """
@@ -64,6 +66,9 @@ class MLPipeline:
         self.testing_y_true = list()
         self.testing_y_response = list()
 
+        # The value by which this pipeline will be judged.
+        self.loss = np.inf
+
     def components_as_string(self, do_hpars = False):
         if do_hpars:
             text = " -> ".join([component.name + "(" + component.hpars_as_string() + ")" 
@@ -72,6 +77,7 @@ class MLPipeline:
             text = " -> ".join([component.name for component in self.components])
         return text
 
+    # TODO: Review the boolean args. HEAVY CLEANUP REQUIRED.
     def process(self, x, y, in_format_x = None, in_format_y = None, 
                 do_learn = True, do_query = True, do_score = True,
                 do_remember = False, for_training = False):
@@ -107,8 +113,12 @@ class MLPipeline:
                 # Any predictors in the pipeline are queried and scored.
                 if do_query:
                     response = component.query(x=x)
+                # TODO: Review score function. Should have some way to compare truth and predictions.
                 if do_score:
                     metric = component.score(x=x, y=y)
+                    # TODO: THIS IS ONLY FOR R^2 METRIC! DANGER!
+                    if do_remember:
+                        self.loss = 1 - metric
 
         # If there is a response, reformat it to the standard data format.
         if do_query:
@@ -129,6 +139,7 @@ class MLPipeline:
                 else:
                     self.testing_y_true.extend(y)
                     self.testing_y_response.extend(response)
+
 
         # The final predictor in the pipeline has its response/score returned.
         return response, metric

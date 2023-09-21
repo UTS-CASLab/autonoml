@@ -46,7 +46,8 @@ class DataPort:
    
         time_start = Timestamp().time
 
-        with open(in_filepath, "r") as data_file:
+        # TODO: Review the encoding.
+        with open(in_filepath, "r", encoding = "utf-8-sig") as data_file:
             # If there are headers, these become the inflow keys.
             if in_file_has_headers:
                 line = data_file.readline()

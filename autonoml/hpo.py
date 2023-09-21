@@ -6,8 +6,7 @@ Created on Tue Aug 15 10:29:42 2023
 """
 
 from .utils import log, Timestamp, CustomBool
-from .pipeline import MLPipeline, train_pipeline
-from .components.river import OnlineLinearRegressor
+from .pipeline import MLPipeline, train_pipeline, test_pipeline
 
 from .hyperparameter import HPInt, HPFloat
 from .strategy import Strategy, SearchSpace, pool_predictors, pool_preprocessors
@@ -16,6 +15,8 @@ from .data_storage import DataCollection
 import time
 import ConfigSpace as CS
 from copy import deepcopy
+
+from typing import List
 
 import hpbandster.core.nameserver as hpns
 from hpbandster.core.worker import Worker
@@ -35,11 +36,14 @@ class HPOInstructions:
         self.name_server_host = "127.0.0.1"
         self.name_server_port = None
 
+        # The fraction of data to be reserved for validation.
+        # This step is done before successive halving, so quickly trained models are well-validated.
+        self.frac_validation = 0.25 if in_strategy is None else in_strategy.frac_validation
+
         # Successive 'halving' tests candidate configurations for a number of iterations.
         # Budgets, usually representing dataset size, range from minimum to maximum over the iterations.
         # Only one of the number of partitions per iteration advances.
         # The actual number of candidate tests may vary; refer to HPO package documentation for details.
-        # TODO: Make these values come from a user-specified .strat file.
         self.n_iterations = 4 if in_strategy is None else in_strategy.n_iterations
         self.n_partitions = 3 if in_strategy is None else in_strategy.n_partitions
         self.budget_min = 1/(self.n_partitions**self.n_iterations)
@@ -66,11 +70,20 @@ def config_to_pipeline_structure(in_config):
 
 class HPOWorker(Worker):
 
-    def __init__(self, in_observations: DataCollection, in_info_process, *args, **kwargs):
+    def __init__(self, in_sets_training: List[DataCollection], in_sets_validation: List[DataCollection],
+                 in_info_process, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.observations = in_observations
-        self.info_process = deepcopy(in_info_process)   # Deepcopy as budgets will differ.
+        # # TODO: Make these only once. Do it at the solver level.
+        # self.sets_training = list()
+        # self.sets_validation = list()
+        # set_validation, set_training = in_observations.split_by_fraction(in_fraction = in_hpo_instructions.frac_validation)
+        # self.sets_training.append(set_training)
+        # self.sets_validation.append(set_validation)
+
+        self.sets_training = deepcopy(in_sets_training)
+        self.sets_validation = deepcopy(in_sets_validation)
+        self.info_process = deepcopy(in_info_process)
 
     # TODO: Consider the divide by zero runtime warnings generated seemingly when using categoricals.
     # TODO: Consider folding time taken into the metric.
@@ -79,19 +92,34 @@ class HPOWorker(Worker):
 
         keys_features = self.info_process["keys_features"]
         key_target = self.info_process["key_target"]
+        
+        metrics = list()
 
-        # TODO: Maybe ID the test names according to configuration number.
-        pipeline = MLPipeline(in_name = "Test",
-                              in_keys_features = keys_features, in_key_target = key_target, do_increment_count = False,
-                              in_components = config_to_pipeline_structure(in_config = config))
+        for set_training, set_validation in zip(self.sets_training, self.sets_validation):
 
-        self.info_process["fraction"] = budget
-        pipeline, info_process = train_pipeline(in_pipeline = pipeline, 
-                                                in_observations = self.observations, 
-                                                in_info_process = self.info_process)
-        metric = info_process["metric"]
+            # TODO: Maybe ID the test names according to configuration number.
+            pipeline = MLPipeline(in_name = "Test",
+                                in_keys_features = keys_features, in_key_target = key_target, do_increment_count = False,
+                                in_components = config_to_pipeline_structure(in_config = config))
 
-        return {"loss": 1 - metric, "info": info_process}
+            print("Training Size: %i" % int(budget*set_training.get_amount()))
+            pipeline, _ = train_pipeline(in_pipeline = pipeline,
+                                         in_data_collection = set_training,
+                                         in_info_process = self.info_process,
+                                         in_frac_data = budget)
+            
+            print("Validation Size: %i" % set_validation.get_amount())
+            _, info_process = test_pipeline(in_pipeline = pipeline,
+                                            in_data_collection = set_validation,
+                                            in_info_process = self.info_process)
+            
+            metrics.append(info_process["metric"])
+
+        metric = sum(metrics)/len(metrics)
+        print("Metric: %f" % metric)
+
+        # TODO: Consider more informative info.
+        return {"loss": 1 - metric, "info": None}
     
     # TODO: Deal with preprocessors.
     @staticmethod
@@ -145,8 +173,9 @@ class HPOWorker(Worker):
 
         return(cs)
 
-def add_hpo_worker(in_hpo_instructions: HPOInstructions, in_observations: DataCollection,
-                   in_info_process, in_idx: int):
+def add_hpo_worker(in_hpo_instructions: HPOInstructions, 
+                   in_sets_training: List[DataCollection], in_sets_validation: List[DataCollection],
+                   in_info_process, in_idx: int, do_background = False):
     """
     Supplements a current HPO run with an additional worker.
     The worker should terminate when the name server is done with the run.
@@ -156,13 +185,20 @@ def add_hpo_worker(in_hpo_instructions: HPOInstructions, in_observations: DataCo
     run_id = in_hpo_instructions.name
     name_server_host = in_hpo_instructions.name_server_host
 
-    time.sleep(5)   # Artificial delay to ensure the name server is already running.
-    worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
+    # TODO: Consider just running initialisation without delay and repeating for exceptions.
+    # if not do_background:
+    #     time.sleep(5)   # Artificial delay to ensure the name server is already running.
+    worker = HPOWorker(in_sets_training = in_sets_training, in_sets_validation = in_sets_validation,
+                       in_info_process = in_info_process,
                        nameserver = name_server_host, run_id = run_id, id = in_idx, logger = log)
-    worker.run(background = False)
+    worker.run(background = do_background)
 
-def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollection, 
-            in_info_process, in_n_workers: int):
+    return worker
+
+def run_hpo(in_hpo_instructions: HPOInstructions,
+            in_observations: DataCollection,
+            in_sets_training: List[DataCollection], in_sets_validation: List[DataCollection],
+            in_info_process):
     """
     Runs a hyperparameter optimisation according to specified instructions.
     During this run, configured pipelines are trained on a set of provided observations.
@@ -187,15 +223,22 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
     name_server.start()
 
     # The main thread/process can run a worker in the background around the name server.
-    worker = HPOWorker(in_observations = in_observations, in_info_process = in_info_process,
-                       nameserver = name_server_host, run_id = run_id, id = 0, logger = log)
-    worker.run(background = True)
+    worker = add_hpo_worker(in_hpo_instructions = in_hpo_instructions, 
+                            in_sets_training = in_sets_training, in_sets_validation = in_sets_validation,
+                            in_info_process = in_info_process, in_idx = 0, do_background = True)
+
+    # # The main thread/process can run a worker in the background around the name server.
+    # worker = HPOWorker(in_observations = in_observations, 
+    #                    in_hpo_instructions = in_hpo_instructions, in_info_process = in_info_process,
+    #                    nameserver = name_server_host, run_id = run_id, id = 0, logger = log)
+    # worker.run(background = True)
 
     # Create the optimiser and start the run.
     optimiser = BOHB(configspace = worker.get_configspace(in_search_space = search_space),
                      run_id = run_id, nameserver = name_server_host, logger = log,
                      min_budget = budget_min, max_budget = budget_max, eta = n_partitions)
-    result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_workers)
+    # result = optimiser.run(n_iterations = n_iterations, min_n_workers = in_n_workers)
+    result = optimiser.run(n_iterations = n_iterations)
 
     # Shutdown the optimiser and name server once complete.
     optimiser.shutdown(shutdown_workers = True)
@@ -222,7 +265,7 @@ def run_hpo(in_hpo_instructions: HPOInstructions, in_observations: DataCollectio
                           in_keys_features = keys_features, in_key_target = key_target,
                           in_components = config_to_pipeline_structure(in_config = config))
     pipeline, info_process = train_pipeline(in_pipeline = pipeline,
-                                            in_observations = in_observations,
+                                            in_data_collection = in_observations,
                                             in_info_process = in_info_process)
 
     return pipeline, info_process

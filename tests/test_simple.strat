@@ -6,8 +6,8 @@ Optimiser:
       a validation fraction. For i iterations and p partitions, BOHB seeks to sample
       p^i models on 1/p^i of training data at the 1st iteration, then propagate the
       best 1/p models to the next iteration.
-    Iterations: 4
-    Partitions: 3
+    Iterations: 3
+    Partitions: 2
     Validation Fraction: 0.25
 Search Space:
   OnlineLinearRegressor:

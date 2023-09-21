@@ -56,7 +56,8 @@ class Strategy:
 
     def __init__(self, in_search_space: SearchSpace = None,
                  do_hpo: bool = False,
-                 in_n_iterations: int = 4, in_n_partitions: int = 3):
+                 in_n_iterations: int = 4, in_n_partitions: int = 3,
+                 in_frac_validation: float = 0.25):
         
         if in_search_space is None:
             self.search_space = SearchSpace()
@@ -67,6 +68,7 @@ class Strategy:
 
         self.n_iterations = in_n_iterations
         self.n_partitions = in_n_partitions
+        self.frac_validation = in_frac_validation
 
 class CustomDumper(yaml.Dumper): pass
 def custom_bool_representer(dumper, data):
@@ -95,10 +97,12 @@ def template_strategy(in_filepath: str = "./template.strat",
             count_component += 1
 
     strategy = {"Strategy": {"Do HPO": CustomBool(True)},
-                "Optimiser": {"BOHB": {"Note": ("For i iterations and p partitions, "
-                                       "BOHB seeks to sample p^i models on 1/p^i of data at the 1st iteration, "
-                                       "then propagate the best 1/p models to the next iteration."),
-                                       "Iterations": 4, "Partitions": 3}},
+                "Optimiser": {"BOHB": {"Note": ("Prior to HPO, the dataset is randomly split into "
+                                                "a training fraction and a validation fraction. "
+                                                "For i iterations and p partitions, BOHB seeks to "
+                                                "sample p^i models on 1/p^i of training data at the 1st iteration, "
+                                                "then propagate the best 1/p models to the next iteration."),
+                                       "Iterations": 4, "Partitions": 3, "Validation Fraction": 0.25}},
                 "Search Space": config_space}
 
     with open(in_filepath, "w") as file:
@@ -115,7 +119,8 @@ def import_strategy(in_filepath: str):
     strategy = Strategy(in_search_space = SearchSpace(specs["Search Space"]),
                         do_hpo = bool(CustomBool(specs["Strategy"]["Do HPO"])),
                         in_n_iterations = int(specs["Optimiser"]["BOHB"]["Iterations"]),
-                        in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]))
+                        in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]),
+                        in_frac_validation = float(specs["Optimiser"]["BOHB"]["Validation Fraction"]))
 
     return strategy
 

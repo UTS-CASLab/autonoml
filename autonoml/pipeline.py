@@ -175,9 +175,11 @@ class MLPipeline:
 
 
 
-def train_pipeline(in_pipeline: MLPipeline, 
-                   in_observations: DataCollection, 
-                   in_info_process):
+def process_pipeline(in_pipeline: MLPipeline,
+                     in_data_collection: DataCollection,
+                     in_info_process,
+                     in_frac_data: float = 1.0,
+                     for_training: bool = False):
     """
     A wrapper for pipeline training to be called from a ProblemSolver or elsewhere.
     This is designed for multiprocessing.
@@ -185,24 +187,16 @@ def train_pipeline(in_pipeline: MLPipeline,
     
     keys_features = in_info_process["keys_features"]
     key_target = in_info_process["key_target"]
-    idx_start = in_info_process["idx_start"]
-    idx_end = in_info_process["idx_end"]
-    if "fraction" in in_info_process:
-        fraction = in_info_process["fraction"]
-    else:
-        fraction = 1
 
     time_start = Timestamp().time
-    x, y = in_observations.get_data(in_keys_features = keys_features,
-                                    in_key_target = key_target,
-                                    in_idx_start = idx_start,
-                                    in_idx_end = idx_end,
-                                    in_fraction = fraction)
+    x, y = in_data_collection.get_data(in_keys_features = keys_features,
+                                       in_key_target = key_target,
+                                       in_fraction = in_frac_data)
     time_end = Timestamp().time
     duration_prep = time_end - time_start
 
     time_start = Timestamp().time
-    _, metric = in_pipeline.process(x, y, do_remember = True, for_training = True)
+    _, metric = in_pipeline.process(x, y, do_learn = for_training, do_remember = True, for_training = for_training)
     time_end = Timestamp().time
     duration_proc = time_end - time_start
 
@@ -211,3 +205,11 @@ def train_pipeline(in_pipeline: MLPipeline,
     in_info_process["duration_proc"] = duration_proc
 
     return in_pipeline, in_info_process
+
+def train_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollection,
+                   in_info_process, in_frac_data: float = 1.0):
+    return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, for_training = True)
+
+def test_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollection, 
+                  in_info_process):
+    return process_pipeline(in_pipeline, in_data_collection, in_info_process)

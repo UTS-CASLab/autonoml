@@ -15,8 +15,9 @@ from .data_io import DataPort, DataPortStream
 from .solver import ProblemSolver, ProblemSolverInstructions
 from .plot import plot_figures
 
+from .strategy import Strategy
+
 import asyncio
-import threading
 import multiprocess as mp
 from enum import Enum
 
@@ -176,8 +177,10 @@ class AutonoMachine:
     #         # TODO: Relax this constraint eventually.
     #         log.error("%s - DataStorage cannot be updated while a ProblemSolver exists." % Timestamp())
         
+    # TODO: Develop a default strategy maybe with HPO when users do not include one.
     # @skip_in_other_processes
-    def learn(self, in_key_target, in_keys_features = None, do_exclude = False, in_strategy = None):
+    def learn(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False, 
+              in_strategy: Strategy = None):
 
         instructions = ProblemSolverInstructions(in_key_target = in_key_target,
                                                  in_keys_features = in_keys_features,

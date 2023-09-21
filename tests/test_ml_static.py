@@ -23,7 +23,7 @@ if __name__ == '__main__':
 
     strategy = aml.import_strategy("./test_ml_static.strat")
 
-    proj = aml.AutonoMachine(do_mp = False)
+    proj = aml.AutonoMachine(do_mp = True)
 
     for experimental_context in experimental_contexts:
         if not experimental_context is None:

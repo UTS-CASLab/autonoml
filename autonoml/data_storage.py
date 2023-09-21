@@ -38,21 +38,74 @@ class DataCollection:
         self.timestamps = list()
         self.data = dict()
 
+    # TODO: Make sure in_idx_start is less than in_idx_stop when modulo operation is applied.
+    def split_by_range(self, in_idx_start: int = 0, in_idx_stop: int = None):
+        """
+        Return DataCollections with instances inside/outside the specified range.
+        """
+        collection_in = DataCollection()
+        collection_in.timestamps = deepcopy(self.timestamps[in_idx_start:in_idx_stop])
+        collection_in.data = deepcopy({key: self.data[key][in_idx_start:in_idx_stop] 
+                                       for key in self.data})
+        
+        collection_out = DataCollection()
+        collection_out.timestamps = deepcopy(self.timestamps[:in_idx_start] 
+                                             + self.timestamps[in_idx_stop:])
+        collection_out.data = deepcopy({key: (self.data[key][:in_idx_start] 
+                                              + self.data[key][in_idx_stop:]) 
+                                        for key in self.data})
+
+        return collection_in, collection_out
+    
+    # TODO: Consider cases where empty collections are returned. Where to catch exceptions?
+    def split_by_fraction(self, in_fraction: float = 0.25, in_seed: int = 0):
+        """
+        Return DataCollections with/without randomly selected instances.
+        The instances constitute a fraction of the collected data.
+        """
+        n_instances = self.get_amount()
+        random.seed(in_seed)
+        list_indices = random.sample(range(n_instances), n_instances)
+
+        # Ensure the number of indices selected is appropriately bounded.
+        idx_in_stop = min(max(0, int(in_fraction * n_instances)), 
+                          n_instances)
+        idx_out_start = idx_in_stop - n_instances
+        list_indices_in = list_indices[:idx_in_stop]
+        list_indices_out = list_indices[idx_out_start:]
+
+        collection_in = DataCollection()
+        collection_in.timestamps = deepcopy([self.timestamps[idx] for idx in list_indices_in])
+        collection_in.data = deepcopy({key: [self.data[key][idx] for idx in list_indices_in] 
+                                       for key in self.data})
+        
+        collection_out = DataCollection()
+        collection_out.timestamps = deepcopy([self.timestamps[idx] for idx in list_indices_out])
+        collection_out.data = deepcopy({key: [self.data[key][idx] for idx in list_indices_out] 
+                                        for key in self.data})
+
+        return collection_in, collection_out
+
+    # TODO: Review whether to keep the arguments given the methods above.
     def get_data(self, in_keys_features, in_key_target: str,
                  in_format_x: DataFormatX = None, in_format_y: DataFormatY = None,
-                 in_idx_start: int = 0, in_idx_end: int = None,
-                 in_fraction: float = 1):
+                #  in_idx_start: int = 0, in_idx_stop: int = None,
+                 in_fraction: float = 1.0):
 
         source = self.data
-            
+
         # Copy out the required data in default DataFormatX and DataFormatY style.
-        x = {key_feature:deepcopy(source[key_feature][in_idx_start:in_idx_end]) 
-                for key_feature in in_keys_features}
-        y = deepcopy(source[in_key_target][in_idx_start:in_idx_end])
+        x = deepcopy({key_feature:source[key_feature] for key_feature in in_keys_features})
+        y = deepcopy(source[in_key_target])
+            
+        # # Copy out the required data in default DataFormatX and DataFormatY style.
+        # x = {key_feature:deepcopy(source[key_feature][in_idx_start:in_idx_stop]) 
+        #         for key_feature in in_keys_features}
+        # y = deepcopy(source[in_key_target][in_idx_start:in_idx_stop])
 
         # Randomly sample a fraction of the data if desired.
         if in_fraction < 1:
-            amount_selected = self.get_amount(in_idx_start, in_idx_end)
+            amount_selected = self.get_amount()
             size_sample = max(1, int(in_fraction * amount_selected))
             random.seed(0)
             idx_list = random.sample(range(amount_selected), size_sample)
@@ -77,8 +130,8 @@ class DataCollection:
 
         return x, y
     
-    def get_amount(self, in_idx_start: int = 0, in_idx_end: int = None):
-        return len(self.timestamps[in_idx_start:in_idx_end])
+    def get_amount(self, in_idx_start: int = 0, in_idx_stop: int = None):
+        return len(self.timestamps[in_idx_start:in_idx_stop])
 
 
 
@@ -300,28 +353,26 @@ class DataStorage:
     #                 # Update directions for the DataPort.
     #                 self.ikeys_to_dkeys[key_port] = key_storage
     
-    # TODO: Error-check indices.
-    def get_data(self, in_keys_features, in_key_target, 
-                 in_format_x = None, in_format_y = None,
-                 in_idx_start = 0, in_idx_end = None,
-                 from_queries = False):
+    # # TODO: Error-check indices.
+    # def get_data(self, in_keys_features, in_key_target, 
+    #              in_format_x = None, in_format_y = None,
+    #             #  in_idx_start = 0, in_idx_stop = None,
+    #              from_queries = False):
 
-        source = self.observations
-        if from_queries:
-            source = self.queries
+    #     source = self.observations
+    #     if from_queries:
+    #         source = self.queries
 
-        return source.get_data(in_keys_features = in_keys_features,
-                               in_key_target = in_key_target,
-                               in_format_x = in_format_x,
-                               in_format_y = in_format_y,
-                               in_idx_start = in_idx_start,
-                               in_idx_end = in_idx_end)
+    #     return source.get_data(in_keys_features = in_keys_features,
+    #                            in_key_target = in_key_target,
+    #                            in_format_x = in_format_x,
+    #                            in_format_y = in_format_y)
 
             
         # # Copy out the required data in default DataFormatX and DataFormatY style.
-        # x = {key_feature:deepcopy(source[key_feature][in_idx_start:in_idx_end]) 
+        # x = {key_feature:deepcopy(source[key_feature][in_idx_start:in_idx_stop]) 
         #      for key_feature in in_keys_features}
-        # y = deepcopy(source[in_key_target][in_idx_start:in_idx_end])
+        # y = deepcopy(source[in_key_target][in_idx_start:in_idx_stop])
 
         # if in_format_x is None:
         #     in_format_x = DataFormatX(0)

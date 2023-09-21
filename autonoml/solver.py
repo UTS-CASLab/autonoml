@@ -187,6 +187,7 @@ class ProblemSolver:
                 if idx_stop is None:
                     idx_stop = self.data_storage.observations.get_amount()
 
+                name_hpo = None
                 info_process = {"keys_features": self.keys_features,
                                 "key_target": self.key_target,
                                 "idx_start": idx_start,
@@ -201,14 +202,16 @@ class ProblemSolver:
                     
                 elif isinstance(object_dev, HPOInstructions):
 
+                    name_hpo = object_dev.name
+
                     # Ensure that active HPO runs have unique names.
-                    if object_dev.name in self.hpo_runs_active:
+                    if name_hpo in self.hpo_runs_active:
                         text_error = ("HPOInstructions named '%s' was encountered in the development queue "
-                                      "while another identically named HPO run was active.") % object_dev.name
+                                      "while another identically named HPO run was active.") % name_hpo
                         log.error("%s - %s" % (Timestamp(), text_error))
                         raise Exception(text_error)
 
-                    log.info("%s - Preparing HPO run '%s'." % (Timestamp(), object_dev.name))
+                    log.info("%s - Preparing HPO run '%s'." % (Timestamp(), name_hpo))
                     sets_training = list()
                     sets_validation = list()
 
@@ -225,15 +228,18 @@ class ProblemSolver:
                              % (Timestamp(None), 1 - object_dev.frac_validation, object_dev.frac_validation, duration))
 
                     # Activate the HPO run.
+                    log.info("%s - Launching %i-worker HPO run '%s' with HPO worker 0." 
+                             % (Timestamp(), n_procs_hpo, name_hpo))
                     future_pipeline = loop.run_in_executor(executor, run_hpo, object_dev, observations,
                                                            sets_training, sets_validation, info_process)
-                    self.hpo_runs_active[object_dev.name] = True
+                    self.hpo_runs_active[name_hpo] = True
 
                     # Add HPO workers to the run.
                     for idx_worker in range(1, n_procs_hpo):
                         add_attempts = 0
                         while True:
                             try:
+                                log.info("%s - Attempting to add HPO worker %i." % (Timestamp(), idx_worker))
                                 loop.run_in_executor(executor, add_hpo_worker, object_dev,
                                                      sets_training, sets_validation, info_process, idx_worker)
                                 break
@@ -241,22 +247,22 @@ class ProblemSolver:
                             except ConnectionRefusedError as e:
                                 log.warning("%s - Failed to add HPO worker. Considering a reattempt." % Timestamp())
                                 # If the HPO run is no longer active, forget about it.
-                                if not object_dev.name in self.hpo_runs_active:
+                                if not name_hpo in self.hpo_runs_active:
                                     log.warning("%s   However, HPO run '%s' is no longer active." 
-                                                % (Timestamp(None), object_dev.name))
+                                                % (Timestamp(None), name_hpo))
                                     break
                                 elif add_attempts > 5:
                                     log.warning("%s   However, too many attempts have been made." 
-                                                % (Timestamp(None), object_dev.name))
+                                                % (Timestamp(None), name_hpo))
                                     break
                                 # If the HPO run is active, the manager is delayed. Try again.
                                 time.sleep(1)
                             except Exception as e:
                                 raise e
                             add_attempts += 1
-                create_async_task(self.push_to_production, future_pipeline)
+                create_async_task(self.push_to_production, future_pipeline, name_hpo)
 
-    async def push_to_production(self, in_future_pipeline, from_hpo = False):
+    async def push_to_production(self, in_future_pipeline, in_name_hpo = None):
         try:
             pipeline, info_process = await in_future_pipeline
 
@@ -287,6 +293,11 @@ class ProblemSolver:
             text_alert = "%s - ProblemSolver '%s' failed to process an MLPipeline." % (Timestamp(), self.name)
             identify_error(e, text_alert)
         finally:
+            # Mark the HPO run as inactive, if applicable.
+            if not in_name_hpo is None:
+                log.info("%s - Noting that HPO run '%s' has concluded." 
+                         % (Timestamp(), in_name_hpo))
+                del self.hpo_runs_active[in_name_hpo]
             self.queue_dev.task_done()
 
     async def process_strategy(self):

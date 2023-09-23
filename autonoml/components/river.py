@@ -160,13 +160,13 @@ class OnlineLinearRegressor(RiverPredictor):
                                          is_log_scale = True)
         return hpars
 
-    def score(self, x, y):
-        # TODO: Generalise the metrics.
-        metric = metrics.R2()
-        for y_true, y_pred in zip(y, self.query(x)):
-            metric.update(y_true, y_pred)
-        value = metric.get()
-        return value
+    # def score(self, x, y):
+    #     # TODO: Generalise the metrics.
+    #     metric = metrics.R2()
+    #     for y_true, y_pred in zip(y, self.query(x)):
+    #         metric.update(y_true, y_pred)
+    #     value = metric.get()
+    #     return value
     
 class OnlineLinearRegressorBatch(OnlineLinearRegressor):
 

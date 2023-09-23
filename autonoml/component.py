@@ -84,8 +84,15 @@ class MLPredictor(MLComponent):
         self.key_target = None
         self.format_y = None
 
-    def score(self, x, y):
-        raise NotImplementedError
+    # @staticmethod
+    # def score(y_pred, y_true, in_loss_function: LossFunction = None):
+    #     """
+    #     Compare a set of predictions against a set of expected values.
+    #     The output must be a loss.
+    #     """
+    #     if in_loss_function is None:
+    #         in_loss_function = LossFunction(0)      # Default loss function.
+    #     return calculate_loss(y_pred, y_true, in_loss_function)
     
     def query(self, x):
         raise NotImplementedError

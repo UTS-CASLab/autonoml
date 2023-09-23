@@ -93,7 +93,7 @@ class HPOWorker(Worker):
         keys_features = self.info_process["keys_features"]
         key_target = self.info_process["key_target"]
         
-        metrics = list()
+        losses = list()
 
         for set_training, set_validation in zip(self.sets_training, self.sets_validation):
 
@@ -109,17 +109,17 @@ class HPOWorker(Worker):
                                          in_frac_data = budget)
             
             print("Validation Size: %i" % set_validation.get_amount())
-            _, info_process = test_pipeline(in_pipeline = pipeline,
-                                            in_data_collection = set_validation,
-                                            in_info_process = self.info_process)
+            pipeline, _ = test_pipeline(in_pipeline = pipeline,
+                                        in_data_collection = set_validation,
+                                        in_info_process = self.info_process)
             
-            metrics.append(info_process["metric"])
+            losses.append(pipeline.get_loss())
 
-        metric = sum(metrics)/len(metrics)
-        print("Metric: %f" % metric)
+        loss = sum(losses)/len(losses)
+        print("Loss: %f" % loss)
 
         # TODO: Consider more informative info.
-        return {"loss": 1 - metric, "info": None}
+        return {"loss": loss, "info": None}
     
     # TODO: Deal with preprocessors.
     @staticmethod
@@ -286,7 +286,7 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
                                             in_info_process = in_info_process)
     
     # Short of further testing, its starting loss is the validation score it received during HPO.
-    pipeline.loss = loss_best
+    pipeline.set_loss(loss_best)
     
     info_process["text_hpo"] = text_hpo
 

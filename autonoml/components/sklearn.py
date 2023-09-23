@@ -43,8 +43,8 @@ class SKLearnPredictor(MLPredictor):
     def learn(self, x, y):
         self.model.fit(X=x, y=y)
 
-    def score(self, x, y):
-        return self.model.score(X=x, y=y)
+    # def score(self, x, y):
+    #     return self.model.score(X=x, y=y)
 
     def query(self, x):
         return self.model.predict(X=x)

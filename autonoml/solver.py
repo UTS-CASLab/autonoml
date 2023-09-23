@@ -54,12 +54,12 @@ class ProblemSolution:
     def insert_learner(self, in_pipeline: MLPipeline, in_tags = None):
         list_pipelines = self.learners[0]
         list_pipelines.append(in_pipeline)
-        self.learners[0] = sorted(list_pipelines, key=lambda p: p.loss)
-        log.debug(["%s: %0.2f" % (pipeline.name, pipeline.loss) for pipeline in self.learners[0]])
+        self.learners[0] = sorted(list_pipelines, key=lambda p: p.get_loss())
+        log.debug(["%s: %0.2f" % (pipeline.name, pipeline.get_loss()) for pipeline in self.learners[0]])
         if len(self.learners[0]) > self.n_challengers + 1:
             pipeline_removed = self.learners[0].pop()
             log.debug("Removing uncompetitive challenger pipeline '%s' with loss: %0.2f" 
-                      % (pipeline_removed.name, pipeline_removed.loss))
+                      % (pipeline_removed.name, pipeline_removed.get_loss()))
 
 
 class ProblemSolver:
@@ -268,30 +268,7 @@ class ProblemSolver:
                         # if name_hpo in self.hpo_runs_active:
                         create_async_task(self.support_hpo, executor, idx_worker, object_dev,
                                           sets_training, sets_validation, info_process)
-                        # else:
-                        #     log.info("%s - HPO run '%s' is inactive and needs no further support.")
-                        # add_attempts = 0
-                        # while True:
-                        #     try:
-                        #         log.info("%s - Attempting to add HPO worker %i." % (Timestamp(), idx_worker))
-                        #         loop.run_in_executor(executor, add_hpo_worker, object_dev,
-                        #                              sets_training, sets_validation, info_process, idx_worker)
-                        #         break
-                        #     # A connection inability means the worker manager has not started or already ended.
-                        #     except Exception as e:
-                        #         log.warning("%s - Failed to add and run HPO worker. Considering a reattempt." % Timestamp())
-                        #         # If the HPO run is no longer active, forget about it.
-                        #         if not name_hpo in self.hpo_runs_active:
-                        #             log.warning("%s   However, HPO run '%s' is no longer active." 
-                        #                         % (Timestamp(None), name_hpo))
-                        #             break
-                        #         elif add_attempts > 5:
-                        #             log.warning("%s   However, too many attempts have been made." 
-                        #                         % (Timestamp(None), name_hpo))
-                        #             break
-                        #         # If the HPO run is active, the manager is delayed. Try again.
-                        #         time.sleep(1)
-                        #     add_attempts += 1
+                        
                 create_async_task(self.push_to_production, future_pipeline, name_hpo)
 
     async def support_hpo(self, in_executor, in_idx_worker: int, in_hpo_instructions, 
@@ -302,8 +279,6 @@ class ProblemSolver:
 
         add_attempts = 0
         while True:
-            # log.debug("%s - Attempting to add worker %i of HPO run '%s'." 
-            #          % (Timestamp(), in_idx_worker, name_hpo))
             result = await loop.run_in_executor(in_executor, add_hpo_worker, in_hpo_instructions, 
                                     in_sets_training, in_sets_validation, in_info_process, in_idx_worker)
             
@@ -337,7 +312,6 @@ class ProblemSolver:
             idx_stop = info_process["idx_stop"]
             duration_prep = info_process["duration_prep"]
             duration_proc = info_process["duration_proc"]
-            metric = info_process["metric"]
             y_last = pipeline.training_y_true[-1]
             y_pred_last = pipeline.training_y_response[-1]
 
@@ -345,13 +319,15 @@ class ProblemSolver:
                      "%s   Structure: %s\n"
                      "%s   Time taken to retrieve data: %.3f s\n"
                      "%s   Time taken to train/score pipeline on data: %.3f s\n"
-                     "%s   Score on those observations: %f\n"
+                     "%s   Training loss: %f\n"
+                     "%s   (Testing loss: %f)\n"
                      "%s   Last observation: Prediction '%s' vs True Value '%s'"
                      % (Timestamp(), pipeline.name, idx_stop - idx_start,
                         Timestamp(None), pipeline.components_as_string(do_hpars = True),
                         Timestamp(None), duration_prep,
                         Timestamp(None), duration_proc,
-                        Timestamp(None), metric,
+                        Timestamp(None), pipeline.get_loss(is_training = True),
+                        Timestamp(None), pipeline.get_loss(),
                         Timestamp(None), y_pred_last, y_last))
             
             self.solution.insert_learner(pipeline)
@@ -362,8 +338,6 @@ class ProblemSolver:
         finally:
             # Mark the HPO run as inactive, if applicable.
             if not in_name_hpo is None:
-                # log.info("%s - Noting that HPO run '%s' has concluded." 
-                #          % (Timestamp(), in_name_hpo))
                 del self.hpo_runs_active[in_name_hpo]
 
             self.queue_dev.task_done()
@@ -425,7 +399,7 @@ class ProblemSolver:
                     idx_stop = info_process["idx_stop"]
                     duration_prep = info_process["duration_prep"]
                     duration_proc = info_process["duration_proc"]
-                    metric = info_process["metric"]
+                    # metric = info_process["metric"]
                     y_last = pipeline.testing_y_true[-1]
                     y_pred_last = pipeline.testing_y_response[-1]
 
@@ -433,13 +407,15 @@ class ProblemSolver:
                             "%s   Structure: %s\n"
                             "%s   Time taken to retrieve data: %.3f s\n"
                             "%s   Time taken to query/score pipeline on data: %.3f s\n"
-                            "%s   Score on those queries: %f\n"
+                            "%s   (Training loss: %f)\n"
+                            "%s   Testing loss: %f\n"
                             "%s   Last observation: Prediction '%s' vs True Value '%s'"
                             % (Timestamp(), pipeline.name, idx_stop - idx_start,
                                 Timestamp(None), pipeline.components_as_string(do_hpars = True),
                                 Timestamp(None), duration_prep,
                                 Timestamp(None), duration_proc,
-                                Timestamp(None), metric,
+                                Timestamp(None), pipeline.get_loss(is_training = True),
+                                Timestamp(None), pipeline.get_loss(),
                                 Timestamp(None), y_pred_last, y_last))
                 
             # Update an index to acknowledge the queries that have been processed.

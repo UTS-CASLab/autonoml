@@ -266,7 +266,24 @@ class DataStorage:
         else:
             self.has_new_observations.set_result(True)
             self.has_new_observations = asyncio.Future()
+
+
+    def get_unique_values(self, in_key, do_check_category = True, from_queries = False):
         
+        if do_check_category and not self.data_types[in_key] == DataType.CATEGORICAL:
+            text_error = ("Attempting to acquire unique values from "
+                            "a list of non-categorical data type.")
+            log.error("%s - %s" % (Timestamp(), text_error))
+            raise Exception(text_error)
+        
+        if from_queries:
+            set_values = set(self.queries.data[in_key])
+        else:
+            set_values = set(self.observations.data[in_key])
+
+        return set_values
+        
+
     def info(self):
         """
         Utility method to give user info about data ports and storage.

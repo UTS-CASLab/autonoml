@@ -10,7 +10,7 @@ import autonoml as aml
 dir_data = "./data"
 filename_substring = "sps_quality_1000_events"
 experimental_contexts = ["1p2uW_3000cps",
-                        #  "2p5uW_4000cps",
+                         "2p5uW_4000cps",
                         #  "4uW_4100cps",
                         #  "8uW_5100cps",
                         #  "10uW_6000cps",
@@ -37,10 +37,9 @@ if __name__ == '__main__':
                in_keys_features = ["best", "context"], do_exclude = True,
                in_strategy = strategy,
                in_keys_allocation = [("context", aml.AllocationMethod.LEAVE_ONE_OUT)])
-            #    ensemble_for = {("context", -1), "num_events"})
     
-    for experimental_context in experimental_contexts:
-        if not experimental_context is None:
-            proj.query_with_file(in_filepath = "%s/test_%s_%s.csv" % (dir_data, filename_substring, 
-                                                                      experimental_context), 
-                                 in_tags = {"context": experimental_context})
+    # for experimental_context in experimental_contexts:
+    #     if not experimental_context is None:
+    #         proj.query_with_file(in_filepath = "%s/test_%s_%s.csv" % (dir_data, filename_substring, 
+    #                                                                   experimental_context), 
+    #                              in_tags = {"context": experimental_context})

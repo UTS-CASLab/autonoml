@@ -56,22 +56,73 @@ class ProblemSolution:
     A container for all learners currently in production.
     """
     def __init__(self, in_instructions: ProblemSolverInstructions, in_data_storage: DataStorage):
-        self.groups = dict()
 
+        # Define a group as a champion and multiple challengers learning on a particular subset of data.
+        # Define a filter as the rules for generating that subset of data.
+        # Both dicts have the same keys.
+        self.groups = dict()
+        self.filters = dict()
+
+        # If there are no allocation instructions, there are no filters.
+        # One group learns on all data.
+        self.id_no_filter = ""
+        self.groups[self.id_no_filter] = list()
+        self.filters[self.id_no_filter] = None
+
+        # Examine how the user specifies data should be allocated between groups.
         keys_allocation = in_instructions.keys_allocation
-        if keys_allocation is None:
-            self.groups[0] = list()
-        else:
+        if not keys_allocation is None:
             for key_allocation in keys_allocation:
                 if not isinstance(key_allocation, tuple):
                     key_allocation = (key_allocation, AllocationMethod.ONE_EACH)
-                key = key_allocation
+                key_data = key_allocation[0]
                 method_allocation = key_allocation[-1]
                 
-        in_data_storage.observations
-        self.groups[0] = list()
+                set_values = in_data_storage.get_unique_values(key_data)
+                print(set_values)
+                if method_allocation == AllocationMethod.LEAVE_ONE_OUT:
+                    if len(set_values) == 1:
+                        text_warning = ("Skipping leave-one-out filter definitions based on '%s'. "
+                                        "Only one category found: %s" % (key_data, set_values.pop()))
+                        log.warning("%s - %s" % (Timestamp(), text_warning))
+                        continue
+
+                # Each separate allocation key denotes another dimension of partitioning.
+                # All previous groups are subdivided further.
+                # TODO: Consider options for independent partitionings, i.e. no sub-splitting.
+                for key_group in list(self.groups.keys()):
+                    print(key_group)
+                    for value in set_values:
+                        print(value)
+                        if method_allocation == AllocationMethod.ONE_EACH:
+                            if key_group == self.id_no_filter:
+                                key_group_new = key_data + "==" + value
+                            else:
+                                key_group_new = key_group + ", " + key_data + "==" + value
+                        elif method_allocation == AllocationMethod.LEAVE_ONE_OUT:
+                            if key_group == self.id_no_filter:
+                                key_group_new = key_data + "!=" + value
+                            else:
+                                key_group_new = key_group + ", " + key_data + "!=" + value
+                        else:
+                            raise NotImplementedError
+                        
+                        self.groups[key_group_new] = list()
+                        if self.filters[key_group] is None:
+                            self.filters[key_group_new] = [(key_data, value, method_allocation)]
+                        else:
+                            self.filters[key_group_new] = (self.filters[key_group] 
+                                                           + [(key_data, value, method_allocation)])
+                        
+                    del self.groups[key_group]
+                    del self.filters[key_group]
 
         self.n_challengers = in_instructions.n_challengers
+
+        log.info("%s - Prepared a ProblemSolution of %i learner-groups.\n"
+                 "%s   Each group champion can have up to %i challengers."
+                 % (Timestamp(), len(self.groups),
+                    Timestamp(None), self.n_challengers))
 
     def insert_learner(self, in_pipeline: MLPipeline, in_tags = None):
         list_pipelines = self.groups[0]
@@ -112,8 +163,7 @@ class ProblemSolver:
         self.key_target = None
         self.keys_features = None
         
-        self.solution = ProblemSolution(in_instructions = in_instructions, in_data_storage = in_data_storage)
-        # self.solution = dict()         # MLPipelines that are in production.
+        self.solution = None            # MLPipelines that are in production.
         self.queue_dev = None           # MLPipelines and HPO runs that are in development.
         # Note: This queue must not be instantiated as an asyncio queue until within a coroutine.
         self.hpo_runs_active = dict()   # A dictionary to track what HPO runs are active.
@@ -146,6 +196,11 @@ class ProblemSolver:
         o1, o2 = await future
         self.key_target = o1
         self.keys_features = o2
+
+        print(1)
+
+        # Instantiate the solution as part of an event loop so that prerequisite data is ingested.
+        self.solution = ProblemSolution(in_instructions = self.instructions, in_data_storage = self.data_storage)
         
         # Instantiate the development queue now that this code is running internally within an event loop.
         self.queue_dev = asyncio.Queue()
@@ -154,10 +209,11 @@ class ProblemSolver:
 
         if strategy.do_hpo:
             if len(strategy.search_space.list_predictors()) > 0:
-                await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
-                # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
-                # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
-                # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+                for key_group in self.solution.groups:
+                    await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+                    # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+                    # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+                    # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
             else:
                 text_warning = ("The Strategy for ProblemSolver '%s' does not suggest "
                                 "any predictors in its search space.") % self.name
@@ -352,7 +408,7 @@ class ProblemSolver:
                         Timestamp(None), pipeline.get_loss(),
                         Timestamp(None), y_pred_last, y_last))
             
-            self.solution.insert_learner(pipeline)
+            self.solution.insert_learner(in_pipeline = pipeline, in_tags = info_process["tags"])
             log.info("%s   Pipeline '%s' is pushed to production." % (Timestamp(None), pipeline.name))
         except Exception as e:
             text_alert = "%s - ProblemSolver '%s' failed to process an MLPipeline." % (Timestamp(), self.name)
@@ -363,6 +419,7 @@ class ProblemSolver:
                 del self.hpo_runs_active[in_name_hpo]
 
             self.queue_dev.task_done()
+
 
     async def process_strategy(self):
         while True:

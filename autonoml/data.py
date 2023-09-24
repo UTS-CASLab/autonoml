@@ -12,29 +12,26 @@ from enum import Enum
 import pandas as pd
 
 class DataType(Enum):
-    FLOAT = 0
-    INTEGER = 1
-    CATEGORICAL = 2
+
+    def __new__(cls, *args, **kwds):
+        value = len(cls.__members__) + 1
+        obj = object.__new__(cls)
+        obj._value_ = value
+        return obj
+    
+    def __init__(self, in_converter, in_string):
+        self.converter = in_converter
+        self.string = in_string
+
+    FLOAT = float, "float"
+    INTEGER = int, "int"
+    CATEGORICAL = str, "categorical"
 
     def to_string(self):
-        if self == DataType.FLOAT:
-            return "float"
-        elif self == DataType.INTEGER:
-            return "int"
-        elif self == DataType.CATEGORICAL:
-            return "categorical"
-        else:
-            return "unknown"
-        
+        return self.string
+
     def convert(self, in_val):
-        if self == DataType.FLOAT:
-            return float(in_val)
-        elif self == DataType.INTEGER:
-            return int(in_val)
-        elif self == DataType.CATEGORICAL:
-            return str(in_val)
-        else:
-            return None
+        return self.converter(in_val)
 
 
 class DataFormatX(Enum):

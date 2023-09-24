@@ -79,7 +79,6 @@ class ProblemSolution:
                 method_allocation = key_allocation[-1]
                 
                 set_values = in_data_storage.get_unique_values(key_data)
-                print(set_values)
                 if method_allocation == AllocationMethod.LEAVE_ONE_OUT:
                     if len(set_values) == 1:
                         text_warning = ("Skipping leave-one-out filter definitions based on '%s'. "
@@ -91,9 +90,7 @@ class ProblemSolution:
                 # All previous groups are subdivided further.
                 # TODO: Consider options for independent partitionings, i.e. no sub-splitting.
                 for key_group in list(self.groups.keys()):
-                    print(key_group)
                     for value in set_values:
-                        print(value)
                         if method_allocation == AllocationMethod.ONE_EACH:
                             if key_group == self.id_no_filter:
                                 key_group_new = key_data + "==" + value
@@ -196,8 +193,6 @@ class ProblemSolver:
         o1, o2 = await future
         self.key_target = o1
         self.keys_features = o2
-
-        print(1)
 
         # Instantiate the solution as part of an event loop so that prerequisite data is ingested.
         self.solution = ProblemSolution(in_instructions = self.instructions, in_data_storage = self.data_storage)

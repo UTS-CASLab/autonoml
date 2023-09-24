@@ -21,11 +21,19 @@ import concurrent.futures
 # from copy import deepcopy
 import time
 
+from enum import Enum
 
+# TODO: Make these options clear to a user.
+class AllocationMethod(Enum):
+    """
+    Descriptors for how to subdivide data per learner.
+    """
+    ONE_EACH = 0
+    LEAVE_ONE_OUT = 1
 
 class ProblemSolverInstructions:
     def __init__(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False, 
-                 in_strategy: Strategy = None):
+                 in_strategy: Strategy = None, in_keys_allocation = None):
         
         self.key_target = in_key_target
         self.keys_features = in_keys_features
@@ -39,25 +47,39 @@ class ProblemSolverInstructions:
         else:
             self.strategy = in_strategy
 
+        # Defines how the solution should look.
+        self.keys_allocation = in_keys_allocation
         self.n_challengers = 2
 
 class ProblemSolution:
     """
     A container for all learners currently in production.
     """
-    def __init__(self, in_instructions: ProblemSolverInstructions):
-        self.learners = dict()
-        self.learners[0] = list()
+    def __init__(self, in_instructions: ProblemSolverInstructions, in_data_storage: DataStorage):
+        self.groups = dict()
+
+        keys_allocation = in_instructions.keys_allocation
+        if keys_allocation is None:
+            self.groups[0] = list()
+        else:
+            for key_allocation in keys_allocation:
+                if not isinstance(key_allocation, tuple):
+                    key_allocation = (key_allocation, AllocationMethod.ONE_EACH)
+                key = key_allocation
+                method_allocation = key_allocation[-1]
+                
+        in_data_storage.observations
+        self.groups[0] = list()
 
         self.n_challengers = in_instructions.n_challengers
 
     def insert_learner(self, in_pipeline: MLPipeline, in_tags = None):
-        list_pipelines = self.learners[0]
+        list_pipelines = self.groups[0]
         list_pipelines.append(in_pipeline)
-        self.learners[0] = sorted(list_pipelines, key=lambda p: p.get_loss())
-        log.debug(["%s: %0.2f" % (pipeline.name, pipeline.get_loss()) for pipeline in self.learners[0]])
-        if len(self.learners[0]) > self.n_challengers + 1:
-            pipeline_removed = self.learners[0].pop()
+        self.groups[0] = sorted(list_pipelines, key=lambda p: p.get_loss())
+        log.debug(["%s: %0.2f" % (pipeline.name, pipeline.get_loss()) for pipeline in self.groups[0]])
+        if len(self.groups[0]) > self.n_challengers + 1:
+            pipeline_removed = self.groups[0].pop()
             log.debug("Removing uncompetitive challenger pipeline '%s' with loss: %0.2f" 
                       % (pipeline_removed.name, pipeline_removed.get_loss()))
 
@@ -90,7 +112,7 @@ class ProblemSolver:
         self.key_target = None
         self.keys_features = None
         
-        self.solution = ProblemSolution(in_instructions = in_instructions)
+        self.solution = ProblemSolution(in_instructions = in_instructions, in_data_storage = in_data_storage)
         # self.solution = dict()         # MLPipelines that are in production.
         self.queue_dev = None           # MLPipelines and HPO runs that are in development.
         # Note: This queue must not be instantiated as an asyncio queue until within a coroutine.
@@ -133,9 +155,9 @@ class ProblemSolver:
         if strategy.do_hpo:
             if len(strategy.search_space.list_predictors()) > 0:
                 await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
-                await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
-                await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
-                await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+                # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+                # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+                # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
             else:
                 text_warning = ("The Strategy for ProblemSolver '%s' does not suggest "
                                 "any predictors in its search space.") % self.name
@@ -381,7 +403,7 @@ class ProblemSolver:
 
             # Go through every pipeline in production and process the queries.
             # TODO: Ensemble them to derive a single set of responses.
-            for tags, list_pipelines in self.solution.learners.items():
+            for tags, list_pipelines in self.solution.groups.items():
                 # try:
                 #     pipeline = self.solution[pipeline_key]
                 # except Exception as e:
@@ -468,7 +490,7 @@ class ProblemSolver:
         Utility method to get informative figures about the task solver and its models.
         """
         figs = list()
-        for tags, list_pipelines in self.solution.learners.items():
+        for tags, list_pipelines in self.solution.groups.items():
             for pipeline in list_pipelines:
                 figs.extend(pipeline.inspect_structure())
                 figs.extend(pipeline.inspect_performance(for_training = True))

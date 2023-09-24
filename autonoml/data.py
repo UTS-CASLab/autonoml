@@ -11,6 +11,32 @@ from enum import Enum
 
 import pandas as pd
 
+class DataType(Enum):
+    FLOAT = 0
+    INTEGER = 1
+    CATEGORICAL = 2
+
+    def to_string(self):
+        if self == DataType.FLOAT:
+            return "float"
+        elif self == DataType.INTEGER:
+            return "int"
+        elif self == DataType.CATEGORICAL:
+            return "categorical"
+        else:
+            return "unknown"
+        
+    def convert(self, in_val):
+        if self == DataType.FLOAT:
+            return float(in_val)
+        elif self == DataType.INTEGER:
+            return int(in_val)
+        elif self == DataType.CATEGORICAL:
+            return str(in_val)
+        else:
+            return None
+
+
 class DataFormatX(Enum):
     """
     Enumeration of ways that X can be formatted.

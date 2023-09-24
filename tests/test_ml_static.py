@@ -35,7 +35,8 @@ if __name__ == '__main__':
 
     proj.learn(in_key_target = "estimate",
                in_keys_features = ["best", "context"], do_exclude = True,
-               in_strategy = strategy)#,
+               in_strategy = strategy,
+               in_keys_allocation = [("context", aml.AllocationMethod.LEAVE_ONE_OUT)])
             #    ensemble_for = {("context", -1), "num_events"})
     
     for experimental_context in experimental_contexts:

@@ -7,6 +7,7 @@ Created on Thu Jul  6 19:00:56 2023
 
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
+from .data import DataType
 
 from .data_storage import DataStorage
 
@@ -30,6 +31,7 @@ class DataPort:
         
         # An ordered list of keys associated with elements of inflow data.
         self.keys = None
+        self.data_types = None
         
     # TODO: Consider Pandas if it is faster.
     # TODO: Update logs for queries.
@@ -52,10 +54,12 @@ class DataPort:
             if in_file_has_headers:
                 line = data_file.readline()
                 self.keys = line.rstrip().split(",")
+                self.data_types = [None]*len(self.keys)
 
                 # Add the custom tags to keys.
                 for key_tag in tags:
                     self.keys.append(key_tag)
+                    self.data_types.append(DataType.CATEGORICAL)
 
             count_instance = 0
             for line in data_file:
@@ -69,14 +73,17 @@ class DataPort:
                     # Add the custom tags to keys.
                     for key_tag in tags:
                         self.keys.append(key_tag)
+                        self.data_types = [None]*len(self.keys)
 
                 for key_tag in tags:
                     data.append(tags[key_tag])
+                    self.data_types.append(DataType.CATEGORICAL)
                     
                 self.data_storage.store_data(in_timestamp = Timestamp(),
                                              in_data_port_id = self.name,
                                              in_keys = self.keys,
                                              in_elements = data,
+                                             in_data_types = self.data_types,
                                              as_query = as_query)
                 count_instance += 1
 

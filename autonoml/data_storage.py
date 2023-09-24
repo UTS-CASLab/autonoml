@@ -8,7 +8,7 @@ Created on Fri May 12 22:21:05 2023
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
 from .concurrency import create_async_task_from_sync
-from .data import DataFormatX, DataFormatY, reformat_x, reformat_y
+from .data import (DataType, DataFormatX, DataFormatY, reformat_x, reformat_y)
 
 import asyncio
 import ast
@@ -20,14 +20,21 @@ import numpy as np
 # TODO: Redesign so the inference/conversion is done at DataPort interface?
 #       This will allow CSV text file inputs to be treated differently from other inputs.
 def infer_data_type(in_element):
-    data_type = type(in_element)
+    element_type = type(in_element)
     
     # Check if a string data type can be converted to something else.
-    if data_type == str:
+    if element_type == str:
         try:
-            data_type = type(ast.literal_eval(in_element))
+            element_type = type(ast.literal_eval(in_element))
         except:
             pass
+
+    if element_type == float:
+        data_type = DataType.FLOAT
+    elif element_type == int:
+        data_type = DataType.INTEGER
+    else:
+        data_type = DataType.CATEGORICAL
     
     return data_type
 
@@ -144,18 +151,12 @@ class DataStorage:
     
     def __init__(self):
         log.info("%s - Initialising DataStorage." % Timestamp())
-        
+
         self.observations = DataCollection()
         self.queries = DataCollection()
 
-        # self.timestamps_observations = list()
-        # self.observations = dict()          # Stored data arranged in keyed lists.
-        
-        # self.timestamps_queries = list()
-        # self.queries = dict()       # Stored queries arranged in keyed lists.
-        
+        # TODO: Improve.
         self.data_types = dict()    # The data types for each keyed list.
-        # Note: Data types are actual types not strings.
         
         # Ingested data arrives from data ports.
         # For data port X, this data is sent as a list of elements.
@@ -187,7 +188,8 @@ class DataStorage:
     #         self.queries[in_key] = [None]*len(self.timestamps)
         
     # TODO: Update info logging once terminology is settled.
-    def store_data(self, in_timestamp, in_data_port_id, in_keys, in_elements, as_query = False):
+    def store_data(self, in_timestamp, in_data_port_id, in_keys, in_elements, in_data_types, 
+                   as_query = False):
 
         if as_query:
             timestamps = self.queries.timestamps
@@ -204,7 +206,7 @@ class DataStorage:
         
         count_ikey_new = 0
         count_dkey_new = 0
-        for key, element in zip(in_keys, in_elements):
+        for key, element, data_type in zip(in_keys, in_elements, in_data_types):
             
             ikey = in_data_port_id + "_" + key
             
@@ -230,15 +232,18 @@ class DataStorage:
                 self.observations.data[dkey] = [None]*len(self.observations.timestamps)
                 self.queries.data[dkey] = [None]*len(self.queries.timestamps)
                 
-                # The first element in a list determines its data type.
-                self.data_types[dkey] = infer_data_type(element)
+                # If the type has not been determined elsewhere, the first element decides.
+                # TODO: Improve inference process. Maybe update as new data is encountered.
+                if data_type is None:
+                    self.data_types[dkey] = infer_data_type(element)
+                else:
+                    self.data_types[dkey] = data_type
                 count_dkey_new += 1
             
             # Add the new element to the list with str-to-type conversion.
-            # Note the function call.
             try:
                 # TODO: Some data types do not convert, e.g. NoneType. Consider how to fix/avoid.
-                dict_storage[dkey][-1] = self.data_types[dkey](element)
+                dict_storage[dkey][-1] = self.data_types[dkey].convert(element)
             except Exception as e:
                 # TODO: Handle changes in data type for messy datasets.
                 raise e
@@ -270,13 +275,13 @@ class DataStorage:
             data_types_keys = list(self.data_types.keys())
             len_start = int(np.ceil(SS.MAX_INFO_KEYS_EXAMPLE/2))
             len_end = SS.MAX_INFO_KEYS_EXAMPLE - len_start
-            example_keys = ", ".join(key + " (" + self.data_types[key].__name__ + ")"
+            example_keys = ", ".join(key + " (" + self.data_types[key].to_string() + ")"
                                      for key in data_types_keys[:len_start])
             example_keys += ", ..., "
-            example_keys += ", ".join(key + " (" + self.data_types[key].__name__ + ")"
+            example_keys += ", ".join(key + " (" + self.data_types[key].to_string() + ")"
                                       for key in data_types_keys[-len_end:])
         else:
-            example_keys = ", ".join(key + " (" + self.data_types[key].__name__ + ")"
+            example_keys = ", ".join(key + " (" + self.data_types[key].to_string() + ")"
                                      for key in self.data_types)
             
         if len(self.ikeys_to_dkeys) > SS.MAX_INFO_PIPE_EXAMPLE:

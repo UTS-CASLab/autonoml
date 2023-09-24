@@ -103,6 +103,12 @@ class AutonoMachine:
             
     # @skip_in_other_processes
     def ingest_file(self, in_filepath, in_tags = None):
+        """
+        Take in a .csv file and convert its contents into data to learn from.
+        The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
+        The tags are treated as categorical features.
+        They can be included/excluded from learning and allocated to different learners.
+        """
 
         log.info("%s - Scheduling request for AutonoMachine '%s' to ingest data file: %s" 
                  % (Timestamp(), self.name, in_filepath))
@@ -113,6 +119,12 @@ class AutonoMachine:
         
     # @skip_in_other_processes
     def query_with_file(self, in_filepath, in_tags = None):
+        """
+        Take in a .csv file and convert its contents into data to respond to.
+        The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
+        The tags are treated as categorical features.
+        """
+
         log.info("%s - Scheduling request to query AutonoMachine '%s' with file: %s" 
                  % (Timestamp(), self.name, in_filepath))
         ref = DataPort(in_data_storage = self.data_storage)
@@ -180,12 +192,13 @@ class AutonoMachine:
     # TODO: Develop a default strategy maybe with HPO when users do not include one.
     # @skip_in_other_processes
     def learn(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False, 
-              in_strategy: Strategy = None):
+              in_strategy: Strategy = None, in_keys_allocation = None):
 
         instructions = ProblemSolverInstructions(in_key_target = in_key_target,
                                                  in_keys_features = in_keys_features,
                                                  do_exclude = do_exclude,
-                                                 in_strategy = in_strategy)
+                                                 in_strategy = in_strategy,
+                                                 in_keys_allocation = in_keys_allocation)
         self.solver = ProblemSolver(in_data_storage = self.data_storage,
                                     in_instructions = instructions,
                                     in_n_procs = self.n_procs,

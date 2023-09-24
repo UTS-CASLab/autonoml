@@ -23,3 +23,6 @@ from .streamer import *
 from .settings import *
 from .concurrency import *
 from .strategy import *
+from .solver import AllocationMethod
+
+# TODO: Clean up what is accessible to a user.

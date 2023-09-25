@@ -78,11 +78,11 @@ class ProblemSolution:
                 key_data = key_allocation[0]
                 method_allocation = key_allocation[-1]
                 
-                set_values = in_data_storage.get_unique_values(key_data)
+                unique_values = in_data_storage.get_unique_values(key_data)
                 if method_allocation == AllocationMethod.LEAVE_ONE_OUT:
-                    if len(set_values) == 1:
+                    if len(unique_values) == 1:
                         text_warning = ("Skipping leave-one-out filter definitions based on '%s'. "
-                                        "Only one category found: %s" % (key_data, set_values.pop()))
+                                        "Only one category found: %s" % (key_data, unique_values[0]))
                         log.warning("%s - %s" % (Timestamp(), text_warning))
                         continue
 
@@ -90,12 +90,12 @@ class ProblemSolution:
                 # All previous groups are subdivided further.
                 # TODO: Consider options for independent partitionings, i.e. no sub-splitting.
                 for key_group in list(self.groups.keys()):
-                    for value in set_values:
+                    for value in unique_values:
                         if method_allocation == AllocationMethod.ONE_EACH:
                             if key_group == self.id_no_filter:
-                                key_group_new = key_data + "==" + value
+                                key_group_new = "(" + key_data + "==" + value + ")"
                             else:
-                                key_group_new = key_group + ", " + key_data + "==" + value
+                                key_group_new = key_group + "&(" + key_data + "==" + value + ")"
                         elif method_allocation == AllocationMethod.LEAVE_ONE_OUT:
                             if key_group == self.id_no_filter:
                                 key_group_new = "(" + key_data + "!=" + value + ")"
@@ -290,6 +290,13 @@ class ProblemSolver:
                 key_group = dev_package[1]
                 data_filter = dev_package[2]
 
+                if key_group == "":
+                    text_group = "."
+                else:
+                    text_group = ": " + key_group
+                log.info("%s - Development request received for learner-group%s" 
+                         % (Timestamp(), text_group))
+
                 # TODO: Decide what history of data to train pipelines on.
                 idx_start = 0
                 idx_stop = None
@@ -302,6 +309,7 @@ class ProblemSolver:
                                 "idx_start": idx_start,
                                 "idx_stop": idx_stop}
                 
+                time_start = Timestamp().time
                 observations, _ = self.data_storage.observations.split_by_range(in_idx_start = idx_start,
                                                                                 in_idx_stop = idx_stop)
                 
@@ -319,6 +327,11 @@ class ProblemSolver:
                             observations = o_out
                         else:
                             raise NotImplementedError
+                time_end = Timestamp().time
+                duration = time_end - time_start
+
+                log.info("%s   Time taken to collate relevant data, applying filter as required: %.3f s"
+                         % (Timestamp(None), duration))
 
                 if isinstance(object_dev, MLPipeline):
                     future_pipeline = loop.run_in_executor(executor, train_pipeline, object_dev,
@@ -335,7 +348,7 @@ class ProblemSolver:
                         log.error("%s - %s" % (Timestamp(), text_error))
                         raise Exception(text_error)
 
-                    log.info("%s - Preparing HPO run '%s'." % (Timestamp(), name_hpo))
+                    log.info("%s   Preparing HPO run '%s'." % (Timestamp(None), name_hpo))
                     sets_training = list()
                     sets_validation = list()
 
@@ -352,7 +365,7 @@ class ProblemSolver:
                              % (Timestamp(None), 1 - object_dev.frac_validation, object_dev.frac_validation, duration))
 
                     # Activate the HPO run.
-                    log.info("%s - Launching %i-worker HPO run '%s'." 
+                    log.info("%s   Launching %i-worker HPO run '%s'." 
                              % (Timestamp(), n_procs_hpo, name_hpo))
                     future_pipeline = loop.run_in_executor(executor, run_hpo, object_dev, observations,
                                                            sets_training, sets_validation, info_process)

@@ -300,11 +300,11 @@ class DataStorage:
             raise Exception(text_error)
         
         if from_queries:
-            set_values = set(self.queries.data[in_key])
+            unique_values = list(dict.fromkeys(self.queries.data[in_key]))
         else:
-            set_values = set(self.observations.data[in_key])
+            unique_values = list(dict.fromkeys(self.observations.data[in_key]))
 
-        return set_values
+        return unique_values
         
 
     def info(self):

@@ -57,6 +57,7 @@ class DataPort:
                 self.data_types = [None]*len(self.keys)
 
                 # Add the custom tags to keys.
+                # TODO: Check that a tag is not already a feature key.
                 for key_tag in tags:
                     self.keys.append(key_tag)
                     self.data_types.append(DataType.CATEGORICAL)
@@ -71,6 +72,7 @@ class DataPort:
                     self.keys = [str(num_element) for num_element in range(len(data))]
 
                     # Add the custom tags to keys.
+                    # TODO: Check that a tag is not already a feature key.
                     for key_tag in tags:
                         self.keys.append(key_tag)
                         self.data_types = [None]*len(self.keys)

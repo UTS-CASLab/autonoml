@@ -8,7 +8,7 @@ Created on Mon May 22 21:58:33 2023
 from .utils import log, Timestamp, identify_error
 from .concurrency import create_async_task_from_sync, create_async_task
 from .pipeline import MLPipeline, train_pipeline, test_pipeline
-from .hpo import HPOInstructions, run_hpo, add_hpo_worker
+from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipeline_random
 from .strategy import Strategy
 
 from .data_storage import DataStorage
@@ -98,9 +98,9 @@ class ProblemSolution:
                                 key_group_new = key_group + ", " + key_data + "==" + value
                         elif method_allocation == AllocationMethod.LEAVE_ONE_OUT:
                             if key_group == self.id_no_filter:
-                                key_group_new = key_data + "!=" + value
+                                key_group_new = "(" + key_data + "!=" + value + ")"
                             else:
-                                key_group_new = key_group + ", " + key_data + "!=" + value
+                                key_group_new = key_group + "&(" + key_data + "!=" + value + ")"
                         else:
                             raise NotImplementedError
                         
@@ -116,18 +116,19 @@ class ProblemSolution:
 
         self.n_challengers = in_instructions.n_challengers
 
-        log.info("%s - Prepared a ProblemSolution of %i learner-groups.\n"
+        log.info("%s - Prepared a ProblemSolution. Number of learner-groups: %i\n"
                  "%s   Each group champion can have up to %i challengers."
                  % (Timestamp(), len(self.groups),
                     Timestamp(None), self.n_challengers))
 
-    def insert_learner(self, in_pipeline: MLPipeline, in_tags = None):
-        list_pipelines = self.groups[0]
+    def insert_learner(self, in_pipeline: MLPipeline, in_key_group: str):
+        list_pipelines = self.groups[in_key_group]
         list_pipelines.append(in_pipeline)
-        self.groups[0] = sorted(list_pipelines, key=lambda p: p.get_loss())
-        log.debug(["%s: %0.2f" % (pipeline.name, pipeline.get_loss()) for pipeline in self.groups[0]])
-        if len(self.groups[0]) > self.n_challengers + 1:
-            pipeline_removed = self.groups[0].pop()
+        self.groups[in_key_group] = sorted(list_pipelines, key=lambda p: p.get_loss())
+        log.debug("%s -> %s" % (in_key_group, ["%s: %0.2f" % (pipeline.name, pipeline.get_loss())
+                                               for pipeline in self.groups[in_key_group]]))
+        if len(self.groups[in_key_group]) > self.n_challengers + 1:
+            pipeline_removed = self.groups[in_key_group].pop()
             log.debug("Removing uncompetitive challenger pipeline '%s' with loss: %0.2f" 
                       % (pipeline_removed.name, pipeline_removed.get_loss()))
 
@@ -205,10 +206,9 @@ class ProblemSolver:
         if strategy.do_hpo:
             if len(strategy.search_space.list_predictors()) > 0:
                 for key_group in self.solution.groups:
-                    await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
-                    # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
-                    # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
-                    # await self.queue_dev.put(HPOInstructions(in_strategy = strategy))
+                    data_filter = self.solution.filters[key_group]
+                    dev_package = (HPOInstructions(in_strategy = strategy), key_group, data_filter)
+                    await self.queue_dev.put(dev_package)
             else:
                 text_warning = ("The Strategy for ProblemSolver '%s' does not suggest "
                                 "any predictors in its search space.") % self.name
@@ -218,15 +218,21 @@ class ProblemSolver:
                          "running HPO.") % self.name
             log.info("%s - %s" % (Timestamp(), text_info))
 
-        # # TODO: Do something genuine with custom pipelines.
-        # if strategy.do_custom:
-        #     for count_pipeline in range(1):
-        #         await self.add_pipeline(create_pipeline_random(in_keys_features = self.keys_features,
-        #                                                        in_key_target = self.key_target))
-        # else:
-        #     text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
-        #                  "running custom pipelines.") % self.name
-        #     log.info("%s - %s" % (Timestamp(), text_info))
+        # TODO: Consider giving random pipelines some validation, not challenging with inf loss.
+        if strategy.do_random:
+            # TODO: Let user decide how many random pipelines to develop.
+            for count_pipeline in range(1):
+                for key_group in self.solution.groups:
+                    data_filter = self.solution.filters[key_group]
+                    pipeline = create_pipeline_random(in_keys_features = self.keys_features,
+                                                      in_key_target = self.key_target,
+                                                      in_strategy = strategy)
+                    dev_package = (pipeline, key_group, data_filter)
+                    await self.queue_dev.put(dev_package)
+        else:
+            text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
+                         "running custom pipelines.") % self.name
+            log.info("%s - %s" % (Timestamp(), text_info))
 
         if self.queue_dev.qsize() == 0:
             # TODO: Perhaps wrap this up in a utils error function.
@@ -260,9 +266,6 @@ class ProblemSolver:
 
         self.is_running = False
 
-    async def add_pipeline(self, in_pipeline):
-        await self.queue_dev.put(in_pipeline)
-
     async def process_pipelines(self):
         if self.do_mp:
             executor_class = concurrent.futures.ProcessPoolExecutor
@@ -282,8 +285,12 @@ class ProblemSolver:
 
         with executor_class(max_workers = self.n_procs) as executor:
             while True:
-                object_dev = await self.queue_dev.get()
+                dev_package = await self.queue_dev.get()
+                object_dev = dev_package[0]
+                key_group = dev_package[1]
+                data_filter = dev_package[2]
 
+                # TODO: Decide what history of data to train pipelines on.
                 idx_start = 0
                 idx_stop = None
                 if idx_stop is None:
@@ -297,6 +304,21 @@ class ProblemSolver:
                 
                 observations, _ = self.data_storage.observations.split_by_range(in_idx_start = idx_start,
                                                                                 in_idx_stop = idx_stop)
+                
+                # Based on allocation-specific filtering requirements, cut the data down further.
+                if not data_filter is None:
+                    for filter_spec in data_filter:
+                        key_filter = filter_spec[0]
+                        value_filter = filter_spec[1]
+                        o_in, o_out = observations.split_by_content(in_key = key_filter, 
+                                                                    in_value = value_filter)
+                        allocation_method = filter_spec[2]
+                        if allocation_method == AllocationMethod.ONE_EACH:
+                            observations = o_in
+                        elif allocation_method == AllocationMethod.LEAVE_ONE_OUT:
+                            observations = o_out
+                        else:
+                            raise NotImplementedError
 
                 if isinstance(object_dev, MLPipeline):
                     future_pipeline = loop.run_in_executor(executor, train_pipeline, object_dev,
@@ -338,11 +360,12 @@ class ProblemSolver:
 
                     # Add HPO workers to the run.
                     for idx_worker in range(1, n_procs_hpo):
-                        # if name_hpo in self.hpo_runs_active:
-                        create_async_task(self.support_hpo, executor, idx_worker, object_dev,
-                                          sets_training, sets_validation, info_process)
+                        if name_hpo in self.hpo_runs_active:
+                            create_async_task(self.support_hpo, executor, idx_worker, object_dev,
+                                            sets_training, sets_validation, info_process)
                         
-                create_async_task(self.push_to_production, future_pipeline, name_hpo)
+                create_async_task(self.push_to_production, future_pipeline, 
+                                  in_key_group = key_group, in_name_hpo = name_hpo)
 
     async def support_hpo(self, in_executor, in_idx_worker: int, in_hpo_instructions, 
                           in_sets_training, in_sets_validation, in_info_process):
@@ -352,8 +375,9 @@ class ProblemSolver:
 
         add_attempts = 0
         while True:
-            result = await loop.run_in_executor(in_executor, add_hpo_worker, in_hpo_instructions, 
-                                    in_sets_training, in_sets_validation, in_info_process, in_idx_worker)
+            result = await loop.run_in_executor(in_executor, add_hpo_worker, in_hpo_instructions,
+                                                in_sets_training, in_sets_validation,
+                                                in_info_process, in_idx_worker)
             
             if not isinstance(result, Exception):
                 break
@@ -374,7 +398,7 @@ class ProblemSolver:
             add_attempts += 1
 
 
-    async def push_to_production(self, in_future_pipeline, in_name_hpo: str = None):
+    async def push_to_production(self, in_future_pipeline, in_key_group: str, in_name_hpo: str = None):
         try:
             pipeline, info_process = await in_future_pipeline
 
@@ -385,17 +409,18 @@ class ProblemSolver:
             idx_stop = info_process["idx_stop"]
             duration_prep = info_process["duration_prep"]
             duration_proc = info_process["duration_proc"]
+            n_instances = info_process["n_instances"]
             y_last = pipeline.training_y_true[-1]
             y_pred_last = pipeline.training_y_response[-1]
 
-            log.info("%s - Pipeline '%s' has learned from a total of %i observations.\n"
+            log.info("%s - Pipeline '%s' has learned from a total of %i observations (filtered from %i).\n"
                      "%s   Structure: %s\n"
                      "%s   Time taken to retrieve data: %.3f s\n"
                      "%s   Time taken to train/score pipeline on data: %.3f s\n"
                      "%s   Training loss: %f\n"
                      "%s   (Testing loss: %f)\n"
                      "%s   Last observation: Prediction '%s' vs True Value '%s'"
-                     % (Timestamp(), pipeline.name, idx_stop - idx_start,
+                     % (Timestamp(), pipeline.name, n_instances, idx_stop - idx_start,
                         Timestamp(None), pipeline.components_as_string(do_hpars = True),
                         Timestamp(None), duration_prep,
                         Timestamp(None), duration_proc,
@@ -403,7 +428,7 @@ class ProblemSolver:
                         Timestamp(None), pipeline.get_loss(),
                         Timestamp(None), y_pred_last, y_last))
             
-            self.solution.insert_learner(in_pipeline = pipeline, in_tags = info_process["tags"])
+            self.solution.insert_learner(in_pipeline = pipeline, in_key_group = in_key_group)
             log.info("%s   Pipeline '%s' is pushed to production." % (Timestamp(None), pipeline.name))
         except Exception as e:
             text_alert = "%s - ProblemSolver '%s' failed to process an MLPipeline." % (Timestamp(), self.name)

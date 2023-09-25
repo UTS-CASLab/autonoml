@@ -55,7 +55,7 @@ class SearchSpace(dict):
 class Strategy:
 
     def __init__(self, in_search_space: SearchSpace = None,
-                 do_hpo: bool = False,
+                 do_hpo: bool = False, do_random: bool = False,
                  in_n_iterations: int = 4, in_n_partitions: int = 3,
                  in_frac_validation: float = 0.25):
         
@@ -65,6 +65,7 @@ class Strategy:
             self.search_space = in_search_space
 
         self.do_hpo = do_hpo
+        self.do_random = do_random
 
         self.n_iterations = in_n_iterations
         self.n_partitions = in_n_partitions
@@ -96,7 +97,7 @@ def template_strategy(in_filepath: str = "./template.strat",
             config_space[typename_component] = hpar_space
             count_component += 1
 
-    strategy = {"Strategy": {"Do HPO": CustomBool(True)},
+    strategy = {"Strategy": {"Do HPO": CustomBool(True), "Do Random": CustomBool(False)},
                 "Optimiser": {"BOHB": {"Note": ("Prior to HPO, the dataset is randomly split into "
                                                 "a training fraction and a validation fraction. "
                                                 "For i iterations and p partitions, BOHB seeks to "
@@ -118,20 +119,9 @@ def import_strategy(in_filepath: str):
 
     strategy = Strategy(in_search_space = SearchSpace(specs["Search Space"]),
                         do_hpo = bool(CustomBool(specs["Strategy"]["Do HPO"])),
+                        do_random = bool(CustomBool(specs["Strategy"]["Do Random"])),
                         in_n_iterations = int(specs["Optimiser"]["BOHB"]["Iterations"]),
                         in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]),
                         in_frac_validation = float(specs["Optimiser"]["BOHB"]["Validation Fraction"]))
 
     return strategy
-
-# # TODO: Make truly random.
-# def create_pipeline_random(in_keys_features, in_key_target):
-
-#     predictor_cls = np.random.choice(list(tuple[0] for tuple in pool_predictors.values()))
-#     predictor_cls = pool_predictors["OnlineLinearRegressor"][0]
-#     structure = [predictor_cls(do_random_hpars = True)]
-
-#     pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target, 
-#                           in_components = structure)
-    
-#     return pipeline

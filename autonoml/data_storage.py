@@ -49,18 +49,40 @@ class DataCollection:
     def split_by_range(self, in_idx_start: int = 0, in_idx_stop: int = None):
         """
         Return DataCollections with instances inside/outside the specified range.
+        Note: Creates shallow copies.
         """
         collection_in = DataCollection()
-        collection_in.timestamps = deepcopy(self.timestamps[in_idx_start:in_idx_stop])
-        collection_in.data = deepcopy({key: self.data[key][in_idx_start:in_idx_stop] 
-                                       for key in self.data})
+        collection_in.timestamps = self.timestamps[in_idx_start:in_idx_stop]
+        collection_in.data = {key: self.data[key][in_idx_start:in_idx_stop] for key in self.data}
         
         collection_out = DataCollection()
-        collection_out.timestamps = deepcopy(self.timestamps[:in_idx_start] 
-                                             + self.timestamps[in_idx_stop:])
-        collection_out.data = deepcopy({key: (self.data[key][:in_idx_start] 
-                                              + self.data[key][in_idx_stop:]) 
-                                        for key in self.data})
+        collection_out.timestamps = self.timestamps[:in_idx_start] + self.timestamps[in_idx_stop:]
+        collection_out.data = {key: (self.data[key][:in_idx_start] + self.data[key][in_idx_stop:]) 
+                               for key in self.data}
+
+        return collection_in, collection_out
+    
+    def split_by_content(self, in_key: str, in_value):
+        """
+        Return DataCollections with instances including/excluding a specified key-value pair.
+        Note: Creates shallow copies.
+        """
+        indices_in = list()
+        indices_out = list()
+
+        for idx, val in enumerate(self.data[in_key]):
+            if val == in_value:
+                indices_in.append(idx)
+            else:
+                indices_out.append(idx)
+
+        collection_in = DataCollection()
+        collection_in.timestamps = [self.timestamps[idx] for idx in indices_in]
+        collection_in.data = {key: [self.data[key][idx] for idx in indices_in] for key in self.data}
+        
+        collection_out = DataCollection()
+        collection_out.timestamps = [self.timestamps[idx] for idx in indices_out]
+        collection_out.data = {key: [self.data[key][idx] for idx in indices_out] for key in self.data}
 
         return collection_in, collection_out
     
@@ -69,6 +91,7 @@ class DataCollection:
         """
         Return DataCollections with/without randomly selected instances.
         The instances constitute a fraction of the collected data.
+        Note: Creates shallow copies.
         """
         n_instances = self.get_amount()
         random.seed(in_seed)
@@ -82,14 +105,14 @@ class DataCollection:
         list_indices_out = list_indices[idx_out_start:]
 
         collection_in = DataCollection()
-        collection_in.timestamps = deepcopy([self.timestamps[idx] for idx in list_indices_in])
-        collection_in.data = deepcopy({key: [self.data[key][idx] for idx in list_indices_in] 
-                                       for key in self.data})
+        collection_in.timestamps = [self.timestamps[idx] for idx in list_indices_in]
+        collection_in.data = {key: [self.data[key][idx] for idx in list_indices_in] 
+                              for key in self.data}
         
         collection_out = DataCollection()
-        collection_out.timestamps = deepcopy([self.timestamps[idx] for idx in list_indices_out])
-        collection_out.data = deepcopy({key: [self.data[key][idx] for idx in list_indices_out] 
-                                        for key in self.data})
+        collection_out.timestamps = [self.timestamps[idx] for idx in list_indices_out]
+        collection_out.data = {key: [self.data[key][idx] for idx in list_indices_out] 
+                               for key in self.data}
 
         return collection_in, collection_out
 

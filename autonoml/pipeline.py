@@ -356,6 +356,7 @@ def process_pipeline(in_pipeline: MLPipeline,
     # in_info_process["metric"] = metric
     in_info_process["duration_prep"] = duration_prep
     in_info_process["duration_proc"] = duration_proc
+    in_info_process["n_instances"] = len(y)
 
     return in_pipeline, in_info_process
 

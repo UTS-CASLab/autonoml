@@ -172,6 +172,19 @@ class HPOWorker(Worker):
                         cs.add_condition(cond)
 
         return(cs)
+    
+def create_pipeline_random(in_keys_features, in_key_target, in_strategy):
+
+    if in_strategy is None:
+        search_space = SearchSpace()
+    else:
+        search_space = in_strategy.search_space
+
+    config = HPOWorker.get_configspace(search_space).sample_configuration()
+    pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target,
+                          in_components = config_to_pipeline_structure(in_config = config))
+    
+    return pipeline
 
 def add_hpo_worker(in_hpo_instructions: HPOInstructions, 
                    in_sets_training: List[DataCollection], in_sets_validation: List[DataCollection],

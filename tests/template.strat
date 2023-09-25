@@ -1,5 +1,6 @@
 Strategy:
   Do HPO: y
+  Do Random: n
 Optimiser:
   BOHB:
     Note: Prior to HPO, the dataset is randomly split into a training fraction and

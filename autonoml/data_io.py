@@ -41,10 +41,12 @@ class DataPort:
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
                  % (Timestamp(), self.name, in_filepath))
         
-        if in_tags is None:
-            tags = dict()
-        else:
-            tags = in_tags
+        # Ensure tags are strings.
+        if not in_tags is None:
+            for key in in_tags:
+                in_tags[key] = str(in_tags[key])
+        # else:
+        #     tags = in_tags
    
         time_start = Timestamp().time
 
@@ -56,11 +58,11 @@ class DataPort:
                 self.keys = line.rstrip().split(",")
                 self.data_types = [None]*len(self.keys)
 
-                # Add the custom tags to keys.
-                # TODO: Check that a tag is not already a feature key.
-                for key_tag in tags:
-                    self.keys.append(key_tag)
-                    self.data_types.append(DataType.CATEGORICAL)
+                # # Add the custom tags to keys.
+                # # TODO: Check that a tag is not already a feature key.
+                # for key_tag in tags:
+                #     self.keys.append(key_tag)
+                #     self.data_types.append(DataType.CATEGORICAL)
 
             count_instance = 0
             for line in data_file:
@@ -71,21 +73,22 @@ class DataPort:
                 if count_instance == 0 and not in_file_has_headers:
                     self.keys = [str(num_element) for num_element in range(len(data))]
 
-                    # Add the custom tags to keys.
-                    # TODO: Check that a tag is not already a feature key.
-                    for key_tag in tags:
-                        self.keys.append(key_tag)
-                        self.data_types = [None]*len(self.keys)
+                    # # Add the custom tags to keys.
+                    # # TODO: Check that a tag is not already a feature key.
+                    # for key_tag in tags:
+                    #     self.keys.append(key_tag)
+                    #     self.data_types = [None]*len(self.keys)
 
-                for key_tag in tags:
-                    data.append(tags[key_tag])
-                    self.data_types.append(DataType.CATEGORICAL)
+                # for key_tag in tags:
+                #     data.append(tags[key_tag])
+                #     self.data_types.append(DataType.CATEGORICAL)
                     
                 self.data_storage.store_data(in_timestamp = Timestamp(),
                                              in_data_port_id = self.name,
                                              in_keys = self.keys,
                                              in_elements = data,
                                              in_data_types = self.data_types,
+                                             in_tags = in_tags,
                                              as_query = as_query)
                 count_instance += 1
 

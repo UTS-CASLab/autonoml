@@ -106,7 +106,7 @@ class AutonoMachine:
         """
         Take in a .csv file and convert its contents into data to learn from.
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
-        The tags are treated as categorical features.
+        The tags partition data within storage.
         They can be included/excluded from learning and allocated to different learners.
         """
 
@@ -122,7 +122,7 @@ class AutonoMachine:
         """
         Take in a .csv file and convert its contents into data to respond to.
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
-        The tags are treated as categorical features.
+        The tags partition data within storage.
         """
 
         log.info("%s - Scheduling request to query AutonoMachine '%s' with file: %s" 

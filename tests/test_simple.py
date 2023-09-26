@@ -24,12 +24,12 @@ if __name__ == '__main__':
                in_keys_features = ["file"], do_exclude = True,
                in_keys_allocation = [("file", aml.AllocationMethod.LEAVE_ONE_OUT)])
 
-    if not True:
-        # Run the following commands in online mode after data loading is done.
-        o = proj.data_storage.observations
-        q = proj.data_storage.queries
-        print(o.data)
-        print(q.data)
-        o1, o2 = o.split_by_fraction(0.25)
-        print(o1.data)
-        print(o2.data)
+    # if not True:
+    #     # Run the following commands in online mode after data loading is done.
+    #     o = proj.data_storage.observations
+    #     q = proj.data_storage.queries
+    #     print(o.data)
+    #     print(q.data)
+    #     o1, o2 = o.split_by_fraction(0.25)
+    #     print(o1.data)
+    #     print(o2.data)

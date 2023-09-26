@@ -51,6 +51,7 @@ class ProblemSolverInstructions:
         self.keys_allocation = in_keys_allocation
         self.n_challengers = 2
 
+# TODO: Clean-up labels around tags and keys.
 class ProblemSolution:
     """
     A container for all learners currently in production.
@@ -77,8 +78,8 @@ class ProblemSolution:
                     key_allocation = (key_allocation, AllocationMethod.ONE_EACH)
                 key_data = key_allocation[0]
                 method_allocation = key_allocation[-1]
-                
-                unique_values = in_data_storage.get_unique_values(key_data)
+
+                unique_values = in_data_storage.get_tag_values(key_data)
                 if method_allocation == AllocationMethod.LEAVE_ONE_OUT:
                     if len(unique_values) == 1:
                         text_warning = ("Skipping leave-one-out filter definitions based on '%s'. "
@@ -197,7 +198,7 @@ class ProblemSolver:
 
         # Instantiate the solution as part of an event loop so that prerequisite data is ingested.
         self.solution = ProblemSolution(in_instructions = self.instructions, in_data_storage = self.data_storage)
-        
+
         # Instantiate the development queue now that this code is running internally within an event loop.
         self.queue_dev = asyncio.Queue()
 
@@ -252,8 +253,8 @@ class ProblemSolver:
     async def gather_ops(self):
         self.ops = list()
         self.ops.append(create_async_task(self.process_pipelines))
-        self.ops.extend([create_async_task(self.process_strategy),
-                         create_async_task(self.process_queries)])
+        # self.ops.extend([create_async_task(self.process_strategy),
+        #                  create_async_task(self.process_queries)])
         group = asyncio.gather(*self.ops)
         try:
             await group
@@ -296,37 +297,55 @@ class ProblemSolver:
                     text_group = ": " + key_group
                 log.info("%s - Development request received for learner-group%s" 
                          % (Timestamp(), text_group))
+                
+                # # Based on allocation-specific filtering requirements, cut the data down further.
+                # if not data_filter is None:
+                #     for filter_spec in data_filter:
+                #         key_filter = filter_spec[0]
+                #         value_filter = filter_spec[1]
+                #         o_in, o_out = observations.split_by_content(in_key = key_filter, 
+                #                                                     in_value = value_filter)
+                #         allocation_method = filter_spec[2]
+                #         if allocation_method == AllocationMethod.ONE_EACH:
+                #             observations = o_in
+                #         elif allocation_method == AllocationMethod.LEAVE_ONE_OUT:
+                #             observations = o_out
+                #         else:
+                #             raise NotImplementedError
+                # time_end = Timestamp().time
+                # duration = time_end - time_start
 
+                time_start = Timestamp().time
+                tags_inclusive = dict()
+                tags_exclusive = dict()
+                if not data_filter is None:
+                    for filter_spec in data_filter:
+                        key_filter = filter_spec[0]
+                        value_filter = filter_spec[1]
+                        allocation_method = filter_spec[2]
+                        if allocation_method == AllocationMethod.ONE_EACH:
+                            tags_inclusive[key_filter] = value_filter
+                        elif allocation_method == AllocationMethod.LEAVE_ONE_OUT:
+                            tags_exclusive[key_filter] = value_filter
+                observations = self.data_storage.get_collection(in_tags_inclusive = tags_inclusive, 
+                                                                in_tags_exclusive = tags_exclusive)
+                
                 # TODO: Decide what history of data to train pipelines on.
                 idx_start = 0
                 idx_stop = None
                 if idx_stop is None:
-                    idx_stop = self.data_storage.observations.get_amount()
+                    idx_stop = observations.get_amount()
+
+                observations, _ = observations.split_by_range(in_idx_start = idx_start,
+                                                              in_idx_stop = idx_stop)
 
                 name_hpo = None
                 info_process = {"keys_features": self.keys_features,
                                 "key_target": self.key_target,
                                 "idx_start": idx_start,
-                                "idx_stop": idx_stop}
-                
-                time_start = Timestamp().time
-                observations, _ = self.data_storage.observations.split_by_range(in_idx_start = idx_start,
-                                                                                in_idx_stop = idx_stop)
-                
-                # Based on allocation-specific filtering requirements, cut the data down further.
-                if not data_filter is None:
-                    for filter_spec in data_filter:
-                        key_filter = filter_spec[0]
-                        value_filter = filter_spec[1]
-                        o_in, o_out = observations.split_by_content(in_key = key_filter, 
-                                                                    in_value = value_filter)
-                        allocation_method = filter_spec[2]
-                        if allocation_method == AllocationMethod.ONE_EACH:
-                            observations = o_in
-                        elif allocation_method == AllocationMethod.LEAVE_ONE_OUT:
-                            observations = o_out
-                        else:
-                            raise NotImplementedError
+                                "idx_stop": idx_stop,
+                                "n_available": self.data_storage.get_amount()}
+
                 time_end = Timestamp().time
                 duration = time_end - time_start
 
@@ -423,6 +442,7 @@ class ProblemSolver:
             duration_prep = info_process["duration_prep"]
             duration_proc = info_process["duration_proc"]
             n_instances = info_process["n_instances"]
+            n_available = info_process["n_available"]
             y_last = pipeline.training_y_true[-1]
             y_pred_last = pipeline.training_y_response[-1]
 
@@ -433,7 +453,7 @@ class ProblemSolver:
                      "%s   Training loss: %f\n"
                      "%s   (Testing loss: %f)\n"
                      "%s   Last observation: Prediction '%s' vs True Value '%s'"
-                     % (Timestamp(), pipeline.name, n_instances, idx_stop - idx_start,
+                     % (Timestamp(), pipeline.name, n_instances, n_available,
                         Timestamp(None), pipeline.components_as_string(do_hpars = True),
                         Timestamp(None), duration_prep,
                         Timestamp(None), duration_proc,
@@ -542,7 +562,7 @@ class ProblemSolver:
     async def set_target_and_features(self, in_key_target,
                                       in_keys_features = None, do_exclude = False):
         
-        if in_key_target in self.data_storage.observations.data:
+        if in_key_target in self.data_storage.get_key_dict():
             key_target = in_key_target
         else:
             text_error = "Desired target key '%s' cannot be found in DataStorage." % in_key_target 
@@ -554,7 +574,7 @@ class ProblemSolver:
         # Include them as long as such features exist in the data storage.
         if in_keys_features and not do_exclude:
             for key_feature in in_keys_features:
-                if key_feature in self.data_storage.observations.data:
+                if key_feature in self.data_storage.get_key_dict():
                     keys_features.append(key_feature)
                 else:
                     log.warning("%s - Desired feature key '%s' cannot be found in DataStorage.\n"
@@ -563,7 +583,7 @@ class ProblemSolver:
         # Otherwise, include every feature existing in the data storage...
         # Except for feature keys specified with the intention of excluding.
         else:
-            for dkey in self.data_storage.observations.data.keys():
+            for dkey in self.data_storage.get_key_dict():
                 if not dkey == in_key_target:
                     if do_exclude and dkey in in_keys_features:
                         log.info("%s - DataStorage key '%s' has been marked as not a feature.\n"

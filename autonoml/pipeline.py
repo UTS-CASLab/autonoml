@@ -98,6 +98,10 @@ class MLPipeline:
     # TODO: Use other non-RMSE metrics.
     # TODO: Decide whether loss should be calculated on smaller subsets of history.
     def update_loss(self, y_response, y_true, is_training: bool = False):
+        """
+        Update the loss stored by the pipeline, accessed easily as an attribute.
+        Return the loss according to only the most recent values.
+        """
 
         # It is possible that querying/learning is done without supervision.
         # Unsupervised instances have None as the target variable.
@@ -105,6 +109,8 @@ class MLPipeline:
                                    for element_response, element_true in zip(y_response, y_true) 
                                    if not element_true is None])
         
+        loss_recent = np.inf
+
         # Loss only updates if there are new entries.
         if len(y_true) > 0:
             if is_training:
@@ -119,12 +125,13 @@ class MLPipeline:
                 self.testing_loss = calculate_loss(y_response = self.testing_y_response,
                                                    y_true = self.testing_y_true,
                                                    in_loss_function = LossFunction.RMSE)
+                
+            loss_recent = calculate_loss(y_response = y_response, y_true = y_true,
+                                         in_loss_function = LossFunction.RMSE)
+        
+        return loss_recent
 
-    def process(self, x, y, 
-                #in_format_x = None, in_format_y = None, 
-                do_query = False, do_learn = False):
-                #do_score = True,
-                # do_remember = False, for_training = False):
+    def process(self, x, y, do_query = False, do_learn = False):
         """
         Given a mapping of x to y, this function can process a pipeline in several ways:
         - Query on x and score the response against y.
@@ -133,15 +140,6 @@ class MLPipeline:
         
         Both x and y are assumed to be in default formats DataFormatX(0) and DataFormatY(0).
         """
-
-        # # Assume data is provided from storage in default format.
-        # # It will be reformatted as required by components.
-        # if in_format_x is None:
-        #     in_format_x = DataFormatX(0)
-        # format_x = in_format_x
-        # if in_format_y is None:
-        #     in_format_y = DataFormatY(0)
-        # format_y = in_format_y
 
         format_x = DataFormatX(0)
         format_y = DataFormatY(0)
@@ -203,87 +201,6 @@ class MLPipeline:
                     x = x_mem
 
         return response
-
-        # # Learn from the data.
-        # if do_learn:
-        #     for idx_component in range(num_components):
-
-        #         # The data is reformatted for the requirements of each component.
-        #         component = self.components[idx_component]
-        #         x, format_x = component.reformat_x(x = x, in_format_old = format_x)
-        #         y, format_y = component.reformat_y(y = y, in_format_old = format_y)
-
-        #         component.learn(x=x, y=y)
-
-        #         if isinstance(component, MLPreprocessor):
-
-        #             # Preprocessing components modify the propagated feature set.
-        #             x = component.transform(x=x)
-
-        #         elif isinstance(component, MLPredictor):
-
-        #             # Predictors respond to queries.
-        #             # TODO: Expand the feature set with the response.
-        #             response = component.query(x=x)
-                        
-                        
-
-
-
-        #     if isinstance(component, MLPreprocessor):
-        #         # Preprocessing components modify the propagated feature set.
-        #         x = component.transform(x=x)
-        #     elif isinstance(component, MLPredictor):
-        #         # Each predictor is queried
-        #         # TODO: Pipe predictions to the next component as a feature.
-        #         response = component.query(x=x)
-        #         # The final predictor is queried and scored for loss.
-        #         # TODO: Contemplate
-        #         if idx_component == num_components - 1 and do_query:
-        #             response = component.query(x=x)
-
-        #             # Reformat the response to the standard data format.
-        #             response = reformat_y(in_data = response,
-        #                                   in_format_old = format_y,
-        #                                   in_format_new = DataFormatY(0))
-
-        #             # If this predictor is the last component, calculate the loss.
-        #             if idx_component == num_components - 1:
-        #                 self.loss = calculate_loss(y_pred = response, y_true = y)
-
-        #         # # TODO: Review score function. Should have some way to compare truth and predictions.
-        #         # if do_score:
-        #         #     metric = component.score(x=x, y=y)
-        #         #     # TODO: THIS IS ONLY FOR R^2 METRIC! DANGER!
-        #         #     if do_remember:
-        #         #         self.loss = 1 - metric
-
-        # if do_learn:
-        #     component.learn(x=x, y=y)
-
-        # # If there is a response, reformat it to the standard data format.
-        # if do_query:
-        #     response = reformat_y(in_data = response,
-        #                           in_format_old = format_y,
-        #                           in_format_new = DataFormatY(0))
-
-        #     # Memorise the true target and the final response.
-        #     if do_remember:
-        #         y = reformat_y(in_data = y,
-        #                        in_format_old = format_y,
-        #                        in_format_new = DataFormatY(0))
-
-        #         # TODO: Decide if do_learn and for_training are identical.
-        #         if for_training:
-        #             self.training_y_true.extend(y)
-        #             self.training_y_response.extend(response)
-        #         else:
-        #             self.testing_y_true.extend(y)
-        #             self.testing_y_response.extend(response)
-
-
-        # # The final predictor in the pipeline has its response/score returned.
-        # return response, metric
 
     def inspect_structure(self):
         """
@@ -353,7 +270,6 @@ def process_pipeline(in_pipeline: MLPipeline,
     time_end = Timestamp().time
     duration_proc = time_end - time_start
 
-    # in_info_process["metric"] = metric
     in_info_process["duration_prep"] = duration_prep
     in_info_process["duration_proc"] = duration_proc
     in_info_process["n_instances"] = len(y)

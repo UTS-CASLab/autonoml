@@ -10,6 +10,8 @@ from .settings import SystemSettings as SS
 from .concurrency import create_async_task_from_sync
 from .data import (DataType, DataFormatX, DataFormatY, reformat_x, reformat_y)
 
+from typing import Type, List, Dict
+
 import asyncio
 import ast
 import random
@@ -41,11 +43,13 @@ def infer_data_type(in_element):
 
 
 class DataCollection:
-    def __init__(self):
+    def __init__(self, in_keys_data: List[str] = None):
         self.timestamps = list()
-        self.data = dict()
+        if in_keys_data is None:
+            in_keys_data = list()
+        self.data = {key_data: list() for key_data in in_keys_data}
 
-    def __add__(self, other):
+    def __add__(self, other: Type["DataCollection"]):
         """
         Creates and returns a new DataCollection that is merged from this and another.
         Does no error checking on the structure.
@@ -135,7 +139,7 @@ class DataCollection:
 
         return collection_in, collection_out
 
-    def get_data(self, in_keys_features, in_key_target: str,
+    def get_data(self, in_keys_features: List[str], in_key_target: str,
                  in_format_x: DataFormatX = None, in_format_y: DataFormatY = None,
                  in_fraction: float = 1.0):
         """
@@ -190,18 +194,19 @@ class DataStorage:
     def __init__(self):
         log.info("%s - Initialising DataStorage." % Timestamp())
 
-        # self.observations = DataCollection()
-        # self.queries = DataCollection()
-
-        # Store observations/queries as dicts of data collections keyed by user-provided tags.
-        # If no tags are provided, data will be keyed to a no-tag ID.
-        self.collection_id_no_tag = 0
-        self.collection_id_new = 1
+        # Store observations/queries as dicts of data collections keyed by collection IDs.
+        # These collection IDs map to unique combinations of user-specified tags.
+        # Each tag is a pair of tag key and tag value.
+        # For example... 1 -> {"a":"1"} and 2 -> {"a":"1", "b":"2"}
+        # In reverse, a map is kept of individual tags to associated collection IDs.
+        # For example... {"a":"1"} -> [1, 2] and {"b":"2"} -> [2]
+        # If no tags are provided, data is keyed to a no-tag ID.
         self.observations = dict()
         self.queries = dict()
-        # self.observations = {self.collection_id_no_tag: DataCollection()}
-        # self.queries = {self.collection_id_no_tag: DataCollection()}
-        self.tag_to_collection_ids = dict()
+        self.tag_to_collection_ids = dict()         # Structure: dict[key_tag][value_tag] = list()
+        self.collection_id_to_tag_combos = dict()
+        self.collection_id_no_tag = 0
+        self.collection_id_new = 1
 
         self.data_types = dict()    # The data types for each keyed list.
         
@@ -240,16 +245,65 @@ class DataStorage:
         """
         return self.data_types
     
-    def get_tag_values(self, in_tag):
-        return list(self.tag_to_collection_ids[in_tag].keys())
+    def get_tag_values(self, in_key_tag: str):
+        return list(self.tag_to_collection_ids[in_key_tag].keys())
+    
+    def get_collection_ids(self, in_tags: Dict[str, str] = None, 
+                           do_prepare_dicts: bool = False, do_exact_tag_combo: bool = False):
+        """
+        Returns a set of collection IDs associated with a dictionary of tags.
+        If the 'exact tag combo' option is enabled, only one ID for exact tags is returned.
+        For example, assume collection 1 is for {"a":"1"} and 2 is for {"a":"1", "b":"2"}.
+        Requiring an exact tag combo while giving tag {"a":"1"} will only return collection 1, not 2.
+        The 'prepare dicts' option assumes a DataCollection should exist for every tag combo.
+        Therefore, it will create one if it does not exist.
+        """
+    
+        if in_tags is None:
+            set_collection_ids = set([self.collection_id_no_tag])
 
-    def get_observations(self, in_tags = None):
-        return self.observations[self.get_collection_id(in_tags)]
+            if do_prepare_dicts:
+                if not self.collection_id_no_tag in self.observations:
+                    self.observations[self.collection_id_no_tag] = DataCollection(self.get_key_dict().keys())
+                    self.queries[self.collection_id_no_tag] = DataCollection(self.get_key_dict().keys())
+        else:
+            set_collection_ids = None
+            for key_tag, value_tag in in_tags.items():
+
+                if do_prepare_dicts:
+                    if not key_tag in self.tag_to_collection_ids:
+                        self.tag_to_collection_ids[key_tag] = dict()
+                    if not value_tag in self.tag_to_collection_ids[key_tag]:
+                        self.tag_to_collection_ids[key_tag][value_tag] = set()
+
+                if set_collection_ids is None:
+                    set_collection_ids = self.tag_to_collection_ids[key_tag][value_tag]
+                else:
+                    set_collection_ids = set_collection_ids & self.tag_to_collection_ids[key_tag][value_tag]
+
+        # Go through the collections associated with the tags and find the one with exact tag combo.
+        if do_exact_tag_combo:
+            set_collection_ids_old = set_collection_ids
+            set_collection_ids = set()
+            for collection_id in set_collection_ids_old:
+                if in_tags == self.collection_id_to_tag_combos[collection_id]:
+                    set_collection_ids = set([collection_id])
+                    break
+        
+        if do_prepare_dicts:
+            # If no collection associates with the tag combo, optionally create one.
+            if len(set_collection_ids) == 0:
+                self.observations[self.collection_id_new] = DataCollection(self.get_key_dict().keys())
+                self.queries[self.collection_id_new] = DataCollection(self.get_key_dict().keys())
+                for key_tag, value_tag in in_tags.items():
+                    self.tag_to_collection_ids[key_tag][value_tag].add(self.collection_id_new)
+                self.collection_id_to_tag_combos[self.collection_id_new] = in_tags
+                set_collection_ids = set([self.collection_id_new])
+                self.collection_id_new += 1    
+
+        return set_collection_ids
     
-    def get_queries(self, in_tags = None):
-        return self.queries[self.get_collection_id(in_tags)]
-    
-    def get_amount(self, from_queries = False):
+    def get_amount(self, from_queries: bool = False):
         if not from_queries:
             source = self.observations
         else:
@@ -262,7 +316,8 @@ class DataStorage:
     
     def get_collection(self, in_tags_inclusive = None, in_tags_exclusive = None):
         """
-        If there are no inclusive tags, all collections are selected.
+        Returns a concatenation of data collections linked/unlinked with 'inclusive/exclusive' tags.
+        If there are no inclusive tags, all collections are selected prior to exclusions.
         """
         if in_tags_inclusive is None:
             in_tags_inclusive = dict()
@@ -287,59 +342,57 @@ class DataStorage:
                 collection = collection + self.observations[collection_id]
 
         return collection
-
-
-    # TODO: Catch exceptions.
-    def get_collection_id(self, in_tags = None):
     
-        if in_tags is None:
-            collection_id = self.collection_id_no_tag
-        else:
-            set_collection_ids = None
-            for key_tag, value_tag in in_tags.items():
-                if set_collection_ids is None:
-                    set_collection_ids = self.tag_to_collection_ids[key_tag][value_tag]
-                else:
-                    set_collection_ids = set_collection_ids & self.tag_to_collection_ids[key_tag][value_tag]
-
-            collection_id = list(set_collection_ids)[0]
-
-        return collection_id
+    def expand_collections(self, in_key):
+        """
+        Add a new keyed list of None values to every collection in storage with appropriate size.
+        """
+        for source in [self.observations, self.queries]:
+            for collection in source.values():
+                collection.data[in_key] = [None]*len(collection.timestamps)
+        self.data_types[in_key] = None
 
     # TODO: Update info logging once terminology is settled. Fix logging for tags.
-    def store_data(self, in_timestamp: Timestamp, in_data_port_id, in_keys, in_elements, in_data_types, in_tags: dict,
+    def store_data(self, in_timestamp: Timestamp, in_data_port_id, in_keys, in_elements, in_data_types, 
+                   in_tags: Dict[str, str],
                    as_query: bool = False):
 
-        if in_tags is None:
-            if not self.collection_id_no_tag in self.observations:
-                self.observations[self.collection_id_no_tag] = DataCollection()
-                self.queries[self.collection_id_no_tag] = DataCollection()
-            collection_id = self.collection_id_no_tag
-        else:
-            set_collection_ids = None
-            for key_tag, value_tag in in_tags.items():
-                if not key_tag in self.tag_to_collection_ids:
-                    self.tag_to_collection_ids[key_tag] = dict()
-                if not value_tag in self.tag_to_collection_ids[key_tag]:
-                    self.tag_to_collection_ids[key_tag][value_tag] = set()
+        set_collection_ids = self.get_collection_ids(in_tags = in_tags, 
+                                                     do_prepare_dicts = True, 
+                                                     do_exact_tag_combo = True)
+        collection_id = list(set_collection_ids)[0]
 
-                # Search the intersection of all collection ids associated with tags.
-                # There should only be one collection per combination of tags.
-                if set_collection_ids is None:
-                    set_collection_ids = self.tag_to_collection_ids[key_tag][value_tag]
-                else:
-                    set_collection_ids = set_collection_ids & self.tag_to_collection_ids[key_tag][value_tag]
+        # # Convert user-specified tags to collection IDs.
+        # if in_tags is None:
+        #     if not self.collection_id_no_tag in self.observations:
+        #         self.observations[self.collection_id_no_tag] = DataCollection()
+        #         self.queries[self.collection_id_no_tag] = DataCollection()
+        #     collection_id = self.collection_id_no_tag
+        # else:
+        #     set_collection_ids = None
+        #     for key_tag, value_tag in in_tags.items():
+        #         if not key_tag in self.tag_to_collection_ids:
+        #             self.tag_to_collection_ids[key_tag] = dict()
+        #         if not value_tag in self.tag_to_collection_ids[key_tag]:
+        #             self.tag_to_collection_ids[key_tag][value_tag] = set()
 
-            # If no collection can be found, create a new one and associate it with relevant tags.
-            if len(set_collection_ids) == 0:
-                self.observations[self.collection_id_new] = DataCollection()
-                self.queries[self.collection_id_new] = DataCollection()
-                for key_tag, value_tag in in_tags.items():
-                    self.tag_to_collection_ids[key_tag][value_tag].add(self.collection_id_new)
-                collection_id = self.collection_id_new
-                self.collection_id_new += 1
-            else:
-                collection_id = list(set_collection_ids)[0]
+        #         # Search the intersection of all collection ids associated with tags.
+        #         # There should only be one collection per combination of tags.
+        #         if set_collection_ids is None:
+        #             set_collection_ids = self.tag_to_collection_ids[key_tag][value_tag]
+        #         else:
+        #             set_collection_ids = set_collection_ids & self.tag_to_collection_ids[key_tag][value_tag]
+
+        #     # If no collection can be found, create a new one and associate it with relevant tags.
+        #     if len(set_collection_ids) == 0:
+        #         self.observations[self.collection_id_new] = DataCollection()
+        #         self.queries[self.collection_id_new] = DataCollection()
+        #         for key_tag, value_tag in in_tags.items():
+        #             self.tag_to_collection_ids[key_tag][value_tag].add(self.collection_id_new)
+        #         collection_id = self.collection_id_new
+        #         self.collection_id_new += 1
+        #     else:
+        #         collection_id = list(set_collection_ids)[0]
 
         if as_query:
             timestamps = self.queries[collection_id].timestamps
@@ -351,7 +404,7 @@ class DataStorage:
         timestamps.append(in_timestamp)
 
         # Extend all existing data or query lists by one empty slot.
-        for dkey in dict_storage:
+        for dkey in self.get_key_dict():
             dict_storage[dkey].append(None)
         
         count_ikey_new = 0
@@ -372,15 +425,13 @@ class DataStorage:
                 count_ikey_new += 1
             
             dkey = self.ikeys_to_dkeys[ikey]
-            
-            # Both data/queries must have the same keys.
-            if not dkey in self.observations[collection_id].data:
+
+            if not dkey in self.get_key_dict():
                 if count_dkey_new < SS.MAX_ALERTS_DKEY_NEW:
                     log.info("%s   DataStorage has begun storing elements of "
                              "data/queries in a list with key '%s'." 
                              % (Timestamp(None), dkey))
-                self.observations[collection_id].data[dkey] = [None]*len(self.observations[collection_id].timestamps)
-                self.queries[collection_id].data[dkey] = [None]*len(self.queries[collection_id].timestamps)
+                self.expand_collections(in_key = dkey)
                 
                 # If the type has not been determined elsewhere, the first element decides.
                 # TODO: Improve inference process. Maybe update as new data is encountered.
@@ -389,6 +440,23 @@ class DataStorage:
                 else:
                     self.data_types[dkey] = data_type
                 count_dkey_new += 1
+            
+            # # Both data/queries must have the same keys.
+            # if not dkey in self.observations[collection_id].data:
+            #     if count_dkey_new < SS.MAX_ALERTS_DKEY_NEW:
+            #         log.info("%s   DataStorage has begun storing elements of "
+            #                  "data/queries in a list with key '%s'." 
+            #                  % (Timestamp(None), dkey))
+            #     self.observations[collection_id].data[dkey] = [None]*len(self.observations[collection_id].timestamps)
+            #     self.queries[collection_id].data[dkey] = [None]*len(self.queries[collection_id].timestamps)
+                
+            #     # If the type has not been determined elsewhere, the first element decides.
+            #     # TODO: Improve inference process. Maybe update as new data is encountered.
+            #     if data_type is None:
+            #         self.data_types[dkey] = infer_data_type(element)
+            #     else:
+            #         self.data_types[dkey] = data_type
+            #     count_dkey_new += 1
             
             # Add the new element to the list with str-to-type conversion.
             try:

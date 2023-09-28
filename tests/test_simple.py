@@ -14,8 +14,8 @@ if __name__ == '__main__':
     proj = aml.AutonoMachine(do_mp = False)
 
     proj.ingest_file(in_filepath = "%s/train_dummy.csv" % dir_data, in_tags = {"file": 1})
+    proj.ingest_file(in_filepath = "%s/train_dummy.csv" % dir_data, in_tags = {"file": 1, "special": 5})
     proj.ingest_file(in_filepath = "%s/train_dummy.csv" % dir_data, in_tags = {"file": 2})
-    proj.ingest_file(in_filepath = "%s/train_dummy.csv" % dir_data, in_tags = {"file": 3})
     proj.query_with_file(in_filepath = "%s/test_dummy.csv" % dir_data)
 
     proj.info_storage()

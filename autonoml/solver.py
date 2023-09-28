@@ -271,7 +271,6 @@ class ProblemSolver:
         if self.do_mp:
             executor_class = concurrent.futures.ProcessPoolExecutor
             text_executor = "processes"
-            # Note: Done because subprocesses rebuilding the logger need a reference to the calling script.
         else:
             executor_class = concurrent.futures.ThreadPoolExecutor
             text_executor = "threads"

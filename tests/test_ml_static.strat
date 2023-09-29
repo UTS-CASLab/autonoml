@@ -1,6 +1,7 @@
 Strategy:
-  Do HPO: y
   Do Random: n
+  Do HPO: y
+  Max HPO Concurrency: 2
 Optimiser:
   BOHB:
     Note: Prior to HPO, the dataset is randomly split into a training fraction and

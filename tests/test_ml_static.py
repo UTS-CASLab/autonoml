@@ -11,7 +11,7 @@ dir_data = "./data"
 filename_substring = "sps_quality_1000_events"
 experimental_contexts = ["1p2uW_3000cps",
                          "2p5uW_4000cps",
-                        #  "4uW_4100cps",
+                         "4uW_4100cps",
                         #  "8uW_5100cps",
                         #  "10uW_6000cps",
                         #  "10uW_12000cps",

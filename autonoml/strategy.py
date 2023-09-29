@@ -55,7 +55,8 @@ class SearchSpace(dict):
 class Strategy:
 
     def __init__(self, in_search_space: SearchSpace = None,
-                 do_hpo: bool = False, do_random: bool = False,
+                 do_random: bool = False, do_hpo: bool = True,
+                 in_max_hpo_concurrency: int = 2,
                  in_n_iterations: int = 4, in_n_partitions: int = 3,
                  in_frac_validation: float = 0.25):
         
@@ -64,8 +65,9 @@ class Strategy:
         else:
             self.search_space = in_search_space
 
-        self.do_hpo = do_hpo
         self.do_random = do_random
+        self.do_hpo = do_hpo
+        self.max_hpo_concurrency = in_max_hpo_concurrency
 
         self.n_iterations = in_n_iterations
         self.n_partitions = in_n_partitions
@@ -97,17 +99,22 @@ def template_strategy(in_filepath: str = "./template.strat",
             config_space[typename_component] = hpar_space
             count_component += 1
 
-    strategy = {"Strategy": {"Do HPO": CustomBool(True), "Do Random": CustomBool(False)},
-                "Optimiser": {"BOHB": {"Note": ("Prior to HPO, the dataset is randomly split into "
-                                                "a training fraction and a validation fraction. "
-                                                "For i iterations and p partitions, BOHB seeks to "
-                                                "sample p^i models on 1/p^i of training data at the 1st iteration, "
-                                                "then propagate the best 1/p models to the next iteration."),
-                                       "Iterations": 4, "Partitions": 3, "Validation Fraction": 0.25}},
-                "Search Space": config_space}
+    strategy = Strategy()
+
+    dict_strategy = {"Strategy": {"Do Random": CustomBool(strategy.do_random), 
+                                  "Do HPO": CustomBool(strategy.do_hpo),
+                                  "Max HPO Concurrency": strategy.max_hpo_concurrency},
+                     "Optimiser": {"BOHB": {"Note": ("Prior to HPO, the dataset is randomly split into "
+                                                     "a training fraction and a validation fraction. "
+                                                     "For i iterations and p partitions, BOHB seeks to "
+                                                     "sample p^i models on 1/p^i of training data at the 1st iteration, "
+                                                     "then propagate the best 1/p models to the next iteration."),
+                                            "Iterations": strategy.n_iterations, "Partitions": strategy.n_partitions, 
+                                            "Validation Fraction": strategy.frac_validation}},
+                     "Search Space": config_space}
 
     with open(in_filepath, "w") as file:
-        yaml.dump(strategy, file, default_flow_style = False, sort_keys = False,
+        yaml.dump(dict_strategy, file, default_flow_style = False, sort_keys = False,
                   Dumper = CustomDumper)
     log.info("%s - Template strategy generated at: %s" 
              % (Timestamp(), os.path.abspath(in_filepath)))
@@ -118,8 +125,9 @@ def import_strategy(in_filepath: str):
         specs = yaml.safe_load(file)
 
     strategy = Strategy(in_search_space = SearchSpace(specs["Search Space"]),
-                        do_hpo = bool(CustomBool(specs["Strategy"]["Do HPO"])),
                         do_random = bool(CustomBool(specs["Strategy"]["Do Random"])),
+                        do_hpo = bool(CustomBool(specs["Strategy"]["Do HPO"])),
+                        in_max_hpo_concurrency = int(specs["Strategy"]["Max HPO Concurrency"]),
                         in_n_iterations = int(specs["Optimiser"]["BOHB"]["Iterations"]),
                         in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]),
                         in_frac_validation = float(specs["Optimiser"]["BOHB"]["Validation Fraction"]))

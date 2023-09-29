@@ -11,7 +11,7 @@ from .pipeline import MLPipeline, train_pipeline, test_pipeline
 from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipeline_random
 from .strategy import Strategy
 
-from .data_storage import DataStorage
+from .data_storage import DataStorage, DataCollection
 
 # import __main__
 import asyncio
@@ -183,6 +183,7 @@ class ProblemSolver:
     def __del__(self):
         log.debug("Finalising ProblemSolver '%s'." % self.name)
 
+
     async def prepare(self):
         # Process instructions.
         key_target = self.instructions.key_target
@@ -203,6 +204,12 @@ class ProblemSolver:
         self.queue_dev = asyncio.Queue()
 
         strategy = self.instructions.strategy
+
+        # Set up a semaphore to stop too many HPO runs operating concurrently.
+        if strategy.max_hpo_concurrency is None:
+            self.semaphore_hpo = asyncio.Semaphore(self.n_procs)
+        else:
+            self.semaphore_hpo = asyncio.Semaphore(strategy.max_hpo_concurrency)
 
         if strategy.do_hpo:
             if len(strategy.search_space.list_predictors()) > 0:
@@ -245,14 +252,16 @@ class ProblemSolver:
         # Once instructions are processed, begin the problem solving.
         self.run()
 
+
     def run(self):
         log.info("%s - ProblemSolver '%s' is now running." % (Timestamp(), self.name))
         self.is_running = True
         create_async_task_from_sync(self.gather_ops)
+
         
     async def gather_ops(self):
         self.ops = list()
-        self.ops.append(create_async_task(self.process_pipelines))
+        self.ops.append(create_async_task(self.process_development))
         # self.ops.extend([create_async_task(self.process_strategy),
         #                  create_async_task(self.process_queries)])
         group = asyncio.gather(*self.ops)
@@ -267,138 +276,62 @@ class ProblemSolver:
 
         self.is_running = False
 
-    async def process_pipelines(self):
-        if self.do_mp:
-            executor_class = concurrent.futures.ProcessPoolExecutor
-            text_executor = "processes"
-        else:
-            executor_class = concurrent.futures.ThreadPoolExecutor
-            text_executor = "threads"
+    # async def get_from_queue_dev(self):
+    #     return await self.queue_dev.get()
 
-        log.info("%s - ProblemSolver '%s' has launched a pool of %i %s "
-                 "to train MLPipelines." % (Timestamp(), self.name, self.n_procs, text_executor))
-        loop = asyncio.get_event_loop()
 
-        # Leave one processor free when running HPO for training specified pipelines.
-        # TODO: Consider whether to block subsequent HPO requests if one is already running.
-        n_procs_hpo = self.n_procs - 1
+    async def process_hpo(self, in_executor, in_hpo_instructions: HPOInstructions, 
+                          in_observations: DataCollection, in_info_process, in_key_group: str):
+        
+        async with self.semaphore_hpo:
 
-        with executor_class(max_workers = self.n_procs) as executor:
-            while True:
-                dev_package = await self.queue_dev.get()
-                object_dev = dev_package[0]
-                key_group = dev_package[1]
-                data_filter = dev_package[2]
+            # Leave one processor free when running HPO for training specified pipelines.
+            # TODO: Consider whether to block subsequent HPO requests if one is already running.
+            n_procs_hpo = self.n_procs - 1
 
-                if key_group == "":
-                    text_group = "."
-                else:
-                    text_group = ": " + key_group
-                log.info("%s - Development request received for learner-group%s" 
-                         % (Timestamp(), text_group))
+            loop = asyncio.get_event_loop()
+            name_hpo = in_hpo_instructions.name
+
+            # Ensure that active HPO runs have unique names.
+            if name_hpo in self.hpo_runs_active:
+                text_error = ("HPOInstructions named '%s' was encountered in the development queue "
+                            "while another identically named HPO run was active.") % name_hpo
+                log.error("%s - %s" % (Timestamp(), text_error))
+                raise Exception(text_error)
+
+            log.info("%s - Preparing HPO run '%s'." % (Timestamp(), name_hpo))
+            sets_training = list()
+            sets_validation = list()
+
+            time_start = Timestamp().time
+            # TODO: Let users decide how many training/validation pairs to form.
+            for idx_set in range(1):
+                set_validation, set_training = in_observations.split_by_fraction(in_fraction = in_hpo_instructions.frac_validation)
+                sets_training.append(set_training)
+                sets_validation.append(set_validation)
+            time_end = Timestamp().time
+            duration = time_end - time_start
+
+            log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
+                    % (Timestamp(None), 1 - in_hpo_instructions.frac_validation, in_hpo_instructions.frac_validation, duration))
+
+            # Activate the HPO run.
+            log.info("%s   Launching %i-worker HPO run '%s'." % (Timestamp(None), n_procs_hpo, name_hpo))
+            future_pipeline = loop.run_in_executor(in_executor, run_hpo, in_hpo_instructions, in_observations,
+                                                sets_training, sets_validation, in_info_process)
+            self.hpo_runs_active[name_hpo] = True
+
+            # Add HPO workers to the run.
+            for idx_worker in range(1, n_procs_hpo):
+                if name_hpo in self.hpo_runs_active:
+                    create_async_task(self.support_hpo, in_executor, idx_worker, in_hpo_instructions,
+                                    sets_training, sets_validation, in_info_process)
                 
-                # # Based on allocation-specific filtering requirements, cut the data down further.
-                # if not data_filter is None:
-                #     for filter_spec in data_filter:
-                #         key_filter = filter_spec[0]
-                #         value_filter = filter_spec[1]
-                #         o_in, o_out = observations.split_by_content(in_key = key_filter, 
-                #                                                     in_value = value_filter)
-                #         allocation_method = filter_spec[2]
-                #         if allocation_method == AllocationMethod.ONE_EACH:
-                #             observations = o_in
-                #         elif allocation_method == AllocationMethod.LEAVE_ONE_OUT:
-                #             observations = o_out
-                #         else:
-                #             raise NotImplementedError
-                # time_end = Timestamp().time
-                # duration = time_end - time_start
-
-                time_start = Timestamp().time
-                tags_inclusive = dict()
-                tags_exclusive = dict()
-                if not data_filter is None:
-                    for filter_spec in data_filter:
-                        key_filter = filter_spec[0]
-                        value_filter = filter_spec[1]
-                        allocation_method = filter_spec[2]
-                        if allocation_method == AllocationMethod.ONE_EACH:
-                            tags_inclusive[key_filter] = value_filter
-                        elif allocation_method == AllocationMethod.LEAVE_ONE_OUT:
-                            tags_exclusive[key_filter] = value_filter
-                observations = self.data_storage.get_collection(in_tags_inclusive = tags_inclusive, 
-                                                                in_tags_exclusive = tags_exclusive)
-                
-                # TODO: Decide what history of data to train pipelines on.
-                idx_start = 0
-                idx_stop = None
-                if idx_stop is None:
-                    idx_stop = observations.get_amount()
-
-                observations, _ = observations.split_by_range(in_idx_start = idx_start,
-                                                              in_idx_stop = idx_stop)
-
-                name_hpo = None
-                info_process = {"keys_features": self.keys_features,
-                                "key_target": self.key_target,
-                                "idx_start": idx_start,
-                                "idx_stop": idx_stop,
-                                "n_available": self.data_storage.get_amount()}
-
-                time_end = Timestamp().time
-                duration = time_end - time_start
-
-                log.info("%s   Time taken to collate relevant data, applying filter as required: %.3f s"
-                         % (Timestamp(None), duration))
-
-                if isinstance(object_dev, MLPipeline):
-                    future_pipeline = loop.run_in_executor(executor, train_pipeline, object_dev,
-                                                           observations, info_process)
-                    
-                elif isinstance(object_dev, HPOInstructions):
-
-                    name_hpo = object_dev.name
-
-                    # Ensure that active HPO runs have unique names.
-                    if name_hpo in self.hpo_runs_active:
-                        text_error = ("HPOInstructions named '%s' was encountered in the development queue "
-                                      "while another identically named HPO run was active.") % name_hpo
-                        log.error("%s - %s" % (Timestamp(), text_error))
-                        raise Exception(text_error)
-
-                    log.info("%s   Preparing HPO run '%s'." % (Timestamp(None), name_hpo))
-                    sets_training = list()
-                    sets_validation = list()
-
-                    time_start = Timestamp().time
-                    # TODO: Let users decide how many training/validation pairs to form.
-                    for idx_set in range(1):
-                        set_validation, set_training = observations.split_by_fraction(in_fraction = object_dev.frac_validation)
-                        sets_training.append(set_training)
-                        sets_validation.append(set_validation)
-                    time_end = Timestamp().time
-                    duration = time_end - time_start
-
-                    log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s" 
-                             % (Timestamp(None), 1 - object_dev.frac_validation, object_dev.frac_validation, duration))
-
-                    # Activate the HPO run.
-                    log.info("%s   Launching %i-worker HPO run '%s'." 
-                             % (Timestamp(), n_procs_hpo, name_hpo))
-                    future_pipeline = loop.run_in_executor(executor, run_hpo, object_dev, observations,
-                                                           sets_training, sets_validation, info_process)
-                    self.hpo_runs_active[name_hpo] = True
-
-                    # Add HPO workers to the run.
-                    for idx_worker in range(1, n_procs_hpo):
-                        if name_hpo in self.hpo_runs_active:
-                            create_async_task(self.support_hpo, executor, idx_worker, object_dev,
-                                            sets_training, sets_validation, info_process)
-                        
-                create_async_task(self.push_to_production, future_pipeline, 
-                                  in_key_group = key_group, in_name_hpo = name_hpo)
-
-    async def support_hpo(self, in_executor, in_idx_worker: int, in_hpo_instructions, 
+            await create_async_task(self.push_to_production, future_pipeline,
+                                    in_key_group = in_key_group, in_name_hpo = name_hpo)
+        
+        
+    async def support_hpo(self, in_executor, in_idx_worker: int, in_hpo_instructions: HPOInstructions, 
                           in_sets_training, in_sets_validation, in_info_process):
         
         loop = asyncio.get_event_loop()
@@ -428,6 +361,124 @@ class ProblemSolver:
                 time.sleep(1)
             add_attempts += 1
 
+
+    async def process_development(self):
+        if self.do_mp:
+            executor_class = concurrent.futures.ProcessPoolExecutor
+            text_executor = "processes"
+        else:
+            executor_class = concurrent.futures.ThreadPoolExecutor
+            text_executor = "threads"
+
+        log.info("%s - ProblemSolver '%s' has launched a pool of %i %s "
+                 "to train MLPipelines." % (Timestamp(), self.name, self.n_procs, text_executor))
+        loop = asyncio.get_event_loop()
+
+        with executor_class(max_workers = self.n_procs) as executor:
+            while True:
+                dev_package = await self.queue_dev.get()
+                # set_tasks_done, _ = await asyncio.wait([self.get_from_queue_dev()], return_when=asyncio.FIRST_COMPLETED)
+                # dev_package = set_tasks_done.pop().result()
+                object_dev = dev_package[0]
+                key_group = dev_package[1]
+                data_filter = dev_package[2]
+
+                if key_group == "":
+                    text_group = "."
+                else:
+                    text_group = ": " + key_group
+                log.info("%s - Development request received for learner-group%s" 
+                         % (Timestamp(), text_group))
+                
+                # Based on allocation-specific filtering requirements, collate training data.
+                time_start = Timestamp().time
+                tags_inclusive = dict()
+                tags_exclusive = dict()
+                if not data_filter is None:
+                    for filter_spec in data_filter:
+                        key_filter = filter_spec[0]
+                        value_filter = filter_spec[1]
+                        allocation_method = filter_spec[2]
+                        if allocation_method == AllocationMethod.ONE_EACH:
+                            tags_inclusive[key_filter] = value_filter
+                        elif allocation_method == AllocationMethod.LEAVE_ONE_OUT:
+                            tags_exclusive[key_filter] = value_filter
+                observations = self.data_storage.get_collection(in_tags_inclusive = tags_inclusive, 
+                                                                in_tags_exclusive = tags_exclusive)
+                
+                # TODO: Decide what history of data to train pipelines on.
+                idx_start = 0
+                idx_stop = None
+                if idx_stop is None:
+                    idx_stop = observations.get_amount()
+
+                observations, _ = observations.split_by_range(in_idx_start = idx_start,
+                                                              in_idx_stop = idx_stop)
+
+                info_process = {"keys_features": self.keys_features,
+                                "key_target": self.key_target,
+                                "idx_start": idx_start,
+                                "idx_stop": idx_stop,
+                                "n_available": self.data_storage.get_amount()}
+
+                time_end = Timestamp().time
+                duration = time_end - time_start
+
+                log.info("%s   Time taken to collate relevant data, applying filter as required: %.3f s"
+                         % (Timestamp(None), duration))
+
+                if isinstance(object_dev, MLPipeline):
+                    future_pipeline = loop.run_in_executor(executor, train_pipeline, object_dev,
+                                                           observations, info_process)
+                    
+                    create_async_task(self.push_to_production, future_pipeline, in_key_group = key_group)
+                    
+                elif isinstance(object_dev, HPOInstructions):
+
+                    create_async_task(self.process_hpo, in_executor = executor, in_hpo_instructions = object_dev, 
+                                      in_observations = observations, in_info_process = info_process, 
+                                      in_key_group = key_group)
+
+                    # name_hpo = object_dev.name
+
+                    # # Ensure that active HPO runs have unique names.
+                    # if name_hpo in self.hpo_runs_active:
+                    #     text_error = ("HPOInstructions named '%s' was encountered in the development queue "
+                    #                   "while another identically named HPO run was active.") % name_hpo
+                    #     log.error("%s - %s" % (Timestamp(), text_error))
+                    #     raise Exception(text_error)
+
+                    # log.info("%s   Preparing HPO run '%s'." % (Timestamp(None), name_hpo))
+                    # sets_training = list()
+                    # sets_validation = list()
+
+                    # time_start = Timestamp().time
+                    # # TODO: Let users decide how many training/validation pairs to form.
+                    # for idx_set in range(1):
+                    #     set_validation, set_training = observations.split_by_fraction(in_fraction = object_dev.frac_validation)
+                    #     sets_training.append(set_training)
+                    #     sets_validation.append(set_validation)
+                    # time_end = Timestamp().time
+                    # duration = time_end - time_start
+
+                    # log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s" 
+                    #          % (Timestamp(None), 1 - object_dev.frac_validation, object_dev.frac_validation, duration))
+
+                    # # Activate the HPO run.
+                    # log.info("%s   Launching %i-worker HPO run '%s'." 
+                    #          % (Timestamp(), n_procs_hpo, name_hpo))
+                    # future_pipeline = loop.run_in_executor(executor, run_hpo, object_dev, observations,
+                    #                                        sets_training, sets_validation, info_process)
+                    # self.hpo_runs_active[name_hpo] = True
+
+                    # # Add HPO workers to the run.
+                    # for idx_worker in range(1, n_procs_hpo):
+                    #     if name_hpo in self.hpo_runs_active:
+                    #         create_async_task(self.support_hpo, executor, idx_worker, object_dev,
+                    #                         sets_training, sets_validation, info_process)
+                        
+                    # create_async_task(self.push_to_production, future_pipeline, 
+                    #                 in_key_group = key_group, in_name_hpo = name_hpo)
 
     async def push_to_production(self, in_future_pipeline, in_key_group: str, in_name_hpo: str = None):
         try:

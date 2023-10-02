@@ -100,7 +100,7 @@ class CustomBool:
     def __repr__(self):
         return "y" if self.value else "n"
     
-def identify_error(in_exception: Exception, in_text_alert: str):
+def identify_exception(in_exception: Exception, in_text_alert: str):
     log.error(in_text_alert)
     log.debug("Exception: %s" % str(in_exception))
     log.debug("Traceback: %s" % "".join(traceback.format_tb(in_exception.__traceback__)))

@@ -12,7 +12,9 @@ from .component import MLPredictor, MLPreprocessor
 from .components.sklearn import DummyRegressor      # TODO: Revisit this import.
 from .metrics import LossFunction, calculate_loss
 
-from .data_storage import DataCollection
+from .data_storage import DataCollection, DataCollectionXY
+
+from typing import Union
 
 from copy import deepcopy
 from enum import Enum
@@ -245,7 +247,7 @@ class MLPipeline:
 
 
 def process_pipeline(in_pipeline: MLPipeline,
-                     in_data_collection: DataCollection,
+                     in_data_collection: Union[DataCollection, DataCollectionXY],
                      in_info_process,
                      in_frac_data: float = 1.0,
                      do_query: bool = False,
@@ -254,14 +256,18 @@ def process_pipeline(in_pipeline: MLPipeline,
     A wrapper for pipeline training to be called from a ProblemSolver or elsewhere.
     This is designed for multiprocessing.
     """
-    
-    keys_features = in_info_process["keys_features"]
-    key_target = in_info_process["key_target"]
 
     time_start = Timestamp().time
-    x, y = in_data_collection.get_data(in_keys_features = keys_features,
-                                       in_key_target = key_target,
-                                       in_fraction = in_frac_data)
+    if isinstance(in_data_collection, DataCollection):
+        keys_features = in_info_process["keys_features"]
+        key_target = in_info_process["key_target"]
+        x, y = in_data_collection.get_data(in_keys_features = keys_features,
+                                        in_key_target = key_target,
+                                        in_fraction = in_frac_data)
+    elif isinstance(in_data_collection, DataCollectionXY):
+        x, y = in_data_collection.get_data(in_fraction = in_frac_data)
+    else:
+        raise NotImplementedError
     time_end = Timestamp().time
     duration_prep = time_end - time_start
 
@@ -276,12 +282,12 @@ def process_pipeline(in_pipeline: MLPipeline,
 
     return in_pipeline, in_info_process
 
-def train_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollection,
+def train_pipeline(in_pipeline: MLPipeline, in_data_collection: Union[DataCollection, DataCollectionXY],
                    in_info_process, in_frac_data: float = 1.0):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
                             do_learn = True)
 
-def test_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollection, 
+def test_pipeline(in_pipeline: MLPipeline, in_data_collection: Union[DataCollection, DataCollectionXY], 
                   in_info_process):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process,
                             do_query = True)

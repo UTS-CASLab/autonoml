@@ -12,7 +12,6 @@ from .hyperparameter import HPInt, HPFloat
 from .strategy import Strategy, SearchSpace, pool_predictors, pool_preprocessors
 from .data_storage import DataCollection
 
-import time
 import ConfigSpace as CS
 from copy import deepcopy
 

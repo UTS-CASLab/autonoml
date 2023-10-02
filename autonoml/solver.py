@@ -5,7 +5,7 @@ Created on Mon May 22 21:58:33 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp, identify_error
+from .utils import log, Timestamp, identify_exception
 from .concurrency import create_async_task_from_sync, create_async_task
 from .pipeline import MLPipeline, train_pipeline, test_pipeline
 from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipeline_random
@@ -132,6 +132,7 @@ class ProblemSolution:
             pipeline_removed = self.groups[in_key_group].pop()
             log.debug("Removing uncompetitive challenger pipeline '%s' with loss: %0.2f" 
                       % (pipeline_removed.name, pipeline_removed.get_loss()))
+
 
 
 class ProblemSolver:
@@ -270,14 +271,12 @@ class ProblemSolver:
         except Exception as e:
             text_alert = ("%s - ProblemSolver '%s' encountered an error. "
                           "Cancelling Asyncio operations." % (Timestamp(), self.name))
-            identify_error(e, text_alert)
+            identify_exception(e, text_alert)
             for op in self.ops:
                 op.cancel()
 
         self.is_running = False
 
-    # async def get_from_queue_dev(self):
-    #     return await self.queue_dev.get()
 
 
     async def process_hpo(self, in_executor, in_hpo_instructions: HPOInstructions, 
@@ -304,11 +303,18 @@ class ProblemSolver:
             sets_validation = list()
 
             time_start = Timestamp().time
+            
+            # Prepare x and y at this stage to minimise data manipulation during HPO.
+            keys_features = in_info_process["keys_features"]
+            key_target = in_info_process["key_target"]
+            observations = in_observations.prepare_xy(in_keys_features = keys_features, in_key_target = key_target)
+
             # TODO: Let users decide how many training/validation pairs to form.
             for idx_set in range(1):
-                set_validation, set_training = in_observations.split_by_fraction(in_fraction = in_hpo_instructions.frac_validation)
+                set_validation, set_training = observations.split_randomly_by_fraction(in_fraction = in_hpo_instructions.frac_validation)
                 sets_training.append(set_training)
                 sets_validation.append(set_validation)
+                
             time_end = Timestamp().time
             duration = time_end - time_start
 
@@ -439,46 +445,6 @@ class ProblemSolver:
                                       in_observations = observations, in_info_process = info_process, 
                                       in_key_group = key_group)
 
-                    # name_hpo = object_dev.name
-
-                    # # Ensure that active HPO runs have unique names.
-                    # if name_hpo in self.hpo_runs_active:
-                    #     text_error = ("HPOInstructions named '%s' was encountered in the development queue "
-                    #                   "while another identically named HPO run was active.") % name_hpo
-                    #     log.error("%s - %s" % (Timestamp(), text_error))
-                    #     raise Exception(text_error)
-
-                    # log.info("%s   Preparing HPO run '%s'." % (Timestamp(None), name_hpo))
-                    # sets_training = list()
-                    # sets_validation = list()
-
-                    # time_start = Timestamp().time
-                    # # TODO: Let users decide how many training/validation pairs to form.
-                    # for idx_set in range(1):
-                    #     set_validation, set_training = observations.split_by_fraction(in_fraction = object_dev.frac_validation)
-                    #     sets_training.append(set_training)
-                    #     sets_validation.append(set_validation)
-                    # time_end = Timestamp().time
-                    # duration = time_end - time_start
-
-                    # log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s" 
-                    #          % (Timestamp(None), 1 - object_dev.frac_validation, object_dev.frac_validation, duration))
-
-                    # # Activate the HPO run.
-                    # log.info("%s   Launching %i-worker HPO run '%s'." 
-                    #          % (Timestamp(), n_procs_hpo, name_hpo))
-                    # future_pipeline = loop.run_in_executor(executor, run_hpo, object_dev, observations,
-                    #                                        sets_training, sets_validation, info_process)
-                    # self.hpo_runs_active[name_hpo] = True
-
-                    # # Add HPO workers to the run.
-                    # for idx_worker in range(1, n_procs_hpo):
-                    #     if name_hpo in self.hpo_runs_active:
-                    #         create_async_task(self.support_hpo, executor, idx_worker, object_dev,
-                    #                         sets_training, sets_validation, info_process)
-                        
-                    # create_async_task(self.push_to_production, future_pipeline, 
-                    #                 in_key_group = key_group, in_name_hpo = name_hpo)
 
     async def push_to_production(self, in_future_pipeline, in_key_group: str, in_name_hpo: str = None):
         try:
@@ -515,7 +481,7 @@ class ProblemSolver:
             log.info("%s   Pipeline '%s' is pushed to production." % (Timestamp(None), pipeline.name))
         except Exception as e:
             text_alert = "%s - ProblemSolver '%s' failed to process an MLPipeline." % (Timestamp(), self.name)
-            identify_error(e, text_alert)
+            identify_exception(e, text_alert)
         finally:
             # Mark the HPO run as inactive, if applicable.
             if not in_name_hpo is None:

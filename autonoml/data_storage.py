@@ -10,7 +10,7 @@ from .settings import SystemSettings as SS
 from .concurrency import create_async_task_from_sync
 from .data import (DataType, DataFormatX, DataFormatY, reformat_x, reformat_y)
 
-from typing import Type, List, Dict
+from typing import Type, List, Dict, Any
 
 import asyncio
 import ast
@@ -42,9 +42,20 @@ def infer_data_type(in_element):
 
 
 
-class DataCollection:
-    def __init__(self, in_keys_data: List[str] = None):
-        self.timestamps = list()
+class DataCollectionBase:
+    def __init__(self, in_timestamps: List[Timestamp] = None, *args, **kwargs):
+        if in_timestamps is None:
+            self.timestamps = list()
+        else:
+            self.timestamps = in_timestamps
+
+    def get_amount(self, in_idx_start: int = 0, in_idx_stop: int = None):
+        return len(self.timestamps[in_idx_start:in_idx_stop])
+    
+
+class DataCollection(DataCollectionBase):
+    def __init__(self, in_keys_data: List[str] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         if in_keys_data is None:
             in_keys_data = list()
         self.data = {key_data: list() for key_data in in_keys_data}
@@ -110,10 +121,9 @@ class DataCollection:
         return collection_in, collection_out
     
     # TODO: Consider cases where empty collections are returned. Where to catch exceptions?
-    def split_by_fraction(self, in_fraction: float = 0.25, in_seed: int = 0):
+    def split_randomly_by_fraction(self, in_fraction: float = 0.25, in_seed: int = 0):
         """
-        Return DataCollections with/without randomly selected instances.
-        The instances constitute a fraction of the collected data.
+        Return shuffled DataCollections inside/outside a specified fraction of instances.
         Note: Creates shallow copies.
         """
         n_instances = self.get_amount()
@@ -143,24 +153,31 @@ class DataCollection:
                  in_format_x: DataFormatX = None, in_format_y: DataFormatY = None,
                  in_fraction: float = 1.0):
         """
-        Return data as a set of features x and a target y.
+        Returns a specified fractional slice of the data as a set of features (x) and target (y).
+        Note: This assumes the data is already randomly shuffled.
         """
 
         source = self.data
 
         # Copy out the required data in default DataFormatX and DataFormatY style.
-        x = deepcopy({key_feature:source[key_feature] for key_feature in in_keys_features})
-        y = deepcopy(source[in_key_target])
+        # Get a specified fractional slice of the data.
+        n_samples = int(self.get_amount() * in_fraction)
+        x = deepcopy({key_feature:source[key_feature][:n_samples] for key_feature in in_keys_features})
+        y = deepcopy(source[in_key_target][:n_samples])
 
-        # Randomly sample a fraction of the data if desired.
-        if in_fraction < 1:
-            amount_selected = self.get_amount()
-            size_sample = max(1, int(in_fraction * amount_selected))
-            random.seed(0)
-            idx_list = random.sample(range(amount_selected), size_sample)
+        # # Get a specified fractional slice of the data.
+        # x = {key: x[key][:n_samples] for key in x}
+        # y = y[:n_samples]
 
-            x = {key:[x[key][idx] for idx in idx_list] for key in x}
-            y = [y[idx] for idx in idx_list]
+        # # Randomly sample a fraction of the data if desired.
+        # if in_fraction < 1:
+        #     amount_selected = self.get_amount()
+        #     size_sample = max(1, int(in_fraction * amount_selected))
+        #     random.seed(0)
+        #     idx_list = random.sample(range(amount_selected), size_sample)
+
+        #     x = {key:[x[key][idx] for idx in idx_list] for key in x}
+        #     y = [y[idx] for idx in idx_list]
 
         if in_format_x is None:
             in_format_x = DataFormatX(0)
@@ -169,18 +186,81 @@ class DataCollection:
 
         # Reformat the data.
         # If formats were not specified, the data is retrieved in 'standard' format.
-        x = reformat_x(in_data = x, 
-                        in_format_old = DataFormatX(0),
-                        in_format_new = in_format_x,
-                        in_keys_features = in_keys_features)
-        y = reformat_y(in_data = y, 
-                        in_format_old = DataFormatY(0),
-                        in_format_new = in_format_y)
+        x = reformat_x(in_data = x,
+                       in_format_old = DataFormatX(0),
+                       in_format_new = in_format_x,
+                       in_keys_features = in_keys_features)
+        y = reformat_y(in_data = y,
+                       in_format_old = DataFormatY(0),
+                       in_format_new = in_format_y)
 
         return x, y
     
-    def get_amount(self, in_idx_start: int = 0, in_idx_stop: int = None):
-        return len(self.timestamps[in_idx_start:in_idx_stop])
+    def prepare_xy(self, in_keys_features: List[str], in_key_target: str):
+        """
+        Return a special version of DataCollection prepared with features (x) and target (y).
+        """
+        
+        source = self.data
+        x = deepcopy({key_feature:source[key_feature] for key_feature in in_keys_features})
+        y = deepcopy(source[in_key_target])
+        
+        return DataCollectionXY(in_timestamps = copy(self.timestamps), 
+                                in_x = x, in_y = y)
+    
+
+class DataCollectionXY(DataCollectionBase):
+    """
+    A container for data where feature (x) and target (y) selection has already been done.
+    Is primarily used for HPO where repeat data manipulations are computationally expensive.
+    """
+    def __init__(self, in_timestamps: List[Timestamp], 
+                 in_x: Dict[str, List[Any]], in_y: List[Any], *args, **kwargs):
+        super().__init__(in_timestamps = in_timestamps, *args, **kwargs)
+        self.x = in_x
+        self.y = in_y
+
+    def get_data(self, in_fraction: float = 1.0):
+        """
+        Returns a specified fractional slice of the data.
+        Note: This assumes the data is already randomly shuffled.
+        """
+        n_samples = int(self.get_amount() * in_fraction)
+        x = {key: self.x[key][:n_samples] for key in self.x}
+        y = self.y[:n_samples]
+
+        return x, y
+    
+    # TODO: Consider cases where empty collections are returned. Where to catch exceptions?
+    def split_randomly_by_fraction(self, in_fraction: float = 0.25, in_seed: int = 0):
+        """
+        Return shuffled DataCollectionXYs inside/outside a specified fraction of instances.
+        Note: Creates shallow copies.
+        """
+        n_instances = self.get_amount()
+        random.seed(in_seed)
+        list_indices = random.sample(range(n_instances), n_instances)
+
+        # Ensure the number of indices selected is appropriately bounded.
+        idx_in_stop = min(max(0, int(in_fraction * n_instances)), 
+                          n_instances)
+        idx_out_start = idx_in_stop - n_instances
+        list_indices_in = list_indices[:idx_in_stop]
+        list_indices_out = list_indices[idx_out_start:]
+
+        timestamps = [self.timestamps[idx] for idx in list_indices_in]
+        x = {key: [self.x[key][idx] for idx in list_indices_in] for key in self.x}
+        y = [self.y[idx] for idx in list_indices_in]
+        collection_in = DataCollectionXY(in_timestamps = timestamps, in_x = x, in_y = y)
+        
+        timestamps = [self.timestamps[idx] for idx in list_indices_out]
+        x = {key: [self.x[key][idx] for idx in list_indices_out] for key in self.x}
+        y = [self.y[idx] for idx in list_indices_out]
+        collection_out = DataCollectionXY(in_timestamps = timestamps, in_x = x, in_y = y)
+
+        return collection_in, collection_out
+
+
 
 
 
@@ -357,42 +437,11 @@ class DataStorage:
                    in_tags: Dict[str, str],
                    as_query: bool = False):
 
+        # Convert user-specified tags to a unique collection ID.
         set_collection_ids = self.get_collection_ids(in_tags = in_tags, 
                                                      do_prepare_dicts = True, 
                                                      do_exact_tag_combo = True)
         collection_id = list(set_collection_ids)[0]
-
-        # # Convert user-specified tags to collection IDs.
-        # if in_tags is None:
-        #     if not self.collection_id_no_tag in self.observations:
-        #         self.observations[self.collection_id_no_tag] = DataCollection()
-        #         self.queries[self.collection_id_no_tag] = DataCollection()
-        #     collection_id = self.collection_id_no_tag
-        # else:
-        #     set_collection_ids = None
-        #     for key_tag, value_tag in in_tags.items():
-        #         if not key_tag in self.tag_to_collection_ids:
-        #             self.tag_to_collection_ids[key_tag] = dict()
-        #         if not value_tag in self.tag_to_collection_ids[key_tag]:
-        #             self.tag_to_collection_ids[key_tag][value_tag] = set()
-
-        #         # Search the intersection of all collection ids associated with tags.
-        #         # There should only be one collection per combination of tags.
-        #         if set_collection_ids is None:
-        #             set_collection_ids = self.tag_to_collection_ids[key_tag][value_tag]
-        #         else:
-        #             set_collection_ids = set_collection_ids & self.tag_to_collection_ids[key_tag][value_tag]
-
-        #     # If no collection can be found, create a new one and associate it with relevant tags.
-        #     if len(set_collection_ids) == 0:
-        #         self.observations[self.collection_id_new] = DataCollection()
-        #         self.queries[self.collection_id_new] = DataCollection()
-        #         for key_tag, value_tag in in_tags.items():
-        #             self.tag_to_collection_ids[key_tag][value_tag].add(self.collection_id_new)
-        #         collection_id = self.collection_id_new
-        #         self.collection_id_new += 1
-        #     else:
-        #         collection_id = list(set_collection_ids)[0]
 
         if as_query:
             timestamps = self.queries[collection_id].timestamps

@@ -1,4 +1,5 @@
 Strategy:
+  Do Defaults: n
   Do Random: n
   Do HPO: y
   Max HPO Concurrency: 2

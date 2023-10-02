@@ -7,8 +7,8 @@ Created on Mon May 22 21:58:33 2023
 
 from .utils import log, Timestamp, identify_exception
 from .concurrency import create_async_task_from_sync, create_async_task
-from .pipeline import MLPipeline, train_pipeline, test_pipeline
-from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipeline_random
+from .pipeline import MLPipeline, train_pipeline_with_validation, test_pipeline
+from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipelines_default, create_pipeline_random
 from .strategy import Strategy
 
 from .data_storage import DataStorage, DataCollection
@@ -212,19 +212,18 @@ class ProblemSolver:
         else:
             self.semaphore_hpo = asyncio.Semaphore(strategy.max_hpo_concurrency)
 
-        if strategy.do_hpo:
-            if len(strategy.search_space.list_predictors()) > 0:
-                for key_group in self.solution.groups:
-                    data_filter = self.solution.filters[key_group]
-                    dev_package = (HPOInstructions(in_strategy = strategy), key_group, data_filter)
+        if strategy.do_defaults:
+            for key_group in self.solution.groups:
+                data_filter = self.solution.filters[key_group]
+                pipelines = create_pipelines_default(in_keys_features = self.keys_features,
+                                                     in_key_target = self.key_target,
+                                                     in_strategy = strategy)
+                for pipeline in pipelines:
+                    dev_package = (pipeline, key_group, data_filter)
                     await self.queue_dev.put(dev_package)
-            else:
-                text_warning = ("The Strategy for ProblemSolver '%s' does not suggest "
-                                "any predictors in its search space.") % self.name
-                log.warning("%s - %s" % (Timestamp(), text_warning))
         else:
             text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
-                         "running HPO.") % self.name
+                         "running default pipelines.") % self.name
             log.info("%s - %s" % (Timestamp(), text_info))
 
         # TODO: Consider giving random pipelines some validation, not challenging with inf loss.
@@ -240,8 +239,24 @@ class ProblemSolver:
                     await self.queue_dev.put(dev_package)
         else:
             text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
-                         "running custom pipelines.") % self.name
+                         "running random pipelines.") % self.name
             log.info("%s - %s" % (Timestamp(), text_info))
+
+        if strategy.do_hpo:
+            if len(strategy.search_space.list_predictors()) > 0:
+                for key_group in self.solution.groups:
+                    data_filter = self.solution.filters[key_group]
+                    dev_package = (HPOInstructions(in_strategy = strategy), key_group, data_filter)
+                    await self.queue_dev.put(dev_package)
+            else:
+                text_warning = ("The Strategy for ProblemSolver '%s' does not suggest "
+                                "any predictors in its search space.") % self.name
+                log.warning("%s - %s" % (Timestamp(), text_warning))
+        else:
+            text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
+                         "running HPO.") % self.name
+            log.info("%s - %s" % (Timestamp(), text_info))
+
 
         if self.queue_dev.qsize() == 0:
             # TODO: Perhaps wrap this up in a utils error function.
@@ -383,8 +398,6 @@ class ProblemSolver:
         with executor_class(max_workers = self.n_procs) as executor:
             while True:
                 dev_package = await self.queue_dev.get()
-                # set_tasks_done, _ = await asyncio.wait([self.get_from_queue_dev()], return_when=asyncio.FIRST_COMPLETED)
-                # dev_package = set_tasks_done.pop().result()
                 object_dev = dev_package[0]
                 key_group = dev_package[1]
                 data_filter = dev_package[2]
@@ -434,8 +447,9 @@ class ProblemSolver:
                          % (Timestamp(None), duration))
 
                 if isinstance(object_dev, MLPipeline):
-                    future_pipeline = loop.run_in_executor(executor, train_pipeline, object_dev,
-                                                           observations, info_process)
+                    future_pipeline = loop.run_in_executor(executor, train_pipeline_with_validation, object_dev,
+                                                           observations, info_process, 
+                                                           self.instructions.strategy.frac_validation)
                     
                     create_async_task(self.push_to_production, future_pipeline, in_key_group = key_group)
                     
@@ -467,7 +481,7 @@ class ProblemSolver:
                      "%s   Time taken to retrieve data: %.3f s\n"
                      "%s   Time taken to train/score pipeline on data: %.3f s\n"
                      "%s   Training loss: %f\n"
-                     "%s   (Testing loss: %f)\n"
+                     "%s   (Heuristic validation loss: %f)\n"
                      "%s   Last observation: Prediction '%s' vs True Value '%s'"
                      % (Timestamp(), pipeline.name, n_instances, n_available,
                         Timestamp(None), pipeline.components_as_string(do_hpars = True),

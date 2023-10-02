@@ -55,7 +55,7 @@ class SearchSpace(dict):
 class Strategy:
 
     def __init__(self, in_search_space: SearchSpace = None,
-                 do_random: bool = False, do_hpo: bool = True,
+                 do_defaults: bool = False, do_random: bool = False, do_hpo: bool = False,
                  in_max_hpo_concurrency: int = 2,
                  in_n_iterations: int = 4, in_n_partitions: int = 3,
                  in_frac_validation: float = 0.25):
@@ -65,6 +65,7 @@ class Strategy:
         else:
             self.search_space = in_search_space
 
+        self.do_defaults = do_defaults
         self.do_random = do_random
         self.do_hpo = do_hpo
         self.max_hpo_concurrency = in_max_hpo_concurrency
@@ -101,7 +102,8 @@ def template_strategy(in_filepath: str = "./template.strat",
 
     strategy = Strategy()
 
-    dict_strategy = {"Strategy": {"Do Random": CustomBool(strategy.do_random), 
+    dict_strategy = {"Strategy": {"Do Defaults": CustomBool(strategy.do_defaults),
+                                  "Do Random": CustomBool(strategy.do_random), 
                                   "Do HPO": CustomBool(strategy.do_hpo),
                                   "Max HPO Concurrency": strategy.max_hpo_concurrency},
                      "Optimiser": {"BOHB": {"Note": ("Prior to HPO, the dataset is randomly split into "
@@ -125,6 +127,7 @@ def import_strategy(in_filepath: str):
         specs = yaml.safe_load(file)
 
     strategy = Strategy(in_search_space = SearchSpace(specs["Search Space"]),
+                        do_defaults = bool(CustomBool(specs["Strategy"]["Do Defaults"])),
                         do_random = bool(CustomBool(specs["Strategy"]["Do Random"])),
                         do_hpo = bool(CustomBool(specs["Strategy"]["Do HPO"])),
                         in_max_hpo_concurrency = int(specs["Strategy"]["Max HPO Concurrency"]),

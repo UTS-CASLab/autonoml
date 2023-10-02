@@ -291,3 +291,59 @@ def test_pipeline(in_pipeline: MLPipeline, in_data_collection: Union[DataCollect
                   in_info_process):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process,
                             do_query = True)
+
+def train_pipeline_with_validation(in_pipeline: MLPipeline, in_observations: DataCollection, 
+                                   in_info_process, in_frac_validation: float):
+
+    sets_training = list()
+    sets_validation = list()
+
+    time_start = Timestamp().time
+    
+    # Prepare x and y at this stage to minimise data manipulation during HPO.
+    keys_features = in_info_process["keys_features"]
+    key_target = in_info_process["key_target"]
+    observations = in_observations.prepare_xy(in_keys_features = keys_features, in_key_target = key_target)
+
+    # TODO: Let users decide how many training/validation pairs to form.
+    for idx_set in range(1):
+        set_validation, set_training = observations.split_randomly_by_fraction(in_fraction = in_frac_validation)
+        sets_training.append(set_training)
+        sets_validation.append(set_validation)
+        
+    time_end = Timestamp().time
+    duration = time_end - time_start
+
+    log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
+            % (Timestamp(None), 1 - in_frac_validation, in_frac_validation, duration))
+    
+    losses = list()
+
+    for set_training, set_validation in zip(sets_training, sets_validation):
+
+        pipeline_clone = deepcopy(in_pipeline)
+        info_process_clone = deepcopy(in_info_process)
+
+        print("Initial Training Size: %i" % set_training.get_amount())
+        pipeline_clone, _ = train_pipeline(in_pipeline = pipeline_clone,
+                                           in_data_collection = set_training,
+                                           in_info_process = info_process_clone)
+        
+        print("Validation Size: %i" % set_validation.get_amount())
+        pipeline_clone, _ = test_pipeline(in_pipeline = pipeline_clone,
+                                          in_data_collection = set_validation,
+                                          in_info_process = info_process_clone)
+        
+        losses.append(pipeline_clone.get_loss())
+
+    loss = sum(losses)/len(losses)
+
+    print("Final Training Size: %i" % observations.get_amount())
+    pipeline, _ = train_pipeline(in_pipeline = in_pipeline,
+                                 in_data_collection = observations,
+                                 in_info_process = in_info_process)
+    
+    # Short of further testing, its starting loss is the validation score it received here.
+    pipeline.set_loss(loss)
+    
+    return pipeline, in_info_process

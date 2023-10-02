@@ -172,6 +172,23 @@ class HPOWorker(Worker):
 
         return(cs)
     
+def create_pipelines_default(in_keys_features, in_key_target, in_strategy):
+
+    if in_strategy is None:
+        search_space = SearchSpace()
+    else:
+        search_space = in_strategy.search_space
+
+    cs = HPOWorker.get_configspace(search_space)
+    predictor_names = cs.get_hyperparameter("predictor").choices
+    pipelines = list()
+    for predictor_name in predictor_names:
+        pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target,
+                              in_components = [pool_predictors[predictor_name][0]()])
+        pipelines.append(pipeline)
+    
+    return pipelines
+
 def create_pipeline_random(in_keys_features, in_key_target, in_strategy):
 
     if in_strategy is None:
@@ -280,12 +297,6 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
                 Timestamp(None), config_best,
                 Timestamp(None), loss_best,
                 Timestamp(None), all_runs[-1].time_stamps["finished"] - all_runs[0].time_stamps["started"]))
-
-    # log.info('Best found configuration:', id2config[incumbent]['config'])
-    # print('A total of %i unique configurations were sampled.' % len(id2config.keys()))
-    # print('A total of %i runs were executed.' % len(all_runs))
-    # print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/budget_max))
-    # print('The run took %.1f seconds to complete.'%(all_runs[-1].time_stamps['finished'] - all_runs[0].time_stamps['started']))
 
     # Based on the best configuration, create a new pipeline.
     keys_features = in_info_process["keys_features"]

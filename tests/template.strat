@@ -1,6 +1,7 @@
 Strategy:
+  Do Defaults: n
   Do Random: n
-  Do HPO: y
+  Do HPO: n
   Max HPO Concurrency: 2
 Optimiser:
   BOHB:

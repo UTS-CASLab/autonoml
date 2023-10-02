@@ -12,7 +12,8 @@ from .concurrency import (create_async_task_from_sync, create_async_task,
 
 from .data_storage import DataStorage
 from .data_io import DataPort, DataPortStream
-from .solver import ProblemSolver, ProblemSolverInstructions
+from .solver import ProblemSolver
+from .solution import ProblemSolverInstructions
 from .plot import plot_figures
 
 from .strategy import Strategy

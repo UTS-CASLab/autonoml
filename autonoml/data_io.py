@@ -35,7 +35,7 @@ class DataPort:
         
     # TODO: Consider Pandas if it is faster.
     # TODO: Update logs for queries.
-    async def ingest_file(self, in_filepath, in_tags = None, 
+    async def ingest_file(self, in_filepath, in_tags = None, in_limit_rows: int = None,
                           in_file_has_headers: bool = True, as_query: bool = False):
 
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
@@ -64,13 +64,16 @@ class DataPort:
                 #     self.keys.append(key_tag)
                 #     self.data_types.append(DataType.CATEGORICAL)
 
-            count_instance = 0
-            for line in data_file:
+            # count_instance = 0
+            for idx_line, line in enumerate(data_file):
+                if not in_limit_rows is None:
+                    if idx_line >= in_limit_rows:
+                        break
                 data = line.rstrip().split(",")
                 
                 # If there are no headers...
                 # Create inflow keys to enumerate the data elements encountered.
-                if count_instance == 0 and not in_file_has_headers:
+                if idx_line == 0 and not in_file_has_headers:
                     self.keys = [str(num_element) for num_element in range(len(data))]
 
                     # # Add the custom tags to keys.
@@ -90,13 +93,12 @@ class DataPort:
                                              in_data_types = self.data_types,
                                              in_tags = in_tags,
                                              as_query = as_query)
-                count_instance += 1
 
         time_end = Timestamp().time
                 
         log.info("%s - DataPort '%s' has acquired and stored %s instances of data.\n"
                  "%s   Time taken: %.3f s" 
-                  % (Timestamp(), self.name, count_instance,
+                  % (Timestamp(), self.name, idx_line,
                      Timestamp(None), time_end - time_start))
 
                 

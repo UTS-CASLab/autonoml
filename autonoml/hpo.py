@@ -10,7 +10,7 @@ from .pipeline import MLPipeline, train_pipeline, test_pipeline
 
 from .hyperparameter import HPInt, HPFloat
 from .strategy import Strategy, SearchSpace, pool_predictors, pool_preprocessors
-from .data_storage import DataCollection
+from .data_storage import DataCollectionXY
 
 import ConfigSpace as CS
 from copy import deepcopy
@@ -69,7 +69,7 @@ def config_to_pipeline_structure(in_config):
 
 class HPOWorker(Worker):
 
-    def __init__(self, in_sets_training: List[DataCollection], in_sets_validation: List[DataCollection],
+    def __init__(self, in_sets_training: List[DataCollectionXY], in_sets_validation: List[DataCollectionXY],
                  in_info_process, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -203,7 +203,7 @@ def create_pipeline_random(in_keys_features, in_key_target, in_strategy):
     return pipeline
 
 def add_hpo_worker(in_hpo_instructions: HPOInstructions, 
-                   in_sets_training: List[DataCollection], in_sets_validation: List[DataCollection],
+                   in_sets_training: List[DataCollectionXY], in_sets_validation: List[DataCollectionXY],
                    in_info_process, in_idx: int, do_background = False):
     """
     Supplements a current HPO run with an additional worker.
@@ -227,8 +227,8 @@ def add_hpo_worker(in_hpo_instructions: HPOInstructions,
         return e
 
 def run_hpo(in_hpo_instructions: HPOInstructions,
-            in_observations: DataCollection,
-            in_sets_training: List[DataCollection], in_sets_validation: List[DataCollection],
+            in_observations: DataCollectionXY,
+            in_sets_training: List[DataCollectionXY], in_sets_validation: List[DataCollectionXY],
             in_info_process):
     """
     Runs a hyperparameter optimisation according to specified instructions.

@@ -103,7 +103,7 @@ class AutonoMachine:
     #         del self.data_ports[id]
             
     # @skip_in_other_processes
-    def ingest_file(self, in_filepath, in_tags = None):
+    def ingest_file(self, in_filepath, in_tags = None, in_limit_rows = None):
         """
         Take in a .csv file and convert its contents into data to learn from.
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
@@ -116,10 +116,10 @@ class AutonoMachine:
         ref = DataPort(in_data_storage = self.data_storage)
         self.data_ports[ref.name] = ref
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
-                                    in_tags = in_tags)
+                                    in_tags = in_tags, in_limit_rows = in_limit_rows)
         
     # @skip_in_other_processes
-    def query_with_file(self, in_filepath, in_tags = None):
+    def query_with_file(self, in_filepath, in_tags = None, in_limit_rows = None):
         """
         Take in a .csv file and convert its contents into data to respond to.
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
@@ -131,7 +131,7 @@ class AutonoMachine:
         ref = DataPort(in_data_storage = self.data_storage)
         self.data_ports[ref.name] = ref
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
-                                    in_tags = in_tags, as_query = True)
+                                    in_tags = in_tags, in_limit_rows = in_limit_rows, as_query = True)
         
     # def ingest_stream(self, in_hostname, in_port):
     #     self.open_data_port(in_hostname = in_hostname, in_port = in_port)

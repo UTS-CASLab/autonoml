@@ -9,8 +9,9 @@ from .utils import log, Timestamp
 from .pipeline import MLPipeline, train_pipeline, test_pipeline
 from .strategy import Strategy
 
-from .data_storage import DataStorage, DataCollection, DataCollectionXY
+from .data_storage import DataStorage, DataCollection, DataCollectionXY, get_collection
 
+from typing import List, Dict
 from enum import Enum
 from copy import deepcopy
 
@@ -126,12 +127,11 @@ class ProblemSolution:
             
 
 
-def filter_observations(in_data_storage: DataStorage, in_filter):
+def filter_observations(in_dict_observations: Dict[int, DataCollection], 
+                        in_tag_to_collection_ids, in_filter):
     """
     Based on allocation-specific filtering requirements, collate training data.
     """
-
-    time_start = Timestamp().time
     tags_inclusive = dict()
     tags_exclusive = dict()
     if not in_filter is None:
@@ -143,13 +143,9 @@ def filter_observations(in_data_storage: DataStorage, in_filter):
                 tags_inclusive[key_filter] = value_filter
             elif allocation_method == AllocationMethod.LEAVE_ONE_OUT:
                 tags_exclusive[key_filter] = value_filter
-    observations = in_data_storage.get_collection(in_tags_inclusive = tags_inclusive, 
-                                                    in_tags_exclusive = tags_exclusive)
-    time_end = Timestamp().time
-    duration = time_end - time_start
-    
-    log.info("%s   Time taken to collate relevant data, applying filter as required: %.3f s"
-             % (Timestamp(None), duration))
+    observations = get_collection(in_dict_observations = in_dict_observations, 
+                                  in_tag_to_collection_ids = in_tag_to_collection_ids,
+                                  in_tags_inclusive = tags_inclusive, in_tags_exclusive = tags_exclusive)
         
         # # TODO: Decide what history of data to train pipelines on.
         # idx_start = 0
@@ -162,42 +158,64 @@ def filter_observations(in_data_storage: DataStorage, in_filter):
 
     return observations
 
-def develop_pipeline(in_pipeline: MLPipeline, in_data_storage: DataStorage, in_filter,
-                     in_info_process, in_frac_validation: float):
-    
-    log.info("%s - Preparing development of MLPipeline '%s'."
-             % (Timestamp(), in_pipeline.name))
-    
-    observations = filter_observations(in_data_storage = in_data_storage, in_filter = in_filter)
+def prepare_observations(in_observations: DataCollection, in_info_process, in_frac_validation: float):
+
+    # Prepare x and y at this stage to minimise data manipulation during training.
+    keys_features = in_info_process["keys_features"]
+    key_target = in_info_process["key_target"]
+    observations = in_observations.prepare_xy(in_keys_features = keys_features, in_key_target = key_target)
 
     sets_training = list()
     sets_validation = list()
-
-    time_start = Timestamp().time
-    
-    # Prepare x and y at this stage to minimise data manipulation during HPO.
-    keys_features = in_info_process["keys_features"]
-    key_target = in_info_process["key_target"]
-    observations = observations.prepare_xy(in_keys_features = keys_features, in_key_target = key_target)
 
     # TODO: Let users decide how many training/validation pairs to form.
     for idx_set in range(1):
         set_validation, set_training = observations.split_randomly_by_fraction(in_fraction = in_frac_validation)
         sets_training.append(set_training)
         sets_validation.append(set_validation)
-        
-    time_end = Timestamp().time
-    duration = time_end - time_start
 
-    log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
-            % (Timestamp(None), 1 - in_frac_validation, in_frac_validation, duration))
+    return observations, sets_training, sets_validation
+
+
+
+def develop_pipeline(in_pipeline: MLPipeline,
+                     in_observations: DataCollectionXY,
+                     in_sets_training: List[DataCollectionXY], in_sets_validation: List[DataCollectionXY],
+                     in_info_process):
+    
+    # log.info("%s - Preparing development of MLPipeline '%s'."
+    #          % (Timestamp(), in_pipeline.name))
+    
+    # observations = filter_observations(in_data_storage = in_data_storage, in_filter = in_filter)
+
+    # sets_training = list()
+    # sets_validation = list()
+
+    # time_start = Timestamp().time
+    
+    # # Prepare x and y at this stage to minimise data manipulation during HPO.
+    # keys_features = in_info_process["keys_features"]
+    # key_target = in_info_process["key_target"]
+    # observations = observations.prepare_xy(in_keys_features = keys_features, in_key_target = key_target)
+
+    # # TODO: Let users decide how many training/validation pairs to form.
+    # for idx_set in range(1):
+    #     set_validation, set_training = observations.split_randomly_by_fraction(in_fraction = in_frac_validation)
+    #     sets_training.append(set_training)
+    #     sets_validation.append(set_validation)
+        
+    # time_end = Timestamp().time
+    # duration = time_end - time_start
+
+    # log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
+    #         % (Timestamp(None), 1 - in_frac_validation, in_frac_validation, duration))
     
     losses = list()
 
-    for set_training, set_validation in zip(sets_training, sets_validation):
+    info_process_clone = deepcopy(in_info_process)
+    for set_training, set_validation in zip(in_sets_training, in_sets_validation):
 
         pipeline_clone = deepcopy(in_pipeline)
-        info_process_clone = deepcopy(in_info_process)
 
         print("Initial Training Size: %i" % set_training.get_amount())
         pipeline_clone, _ = train_pipeline(in_pipeline = pipeline_clone,
@@ -213,9 +231,9 @@ def develop_pipeline(in_pipeline: MLPipeline, in_data_storage: DataStorage, in_f
 
     loss = sum(losses)/len(losses)
 
-    print("Final Training Size: %i" % observations.get_amount())
+    print("Final Training Size: %i" % in_observations.get_amount())
     pipeline, _ = train_pipeline(in_pipeline = in_pipeline,
-                                 in_data_collection = observations,
+                                 in_data_collection = in_observations,
                                  in_info_process = in_info_process)
     
     # Short of further testing, its starting loss is the validation score it received here.

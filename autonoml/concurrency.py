@@ -10,6 +10,8 @@ import threading
 import weakref
 import functools
 import atexit
+# import concurrent.futures
+# import dill
 
 # Set up a forever-running asyncio event loop in a thread dedicated to AutonoML.
 # This works for Python where there is no pre-existing loop.
@@ -147,6 +149,19 @@ def schedule_this(bound_method):
         bound_method_with_instance = bound_method.__get__(self, self.__class__)
         create_async_task_from_sync(bound_method_with_instance, *args, **kwargs)
     return wrapper_decorator
+
+
+
+# class ProcessPoolExecutorEnhanced(concurrent.futures.ProcessPoolExecutor):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+
+#     def _initialize(self, *args, **kwargs):
+#         super()._initialize(*args, **kwargs)
+#         self._popen_kwargs["serializer"] = dill.dumps
+#         self._popen_kwargs["deserializer"] = dill.loads
+
+
 
 # import multiprocess as mp
 

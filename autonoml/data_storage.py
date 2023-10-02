@@ -261,11 +261,39 @@ class DataCollectionXY(DataCollectionBase):
         return collection_in, collection_out
 
 
+def get_collection(in_dict_observations, in_tag_to_collection_ids, in_tags_inclusive = None, in_tags_exclusive = None):
+    """
+    Returns a concatenation of data collections linked/unlinked with 'inclusive/exclusive' tags.
+    If there are no inclusive tags, all collections are selected prior to exclusions.
+    Note: This function is the DataStorage-external version for multiprocessing.
+    """
+    if in_tags_inclusive is None:
+        in_tags_inclusive = dict()
+    if in_tags_exclusive is None:
+        in_tags_exclusive = dict()
+    
+    if len(in_tags_inclusive) == 0:
+        set_collection_ids = set(in_dict_observations.keys())
+    else:
+        set_collection_ids = set()
 
+    for key_tag, value_tag in in_tags_inclusive.items():
+        set_collection_ids = set_collection_ids | in_tag_to_collection_ids[key_tag][value_tag]
+    for key_tag, value_tag in in_tags_exclusive.items():
+        set_collection_ids = set_collection_ids - in_tag_to_collection_ids[key_tag][value_tag]
+
+    collection = None
+    for collection_id in list(set_collection_ids):
+        if collection is None:
+            collection = in_dict_observations[collection_id]
+        else:
+            collection = collection + in_dict_observations[collection_id]
+
+    return collection
 
 
 # TODO: Consider how the data is best stored, including preallocated arrays.
-# TODO: Update comments.
+# TODO: Update comments. Update attributes.
 class DataStorage:
     """
     A container that manages collections of data used for machine learning processes.
@@ -399,29 +427,30 @@ class DataStorage:
         Returns a concatenation of data collections linked/unlinked with 'inclusive/exclusive' tags.
         If there are no inclusive tags, all collections are selected prior to exclusions.
         """
-        if in_tags_inclusive is None:
-            in_tags_inclusive = dict()
-        if in_tags_exclusive is None:
-            in_tags_exclusive = dict()
+        # if in_tags_inclusive is None:
+        #     in_tags_inclusive = dict()
+        # if in_tags_exclusive is None:
+        #     in_tags_exclusive = dict()
         
-        if len(in_tags_inclusive) == 0:
-            set_collection_ids = set(self.observations.keys())
-        else:
-            set_collection_ids = set()
+        # if len(in_tags_inclusive) == 0:
+        #     set_collection_ids = set(self.observations.keys())
+        # else:
+        #     set_collection_ids = set()
 
-        for key_tag, value_tag in in_tags_inclusive.items():
-            set_collection_ids = set_collection_ids | self.tag_to_collection_ids[key_tag][value_tag]
-        for key_tag, value_tag in in_tags_exclusive.items():
-            set_collection_ids = set_collection_ids - self.tag_to_collection_ids[key_tag][value_tag]
+        # for key_tag, value_tag in in_tags_inclusive.items():
+        #     set_collection_ids = set_collection_ids | self.tag_to_collection_ids[key_tag][value_tag]
+        # for key_tag, value_tag in in_tags_exclusive.items():
+        #     set_collection_ids = set_collection_ids - self.tag_to_collection_ids[key_tag][value_tag]
 
-        collection = None
-        for collection_id in list(set_collection_ids):
-            if collection is None:
-                collection = self.observations[collection_id]
-            else:
-                collection = collection + self.observations[collection_id]
+        # collection = None
+        # for collection_id in list(set_collection_ids):
+        #     if collection is None:
+        #         collection = self.observations[collection_id]
+        #     else:
+        #         collection = collection + self.observations[collection_id]
 
-        return collection
+        # return collection
+        return get_collection(self.observations, self.tag_to_collection_ids, in_tags_inclusive, in_tags_exclusive)
     
     def expand_collections(self, in_key):
         """

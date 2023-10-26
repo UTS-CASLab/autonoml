@@ -91,7 +91,7 @@ class OnlineStandardScalerIncremental(OnlineStandardScaler):
         super().__init__(*args, **kwargs)
         self.name += "Increment"
 
-        self.format_x = DataFormatX.LIST_OF_DICTS_ACROSS_FEATURES
+        self.format_x = DataFormatX.LIST_OF_DICTS
         self.format_y = DataFormatY.LIST
 
     def learn(self, x, y = None):
@@ -196,7 +196,7 @@ class OnlineLinearRegressorIncremental(OnlineLinearRegressor):
         super().__init__(*args, **kwargs)
         self.name += "Increment"
 
-        self.format_x = DataFormatX.LIST_OF_DICTS_ACROSS_FEATURES
+        self.format_x = DataFormatX.LIST_OF_DICTS
         self.format_y = DataFormatY.LIST
 
     def learn(self, x, y):

@@ -17,7 +17,7 @@ class SKLearnPreprocessor(MLPreprocessor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name += "_SKLearnPrep"
-        self.format_x = DataFormatX.LIST_OF_LISTS_ACROSS_FEATURES
+        self.format_x = DataFormatX.NUMPY_ARRAY
 
 class StandardScaler(SKLearnPreprocessor):
     def __init__(self, *args, **kwargs):
@@ -37,14 +37,11 @@ class SKLearnPredictor(MLPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name += "_SKLearnPred"
-        self.format_x = DataFormatX.LIST_OF_LISTS_ACROSS_FEATURES
-        self.format_y = DataFormatY.LIST
+        self.format_x = DataFormatX.NUMPY_ARRAY
+        self.format_y = DataFormatY.NUMPY_ARRAY
 
     def learn(self, x, y):
         self.model.fit(X=x, y=y)
-
-    # def score(self, x, y):
-    #     return self.model.score(X=x, y=y)
 
     def query(self, x):
         return self.model.predict(X=x)

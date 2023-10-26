@@ -63,7 +63,6 @@ class AutonoMachine:
     def __del__(self):
         log.debug("Finalising Autonomachine '%s'." % self.name)
 
-    # @skip_in_other_processes
     def run(self):
         log.info("%s - AutonoMachine '%s' is now running." % (Timestamp(), self.name))
         self.is_running = True
@@ -83,26 +82,6 @@ class AutonoMachine:
                 
         self.is_running = False
             
-    # # TODO: Perhaps convert to a del. Distinguish between pause and del.
-    # # TODO: Review cleanup.
-    # def stop(self):
-    #     log.info("%s - AutonoMachine '%s' is now stopping." % (Timestamp(), self.name))
-    #     self.is_running = False
-        
-    #     # Cancel all asynchronous operations.
-    #     if self.ops:
-    #         for op in self.ops:
-    #             op.cancel()
-                
-    #     # Stop the task solver.
-    #     if self.solver:
-    #         self.solver.stop()
-                
-    #     # Close all data ports.
-    #     for id in list(self.data_ports.keys()):
-    #         del self.data_ports[id]
-            
-    # @skip_in_other_processes
     def ingest_file(self, in_filepath, in_tags = None, in_limit_rows = None):
         """
         Take in a .csv file and convert its contents into data to learn from.
@@ -118,7 +97,6 @@ class AutonoMachine:
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
                                     in_tags = in_tags, in_limit_rows = in_limit_rows)
         
-    # @skip_in_other_processes
     def query_with_file(self, in_filepath, in_tags = None, in_limit_rows = None):
         """
         Take in a .csv file and convert its contents into data to respond to.
@@ -145,16 +123,7 @@ class AutonoMachine:
     #                                                    in_data_storage = self.data_storage,
     #                                                    in_hostname = in_hostname,
     #                                                    in_port = in_port)
-        
-    # def info_storage(self):
-    #     """
-    #     Utility method to give user info about data ports and storage.
-    #     """
-    #     log.info("%s - Scheduling request for information on data flow/storage within AutonoMachine '%s'." 
-    #              % (Timestamp(), self.name))
-    #     asyncio_task_from_method(self.async_info_storage,
     
-    # @skip_in_other_processes
     @schedule_this
     async def info_storage(self):
         """
@@ -164,7 +133,6 @@ class AutonoMachine:
                  % (self.name, len(self.data_ports), "', '".join(self.data_ports.keys())))
         self.data_storage.info()
         
-    # @skip_in_other_processes
     def info_solver(self):
         """
         Utility method to give user info about the task solver and its models.
@@ -190,8 +158,6 @@ class AutonoMachine:
     #         # TODO: Relax this constraint eventually.
     #         log.error("%s - DataStorage cannot be updated while a ProblemSolver exists." % Timestamp())
         
-    # TODO: Develop a default strategy maybe with HPO when users do not include one.
-    # @skip_in_other_processes
     def learn(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False, 
               in_strategy: Strategy = None, in_keys_allocation = None):
 
@@ -234,7 +200,7 @@ class AutonoMachine:
                                 "running its learning task." % self.name)
                 id_issue = self.Issues.INACTIVE_SOLVER
 
-            # If there are no issues, keep the checkdelay small.
+            # If there are no issues, keep the check delay small.
             else:
                 self.delay_for_issue_check = SS.BASE_DELAY_FOR_ISSUE_CHECK
                 id_issue = self.Issues.NONE

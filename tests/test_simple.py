@@ -18,7 +18,7 @@ if __name__ == '__main__':
     proj.ingest_file(in_filepath = "%s/train_dummy.csv" % dir_data, in_tags = {"file": 2})
     proj.query_with_file(in_filepath = "%s/test_dummy.csv" % dir_data)
 
-    proj.info_storage()
+    # proj.info_storage()
 
     proj.learn("target_int", in_strategy = aml.import_strategy("./test_simple.strat"), 
                in_keys_features = ["file"], do_exclude = True,

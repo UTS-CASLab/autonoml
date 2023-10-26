@@ -77,6 +77,9 @@ class MLPipeline:
         self.testing_y_response = list()
         self.testing_loss = np.inf
 
+    def __repr__(self):
+        return self.name + ": [" + self.components_as_string() + "]"
+
     def components_as_string(self, do_hpars = False):
         if do_hpars:
             text = " -> ".join([component.name + "(" + component.hpars_as_string() + ")" 
@@ -141,6 +144,7 @@ class MLPipeline:
         - Do both, a.k.a. streamed learning.
         
         Both x and y are assumed to be in default formats DataFormatX(0) and DataFormatY(0).
+        At the end, responses are converted to DataFormatY.LIST.
         """
 
         format_x = DataFormatX(0)
@@ -165,11 +169,15 @@ class MLPipeline:
 
                     # The data is reformatted for the requirements of each component.
                     component = self.components[idx_component]
+                    # time_start = Timestamp().time
                     x, format_x = component.reformat_x(x = x, in_format_old = format_x)
                     y, format_y = component.reformat_y(y = y, in_format_old = format_y)
+                    # print("a %s" % (Timestamp().time - time_start))
 
                     if state == PipelineProcessState.LEARN:
+                        # time_start = Timestamp().time
                         component.learn(x=x, y=y)
+                        # print("b %s" % (Timestamp().time - time_start))
 
                     if isinstance(component, MLPreprocessor):
 
@@ -183,13 +191,13 @@ class MLPipeline:
                         predictions = component.query(x=x)
 
                         if idx_component == num_components - 1:
-                            # Reformat the final response to the standard data format.
+                            # Reformat the final response to a list format.
                             predictions = reformat_y(in_data = predictions,
                                                     in_format_old = format_y,
-                                                    in_format_new = DataFormatY(0))
+                                                    in_format_new = DataFormatY.LIST)
                             y = reformat_y(in_data = y,
                                         in_format_old = format_y,
-                                        in_format_new = DataFormatY(0))
+                                        in_format_new = DataFormatY.LIST)
                             
                             if state == PipelineProcessState.QUERY:
                                 response = predictions
@@ -247,7 +255,7 @@ class MLPipeline:
 
 
 def process_pipeline(in_pipeline: MLPipeline,
-                     in_data_collection: Union[DataCollection, DataCollectionXY],
+                     in_data_collection:  DataCollectionXY, #Union[DataCollection, DataCollectionXY],
                      in_info_process,
                      in_frac_data: float = 1.0,
                      do_query: bool = False,
@@ -258,23 +266,25 @@ def process_pipeline(in_pipeline: MLPipeline,
     """
 
     time_start = Timestamp().time
-    if isinstance(in_data_collection, DataCollection):
-        keys_features = in_info_process["keys_features"]
-        key_target = in_info_process["key_target"]
-        x, y = in_data_collection.get_data(in_keys_features = keys_features,
-                                        in_key_target = key_target,
-                                        in_fraction = in_frac_data)
-    elif isinstance(in_data_collection, DataCollectionXY):
+    # if isinstance(in_data_collection, DataCollection):
+    #     keys_features = in_info_process["keys_features"]
+    #     key_target = in_info_process["key_target"]
+    #     x, y = in_data_collection.get_data(in_keys_features = keys_features,
+    #                                     in_key_target = key_target,
+    #                                     in_fraction = in_frac_data)
+    if isinstance(in_data_collection, DataCollectionXY):
         x, y = in_data_collection.get_data(in_fraction = in_frac_data)
     else:
         raise NotImplementedError
     time_end = Timestamp().time
     duration_prep = time_end - time_start
+    # print(duration_prep)
 
     time_start = Timestamp().time
     _ = in_pipeline.process(x, y, do_query = do_query, do_learn = do_learn)
     time_end = Timestamp().time
     duration_proc = time_end - time_start
+    # print(duration_proc)
 
     in_info_process["duration_prep"] = duration_prep
     in_info_process["duration_proc"] = duration_proc
@@ -282,12 +292,12 @@ def process_pipeline(in_pipeline: MLPipeline,
 
     return in_pipeline, in_info_process
 
-def train_pipeline(in_pipeline: MLPipeline, in_data_collection: Union[DataCollection, DataCollectionXY],
+def train_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY, #Union[DataCollection, DataCollectionXY],
                    in_info_process, in_frac_data: float = 1.0):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
                             do_learn = True)
 
-def test_pipeline(in_pipeline: MLPipeline, in_data_collection: Union[DataCollection, DataCollectionXY], 
+def test_pipeline(in_pipeline: MLPipeline, in_data_collection:  DataCollectionXY, #Union[DataCollection, DataCollectionXY], 
                   in_info_process):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process,
                             do_query = True)

@@ -40,23 +40,27 @@ class ProblemSolver:
         ProblemSolver.count += 1
         log.info("%s - Initialising ProblemSolver '%s'." % (Timestamp(), self.name))
 
+        # Store a reference to the DataStorage in the AutonoMachine.
+        self.data_storage = in_data_storage
+
         # Keep a copy of the instructions that drive this ProblemSolver.
         self.instructions = in_instructions
+        self.key_target = None
+        self.keys_features = None
 
         # Note whether to use multiprocessing and how many processors are available.
         self.do_mp = do_mp
         self.n_procs = in_n_procs
 
-        # Store a reference to the DataStorage in the AutonoMachine.
-        self.data_storage = in_data_storage
-
-        self.key_target = None
-        self.keys_features = None
+        # Define semaphores to control concurrency during solution development. 
+        self.semaphore_hpo = None
+        self.semaphore_pipelines = None
         
         self.solution = None            # MLPipelines that are in production.
         self.queue_dev = None           # MLPipelines and HPO runs that are in development.
         # Note: This queue must not be instantiated as an asyncio queue until within a coroutine.
-        self.hpo_runs_active = dict()   # A dictionary to track what HPO runs are active.
+        self.hpo_runs_in_dev = dict()   # A dictionary to track what HPO runs are in development.
+        self.pipelines_in_dev = dict()  # A dictionary to track what pipelines are in development.
 
         # Keep track of the data-storage instance up to which model has used.
         # TODO: Consider variant starting points for the model and update log messages.
@@ -108,9 +112,13 @@ class ProblemSolver:
                 pipelines = create_pipelines_default(in_keys_features = self.keys_features,
                                                      in_key_target = self.key_target,
                                                      in_strategy = strategy)
-                # for pipeline in pipelines:
                 dev_package = (pipelines, key_group, data_filter)
                 await self.queue_dev.put(dev_package)
+
+                # The queue counter will be decremented per pipeline or HPO run.
+                # Thus ensure packaged pipelines are accompanied by an appropriate number of skippable tokens.
+                for _ in range(len(pipelines)-1):
+                    await self.queue_dev.put(None)
         else:
             text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
                          "running default pipelines.") % self.name
@@ -146,7 +154,6 @@ class ProblemSolver:
             text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
                          "running HPO.") % self.name
             log.info("%s - %s" % (Timestamp(), text_info))
-
 
         if self.queue_dev.qsize() == 0:
             # TODO: Perhaps wrap this up in a utils error function.
@@ -199,6 +206,8 @@ class ProblemSolver:
         with executor_class(max_workers = self.n_procs) as executor:
             while True:
                 dev_package = await self.queue_dev.get()
+                if dev_package is None:
+                    continue
                 object_dev = dev_package[0]
                 key_group = dev_package[1]
                 data_filter = dev_package[2]
@@ -227,19 +236,12 @@ class ProblemSolver:
                     object_dev = [object_dev]
 
                 if isinstance(object_dev, list) and all(isinstance(item, MLPipeline) for item in object_dev):
-                    # future_pipeline = loop.run_in_executor(executor, develop_pipeline, object_dev,
-                    #                                        self.data_storage, data_filter, info_process, 
-                    #                                        self.instructions.strategy.frac_validation)
-                    
-                    # create_async_task(self.push_to_production, future_pipeline, in_key_group = key_group)
 
                     create_async_task(self.process_pipelines, in_executor = executor, 
                                       in_pipelines = object_dev, in_info_process = info_process, 
                                       in_key_group = key_group, in_data_filter = data_filter)
                     
                 elif isinstance(object_dev, HPOInstructions):
-
-                    # observations = filter_observations(in_data_storage = self.data_storage, in_filter = data_filter)
 
                     create_async_task(self.process_hpo, in_executor = executor, 
                                       in_hpo_instructions = object_dev, in_info_process = info_process, 
@@ -251,50 +253,38 @@ class ProblemSolver:
         loop = asyncio.get_event_loop()
 
         log.info("%s - Preparing development of MLPipelines: '%s'."
-                 % (Timestamp(), ", ".join([pipeline.name for pipeline in in_pipelines])))
+                % (Timestamp(), ", ".join([pipeline.name for pipeline in in_pipelines])))
 
         time_start = Timestamp().time
         dict_observations = self.data_storage.observations
         tag_to_collection_ids = self.data_storage.tag_to_collection_ids
-        observations = await loop.run_in_executor(in_executor, filter_observations, dict_observations, 
-                                                  tag_to_collection_ids, in_data_filter)
+        observations = filter_observations(dict_observations, tag_to_collection_ids, in_data_filter)
+        # observations = await loop.run_in_executor(in_executor, filter_observations, dict_observations, 
+        #                                           tag_to_collection_ids, in_data_filter)
         time_end = Timestamp().time
         duration = time_end - time_start
         
         log.info("%s   Time taken to collate relevant data, applying filter as required: %.3f s"
-                 % (Timestamp(None), duration))
-
-        sets_training = list()
-        sets_validation = list()
+                % (Timestamp(None), duration))
 
         time_start = Timestamp().time
-        
-        # # Prepare x and y at this stage to minimise data manipulation during HPO.
-        # keys_features = in_info_process["keys_features"]
-        # key_target = in_info_process["key_target"]
-        # observations = in_observations.prepare_xy(in_keys_features = keys_features, in_key_target = key_target)
-
-        # # TODO: Let users decide how many training/validation pairs to form.
-        # for idx_set in range(1):
-        #     set_validation, set_training = observations.split_randomly_by_fraction(in_fraction = in_hpo_instructions.frac_validation)
-        #     sets_training.append(set_training)
-        #     sets_validation.append(set_validation)
-            
         frac_validation = self.instructions.strategy.frac_validation
-        observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_observations, 
-                                                                                  observations, in_info_process,
-                                                                                  frac_validation)
-
+        observations, sets_training, sets_validation = prepare_observations(observations, in_info_process, frac_validation)
+        # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_observations, 
+        #                                                                           observations, in_info_process,
+        #                                                                           frac_validation)
         time_end = Timestamp().time
         duration = time_end - time_start
 
         log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
-                 % (Timestamp(None), 1 - frac_validation, frac_validation, duration))
+                % (Timestamp(None), 1 - frac_validation, frac_validation, duration))
 
         # Develop the pipelines.
         for pipeline in in_pipelines:
-            future_pipeline = loop.run_in_executor(in_executor, develop_pipeline, pipeline, observations, 
+            # future_pipeline = develop_pipeline(pipeline, observations, sets_training, sets_validation, in_info_process)
+            future_pipeline = loop.run_in_executor(in_executor, develop_pipeline, pipeline, observations,
                                                    sets_training, sets_validation, in_info_process)
+            self.pipelines_in_dev[pipeline.name] = True
                 
             create_async_task(self.push_to_production, future_pipeline, in_key_group = in_key_group)
 
@@ -312,7 +302,7 @@ class ProblemSolver:
             name_hpo = in_hpo_instructions.name
 
             # Ensure that active HPO runs have unique names.
-            if name_hpo in self.hpo_runs_active:
+            if name_hpo in self.hpo_runs_in_dev:
                 text_error = ("HPOInstructions named '%s' was encountered in the development queue "
                               "while another identically named HPO run was active.") % name_hpo
                 log.error("%s - %s" % (Timestamp(), text_error))
@@ -347,43 +337,20 @@ class ProblemSolver:
             log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
                      % (Timestamp(None), 1 - frac_validation, frac_validation, duration))
 
-            # log.info("%s - Preparing HPO run '%s'." % (Timestamp(), name_hpo))
-            # sets_training = list()
-            # sets_validation = list()
-
-            # time_start = Timestamp().time
-            
-            # # Prepare x and y at this stage to minimise data manipulation during HPO.
-            # keys_features = in_info_process["keys_features"]
-            # key_target = in_info_process["key_target"]
-            # observations = in_observations.prepare_xy(in_keys_features = keys_features, in_key_target = key_target)
-
-            # # TODO: Let users decide how many training/validation pairs to form.
-            # for idx_set in range(1):
-            #     set_validation, set_training = observations.split_randomly_by_fraction(in_fraction = in_hpo_instructions.frac_validation)
-            #     sets_training.append(set_training)
-            #     sets_validation.append(set_validation)
-                
-            # time_end = Timestamp().time
-            # duration = time_end - time_start
-
-            # log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
-            #         % (Timestamp(None), 1 - in_hpo_instructions.frac_validation, in_hpo_instructions.frac_validation, duration))
-
             # Activate the HPO run.
             log.info("%s   Launching %i-worker HPO run '%s'." % (Timestamp(None), n_procs_hpo, name_hpo))
             future_pipeline = loop.run_in_executor(in_executor, run_hpo, in_hpo_instructions, observations,
                                                    sets_training, sets_validation, in_info_process)
-            self.hpo_runs_active[name_hpo] = True
+            self.hpo_runs_in_dev[name_hpo] = True
 
             # Add HPO workers to the run.
             for idx_worker in range(1, n_procs_hpo):
-                if name_hpo in self.hpo_runs_active:
+                if name_hpo in self.hpo_runs_in_dev:
                     create_async_task(self.support_hpo, in_executor, idx_worker, in_hpo_instructions,
                                     sets_training, sets_validation, in_info_process)
                 
-            await create_async_task(self.push_to_production, future_pipeline,
-                                    in_key_group = in_key_group, in_name_hpo = name_hpo)
+            create_async_task(self.push_to_production, future_pipeline,
+                              in_key_group = in_key_group, in_name_hpo = name_hpo)
         
         
     async def support_hpo(self, in_executor, in_idx_worker: int, in_hpo_instructions: HPOInstructions, 
@@ -404,7 +371,7 @@ class ProblemSolver:
                 log.warning("%s - Failed to add worker %i of HPO run '%s'. "
                             "Considering a reattempt." % (Timestamp(), in_idx_worker, name_hpo))
                 # If the HPO run is no longer active, forget about it.
-                if not name_hpo in self.hpo_runs_active:
+                if not name_hpo in self.hpo_runs_in_dev:
                     log.warning("%s   However, HPO run '%s' is no longer active." 
                                 % (Timestamp(None), name_hpo))
                     break
@@ -455,9 +422,19 @@ class ProblemSolver:
             text_alert = "%s - ProblemSolver '%s' failed to process an MLPipeline." % (Timestamp(), self.name)
             identify_exception(e, text_alert)
         finally:
-            # Mark the HPO run as inactive, if applicable.
+            # Mark the HPO run or pipeline as no longer in development.
             if not in_name_hpo is None:
-                del self.hpo_runs_active[in_name_hpo]
+                del self.hpo_runs_in_dev[in_name_hpo]
+                log.info("%s   HPO runs still in development: %i" 
+                         % (Timestamp(None), len(self.hpo_runs_in_dev)))
+            else:
+                if pipeline.name in self.pipelines_in_dev:
+                    del self.pipelines_in_dev[pipeline.name]
+                else:
+                    log.warning("%s   Noted multiple attempts to clear pipeline '%s' from development. "
+                                "Possibly a non-unique name." % (Timestamp(), pipeline.name))
+                log.info("%s   Pipelines still in development: %i" 
+                         % (Timestamp(None), len(self.pipelines_in_dev)))
 
             self.queue_dev.task_done()
 
@@ -546,11 +523,13 @@ class ProblemSolver:
             await asyncio.sleep(0)
             
     # TODO: Include error checking for no features. Error-check target existence somewhere too.
-    # TODO: Consider making DataCollection references more robust.
-    async def set_target_and_features(self, in_key_target,
-                                      in_keys_features = None, do_exclude = False):
+    async def set_target_and_features(self, in_key_target: str,
+                                      in_keys_features: List[str] = None, 
+                                      do_exclude: bool = False):
         
-        if in_key_target in self.data_storage.get_key_dict():
+        storage_keys = self.data_storage.get_keys()
+
+        if in_key_target in storage_keys:
             key_target = in_key_target
         else:
             text_error = "Desired target key '%s' cannot be found in DataStorage." % in_key_target 
@@ -562,7 +541,7 @@ class ProblemSolver:
         # Include them as long as such features exist in the data storage.
         if in_keys_features and not do_exclude:
             for key_feature in in_keys_features:
-                if key_feature in self.data_storage.get_key_dict():
+                if key_feature in storage_keys:
                     keys_features.append(key_feature)
                 else:
                     log.warning("%s - Desired feature key '%s' cannot be found in DataStorage.\n"
@@ -571,7 +550,7 @@ class ProblemSolver:
         # Otherwise, include every feature existing in the data storage...
         # Except for feature keys specified with the intention of excluding.
         else:
-            for dkey in self.data_storage.get_key_dict():
+            for dkey in storage_keys:
                 if not dkey == in_key_target:
                     if do_exclude and dkey in in_keys_features:
                         log.info("%s - DataStorage key '%s' has been marked as not a feature.\n"

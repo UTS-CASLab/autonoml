@@ -5,15 +5,19 @@ Created on Tue Jul 25 02:27:14 2023
 @author: David J. Kedziora
 """
 
-# import autonoml as aml
+import pyarrow as pa
+
 from autonoml.data import (DataFormatX, DataFormatY, 
                            reformat_x, reformat_y)
 
 x = {"f_1":["a","b","c"], "f_2":[1,2,3]}
 x_keys = x.keys()
 y = [True, False, True]
+x = pa.Table.from_pydict(x)
+y = pa.array(y)
 
 def test_conversions_x(in_x, in_format_old):
+    is_one_recursion_done = False
     for format_new in DataFormatX:
         if format_new.value >= in_format_old.value:
             print("%s -> %s" % (in_format_old.name, format_new.name))
@@ -37,9 +41,12 @@ def test_conversions_x(in_x, in_format_old):
                 print(x_back)
                 print()
 
-                test_conversions_x(in_x = x_forward, in_format_old = format_new)
+                if not is_one_recursion_done:
+                    test_conversions_x(in_x = x_forward, in_format_old = format_new)
+                    is_one_recursion_done = True
 
 def test_conversions_y(in_y, in_format_old):
+    is_one_recursion_done = False
     for format_new in DataFormatY:
         if format_new.value >= in_format_old.value:
             print("%s -> %s" % (in_format_old.name, format_new.name))
@@ -61,7 +68,9 @@ def test_conversions_y(in_y, in_format_old):
                 print(y_back)
                 print()
 
-                test_conversions_y(in_y = y_forward, in_format_old = format_new)
+                if not is_one_recursion_done:
+                    test_conversions_y(in_y = y_forward, in_format_old = format_new)
+                    is_one_recursion_done = True
 
 test_conversions_x(in_x = x, in_format_old = list(DataFormatX)[0])
 test_conversions_y(in_y = y, in_format_old = list(DataFormatY)[0])

@@ -7,11 +7,22 @@ Created on Thu Jul  6 19:00:56 2023
 
 from .utils import log, Timestamp
 from .settings import SystemSettings as SS
-from .data import DataType
+# from .data import DataType
 
 from .data_storage import DataStorage
 
 import asyncio
+
+import pyarrow as pa
+from pyarrow import csv as pacsv
+
+def read_csv_to_arrow(in_filename):
+    # Specify the CSV file reader options
+    read_options = pa.csv.ReadOptions(column_types=None, use_threads=True)
+    
+    # Read the CSV file into an Arrow Table
+    table = pa.csv.read_csv(in_filename, read_options=read_options)
+    return table
 
 # TODO: Extend this beyond .csv files.
 class DataPort:
@@ -33,72 +44,86 @@ class DataPort:
         self.keys = None
         self.data_types = None
         
-    # TODO: Consider Pandas if it is faster.
     # TODO: Update logs for queries.
-    async def ingest_file(self, in_filepath, in_tags = None, in_limit_rows: int = None,
+    async def ingest_file(self, in_filepath: str, in_tags = None, in_limit_rows: int = None,
                           in_file_has_headers: bool = True, as_query: bool = False):
 
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
                  % (Timestamp(), self.name, in_filepath))
-        
-        # Ensure tags are strings.
-        if not in_tags is None:
-            for key in in_tags:
-                in_tags[key] = str(in_tags[key])
-        # else:
-        #     tags = in_tags
    
         time_start = Timestamp().time
 
-        # TODO: Review the encoding.
-        with open(in_filepath, "r", encoding = "utf-8-sig") as data_file:
-            # If there are headers, these become the inflow keys.
-            if in_file_has_headers:
-                line = data_file.readline()
-                self.keys = line.rstrip().split(",")
-                self.data_types = [None]*len(self.keys)
+        # Read CSV into an arrow table.
+        read_options = pacsv.ReadOptions(use_threads = True,
+                                         autogenerate_column_names = not in_file_has_headers)
+        data = pacsv.read_csv(in_filepath, read_options = read_options)
 
-                # # Add the custom tags to keys.
-                # # TODO: Check that a tag is not already a feature key.
-                # for key_tag in tags:
-                #     self.keys.append(key_tag)
-                #     self.data_types.append(DataType.CATEGORICAL)
+        # Ensure tags are in string format.
+        tags = dict()
+        if not in_tags is None:
+            for key in in_tags:
+                tags[str(key)] = str(in_tags[key])
 
-            # count_instance = 0
-            for idx_line, line in enumerate(data_file):
-                if not in_limit_rows is None:
-                    if idx_line >= in_limit_rows:
-                        break
-                data = line.rstrip().split(",")
+        # # Add a new feature column corresponding to the tag.
+        # # TODO: Ensure that the tag does not already exist.
+        # if not in_tags is None:
+        #     for key in in_tags:
+        #         col_tag = pa.array([str(in_tags[key])] * data.num_rows, type=pa.string())
+        #         data = data.add_column(data.num_columns, str(key), col_tag)
+
+        # # TODO: Review the encoding.
+        # with open(in_filepath, "r", encoding = "utf-8-sig") as data_file:
+        #     # If there are headers, these become the inflow keys.
+        #     if in_file_has_headers:
+        #         line = data_file.readline()
+        #         self.keys = line.rstrip().split(",")
+        #         self.data_types = [None]*len(self.keys)
+
+        #         # # Add the custom tags to keys.
+        #         # # TODO: Check that a tag is not already a feature key.
+        #         # for key_tag in tags:
+        #         #     self.keys.append(key_tag)
+        #         #     self.data_types.append(DataType.CATEGORICAL)
+
+        #     # count_instance = 0
+        #     for idx_line, line in enumerate(data_file):
+        #         if not in_limit_rows is None:
+        #             if idx_line >= in_limit_rows:
+        #                 break
+        #         data = line.rstrip().split(",")
                 
-                # If there are no headers...
-                # Create inflow keys to enumerate the data elements encountered.
-                if idx_line == 0 and not in_file_has_headers:
-                    self.keys = [str(num_element) for num_element in range(len(data))]
+        #         # If there are no headers...
+        #         # Create inflow keys to enumerate the data elements encountered.
+        #         if idx_line == 0 and not in_file_has_headers:
+        #             self.keys = [str(num_element) for num_element in range(len(data))]
 
-                    # # Add the custom tags to keys.
-                    # # TODO: Check that a tag is not already a feature key.
-                    # for key_tag in tags:
-                    #     self.keys.append(key_tag)
-                    #     self.data_types = [None]*len(self.keys)
+        #             # # Add the custom tags to keys.
+        #             # # TODO: Check that a tag is not already a feature key.
+        #             # for key_tag in tags:
+        #             #     self.keys.append(key_tag)
+        #             #     self.data_types = [None]*len(self.keys)
 
-                # for key_tag in tags:
-                #     data.append(tags[key_tag])
-                #     self.data_types.append(DataType.CATEGORICAL)
+        #         # for key_tag in tags:
+        #         #     data.append(tags[key_tag])
+        #         #     self.data_types.append(DataType.CATEGORICAL)
                     
-                self.data_storage.store_data(in_timestamp = Timestamp(),
-                                             in_data_port_id = self.name,
-                                             in_keys = self.keys,
-                                             in_elements = data,
-                                             in_data_types = self.data_types,
-                                             in_tags = in_tags,
-                                             as_query = as_query)
+        #         self.data_storage.store_data(in_timestamp = Timestamp(),
+        #                                      in_data_port_id = self.name,
+        #                                      in_keys = self.keys,
+        #                                      in_elements = data,
+        #                                      in_data_types = self.data_types,
+        #                                      in_tags = in_tags,
+        #                                      as_query = as_query)
+
+        self.data_storage.store_data(in_data = data,
+                                     in_tags = tags,
+                                     as_query = as_query)
 
         time_end = Timestamp().time
                 
         log.info("%s - DataPort '%s' has acquired and stored %s instances of data.\n"
                  "%s   Time taken: %.3f s" 
-                  % (Timestamp(), self.name, idx_line,
+                  % (Timestamp(), self.name, data.num_rows,
                      Timestamp(None), time_end - time_start))
 
                 

@@ -28,16 +28,11 @@ setup(
     author="CASLab",
     author_email="caslab@uts.edu.au",
     description="A framework for continous automated machine learning",
-    # long_description=long_description,
-    # long_description_content_type="text/markdown",
-    # url="https://atomica.tools",
-    # keywords=["dynamic", "compartment", "optimization", "disease"],
-    # platforms=["OS Independent"],
-    # classifiers=CLASSIFIERS,
     packages=find_packages(),
     include_package_data=True,
     # TODO: Consider user installation options for only useful subsets of packages.
     install_requires=[
+        "pyarrow",
         "dill",
         "multiprocess",
         "numpy",

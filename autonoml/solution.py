@@ -9,7 +9,7 @@ from .utils import log, Timestamp
 from .pipeline import MLPipeline, train_pipeline, test_pipeline
 from .strategy import Strategy
 
-from .data_storage import DataStorage, DataCollection, DataCollectionXY, get_collection
+from .data_storage import DataStorage, DataCollection, DataCollectionXY, SharedMemoryManager, get_collection
 
 from typing import List, Dict
 from enum import Enum
@@ -159,7 +159,8 @@ def filter_observations(in_dict_observations: Dict[int, DataCollection],
 
     return observations
 
-def prepare_observations(in_observations: DataCollection, in_info_process, in_frac_validation: float):
+def prepare_observations(in_observations: DataCollection, in_info_process, 
+                         in_frac_validation: float, in_n_sets: int = 1):
 
     # Prepare x and y at this stage to minimise data manipulation during training.
     keys_features = in_info_process["keys_features"]
@@ -170,7 +171,7 @@ def prepare_observations(in_observations: DataCollection, in_info_process, in_fr
     sets_validation = list()
 
     # TODO: Let users decide how many training/validation pairs to form.
-    for idx_set in range(1):
+    for idx_set in range(in_n_sets):
         set_validation, set_training = observations.split_randomly_by_fraction(in_fraction = in_frac_validation)
         sets_training.append(set_training)
         sets_validation.append(set_validation)
@@ -180,9 +181,13 @@ def prepare_observations(in_observations: DataCollection, in_info_process, in_fr
 
 
 def develop_pipeline(in_pipeline: MLPipeline,
+                     in_data_sharer: SharedMemoryManager,
                      in_observations: DataCollectionXY,
                      in_sets_training: List[DataCollectionXY], in_sets_validation: List[DataCollectionXY],
                      in_info_process):
+
+    if not in_data_sharer is None:
+        in_observations, in_sets_training, in_sets_validation = in_data_sharer.load_observations()
     
     losses = list()
 

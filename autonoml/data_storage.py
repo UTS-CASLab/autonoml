@@ -6,41 +6,18 @@ Created on Fri May 12 22:21:05 2023
 """
 
 from .utils import log, Timestamp
-from .settings import SystemSettings as SS
 from .concurrency import create_async_task_from_sync
-# from .data import (DataType, DataFormatX, DataFormatY, reformat_x, reformat_y)
 
 from typing import Type, List, Dict, Any
 
 import asyncio
-import ast
-import random
-from copy import copy, deepcopy
 
+import __main__
+import os
 import pyarrow as pa
+import pyarrow.ipc as ipc
 
 import numpy as np
-
-# # TODO: Redesign so the inference/conversion is done at DataPort interface?
-# #       This will allow CSV text file inputs to be treated differently from other inputs.
-# def infer_data_type(in_element):
-#     element_type = type(in_element)
-    
-#     # Check if a string data type can be converted to something else.
-#     if element_type == str:
-#         try:
-#             element_type = type(ast.literal_eval(in_element))
-#         except:
-#             pass
-
-#     if element_type == float:
-#         data_type = DataType.FLOAT
-#     elif element_type == int:
-#         data_type = DataType.INTEGER
-#     else:
-#         data_type = DataType.CATEGORICAL
-    
-#     return data_type
 
 
 
@@ -49,10 +26,13 @@ class DataCollectionBase:
         pass
 
 class DataCollection(DataCollectionBase):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, in_data: pa.Table = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        empty_schema = pa.schema([])
-        self.data = pa.Table.from_batches([], schema=empty_schema)
+        if in_data is None:
+            empty_schema = pa.schema([])
+            self.data = pa.Table.from_batches([], schema=empty_schema)
+        else:
+            self.data = in_data
 
     def get_amount(self):
         return self.data.num_rows
@@ -70,13 +50,27 @@ class DataCollection(DataCollectionBase):
         y = source.column(in_key_target)
         
         return DataCollectionXY(in_x = x, in_y = y)
+    
+    def quick_split_xy(self):
+        """
+        A convenience function that converts to DataCollectionXY.
+        Assumes the last column array in the data table is y and all else is x.
+        Loses y header.
+        """
+        idx_col = self.data.num_columns - 1
+        y = self.data.column(idx_col)
+        x = self.data.remove_column(idx_col)
+
+        return DataCollectionXY(x, y)
+
+
 
 class DataCollectionXY(DataCollectionBase):
     """
     A container for data where feature (x) and target (y) selection has already been done.
     Is primarily used for HPO where repeat data manipulations are computationally expensive.
     """
-    def __init__(self, in_x: pa.Table, in_y: pa.Array, *args, **kwargs):
+    def __init__(self, in_x: pa.Table, in_y: pa.ChunkedArray, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.x = in_x
         self.y = in_y
@@ -116,6 +110,120 @@ class DataCollectionXY(DataCollectionBase):
                                           in_y = self.y.take(indices[n_samples:]))
 
         return collection_in, collection_out
+    
+    def quick_merge_xy(self):
+        """
+        A convenience function that converts to DataCollection.
+        Concatenates y to x as the final column of a data table.
+        Fakes y header.
+        """
+        return DataCollection(in_data = self.x.append_column("_", self.y))
+    
+
+
+class SharedMemoryManager:
+    """
+    Used in multiprocessing for efficiently sharing data between processes.
+    It does so by writing to and reading from memory-mapped files on disk.
+    """
+    
+    count = 0
+
+    def __init__(self, in_uses: int = 1):
+        self.name = "shared_" + str(SharedMemoryManager.count)
+        SharedMemoryManager.count += 1
+        self.prefix = "./temp/"
+        os.makedirs(self.prefix, exist_ok = True)
+        self.n_sets = 0
+
+        # Set up a counter to note how many objects are using or about to use associated data.
+        # Once it goes to zero, there should be no more references to memory-mapped data.
+        # The local-disk files will be deleted at that stage.
+        self.uses = in_uses
+
+    @staticmethod
+    def get_size(in_collection: DataCollection):
+        """
+        Mock up a lightweight stream to count how many bytes writing a table will take.
+        """
+        sink = pa.MockOutputStream()
+        with pa.ipc.new_stream(sink, in_collection.data.schema) as writer:
+            writer.write_table(in_collection.data)
+        return sink.size()
+
+    @staticmethod
+    def save(in_collection: DataCollectionXY, in_filepath: str):
+
+        collection = in_collection.quick_merge_xy()
+        with pa.memory_map(in_filepath, "w") as sink:
+            sink.resize(SharedMemoryManager.get_size(collection))
+            with ipc.RecordBatchStreamWriter(sink, collection.data.schema) as writer:
+                writer.write_table(collection.data)
+
+    @staticmethod
+    def load(in_filepath: str):
+
+        with pa.memory_map(in_filepath, "r") as source:
+            with ipc.RecordBatchStreamReader(source) as reader:
+                data = reader.read_all()
+                collection = DataCollection(data).quick_split_xy()
+
+        return collection
+
+    def save_observations(self, in_observations: DataCollectionXY, 
+                          in_sets_training: List[DataCollectionXY] = None, 
+                          in_sets_validation: List[DataCollectionXY] = None):
+
+        # print(os.path.abspath(self.prefix + self.name + "_observations.arrow"))
+        
+        if in_sets_training is None:
+            in_sets_training = list()
+        if in_sets_validation is None:
+            in_sets_validation = list()
+
+        SharedMemoryManager.save(in_observations, self.prefix + self.name + "_observations.arrow")
+
+        idx_set = 0
+        for set_training, set_validation in zip(in_sets_training, in_sets_validation):
+            SharedMemoryManager.save(set_training, self.prefix + self.name + "_training_" + str(idx_set) + ".arrow")
+            SharedMemoryManager.save(set_validation, self.prefix + self.name + "_validation_" + str(idx_set) + ".arrow")
+            idx_set += 1
+
+        self.n_sets = idx_set
+
+    def load_observations(self):
+
+        collection = None
+        sets_training = list()
+        sets_validation = list()
+
+        collection = SharedMemoryManager.load(self.prefix + self.name + "_observations.arrow")
+        for idx_set in range(self.n_sets):
+            try:
+                set_training = SharedMemoryManager.load(self.prefix + self.name + "_training_" + str(idx_set) + ".arrow")
+                set_validation = SharedMemoryManager.load(self.prefix + self.name + "_validation_" + str(idx_set) + ".arrow")
+                sets_training.append(set_training)
+                sets_validation.append(set_validation)
+            except:
+                break
+
+        return collection, sets_training, sets_validation
+
+    def del_observations(self):
+        filepath = self.prefix + self.name + "_observations.arrow"
+        os.remove(filepath)
+        for idx_set in range(self.n_sets):
+            filepath = self.prefix + self.name + "_training_" + str(idx_set) + ".arrow"
+            os.remove(filepath)
+            filepath = self.prefix + self.name + "_validation_" + str(idx_set) + ".arrow"
+            os.remove(filepath)
+
+    def decrement_uses(self):
+        self.uses -= 1
+        if self.uses <= 0:
+            self.del_observations()
+
+
 
 
 
@@ -390,10 +498,6 @@ class DataStorage:
     def __init__(self):
         log.info("%s - Initialising DataStorage." % Timestamp())
 
-        # empty_schema = pa.schema([])
-        # self.observations = pa.Table.from_batches([], schema=empty_schema)
-        # self.queries = pa.Table.from_batches([], schema=empty_schema)
-
         # Store observations/queries as dicts of data collections keyed by collection IDs.
         # These collection IDs map to unique combinations of user-specified tags.
         # Each tag is a pair of tag key and tag value.
@@ -407,8 +511,6 @@ class DataStorage:
         self.collection_id_to_tag_combos = dict()
         self.collection_id_no_tag = 0
         self.collection_id_new = 1
-
-        # self.data_types = dict()    # The data types for each keyed list.
         
         # # Ingested data arrives from data ports.
         # # For data port X, this data is sent as a list of elements.
@@ -429,15 +531,6 @@ class DataStorage:
         # Instantiate the futures now that this code is running internally within an event loop.
         self.has_new_observations = asyncio.Future()
         self.has_new_queries = asyncio.Future()
-    
-    # # Add a key to both the data and query storage with associated data type.
-    # # Fill associated lists thus far with None.
-    # def add_data_key(self, in_key, in_type):
-        
-    #     if not in_key in self.observations:
-    #         self.observations[in_key] = [None]*len(self.timestamps)
-    #     if not in_key in self.queries:
-    #         self.queries[in_key] = [None]*len(self.timestamps)
 
     def get_keys(self):
         """
@@ -461,7 +554,7 @@ class DataStorage:
         Returns a set of collection IDs associated with a dictionary of tags.
         If the 'exact tag combo' option is enabled, only one ID for exact tags is returned.
         For example, assume collection 1 is for {"a":"1"} and 2 is for {"a":"1", "b":"2"}.
-        Requiring an exact tag combo while giving tag {"a":"1"} will only return collection 1, not 1 and2.
+        Requiring an exact tag combo while giving tag {"a":"1"} will only return collection 1, not 1 and 2.
         The 'prepare dicts' option assumes a DataCollection should exist for every tag combo.
         Therefore, it will create one if it does not exist.
         """
@@ -472,8 +565,6 @@ class DataStorage:
 
             if do_prepare_dicts:
                 if not self.collection_id_no_tag in self.observations:
-                    # self.observations[self.collection_id_no_tag] = DataCollection(self.get_key_dict().keys())
-                    # self.queries[self.collection_id_no_tag] = DataCollection(self.get_key_dict().keys())
                     self.observations[self.collection_id_no_tag] = DataCollection()
                     self.queries[self.collection_id_no_tag] = DataCollection()
 
@@ -506,8 +597,6 @@ class DataStorage:
         if do_prepare_dicts:
             # If no collection associates with the tag combo, optionally create one.
             if len(set_collection_ids) == 0:
-                # self.observations[self.collection_id_new] = DataCollection(self.get_key_dict().keys())
-                # self.queries[self.collection_id_new] = DataCollection(self.get_key_dict().keys())
                 self.observations[self.collection_id_new] = DataCollection()
                 self.queries[self.collection_id_new] = DataCollection()
                 for key_tag, value_tag in in_tags.items():
@@ -717,41 +806,41 @@ class DataStorage:
     #     return unique_values
         
 
-    def info(self):
-        """
-        Utility method to give user info about data ports and storage.
-        """
-        if len(self.data_types.keys()) > SS.MAX_INFO_KEYS_EXAMPLE:
-            data_types_keys = list(self.data_types.keys())
-            len_start = int(np.ceil(SS.MAX_INFO_KEYS_EXAMPLE/2))
-            len_end = SS.MAX_INFO_KEYS_EXAMPLE - len_start
-            example_keys = ", ".join(key + " (" + self.data_types[key].to_string() + ")"
-                                     for key in data_types_keys[:len_start])
-            example_keys += ", ..., "
-            example_keys += ", ".join(key + " (" + self.data_types[key].to_string() + ")"
-                                      for key in data_types_keys[-len_end:])
-        else:
-            example_keys = ", ".join(key + " (" + self.data_types[key].to_string() + ")"
-                                     for key in self.data_types)
+    # def info(self):
+    #     """
+    #     Utility method to give user info about data ports and storage.
+    #     """
+    #     if len(self.data_types.keys()) > SS.MAX_INFO_KEYS_EXAMPLE:
+    #         data_types_keys = list(self.data_types.keys())
+    #         len_start = int(np.ceil(SS.MAX_INFO_KEYS_EXAMPLE/2))
+    #         len_end = SS.MAX_INFO_KEYS_EXAMPLE - len_start
+    #         example_keys = ", ".join(key + " (" + self.data_types[key].to_string() + ")"
+    #                                  for key in data_types_keys[:len_start])
+    #         example_keys += ", ..., "
+    #         example_keys += ", ".join(key + " (" + self.data_types[key].to_string() + ")"
+    #                                   for key in data_types_keys[-len_end:])
+    #     else:
+    #         example_keys = ", ".join(key + " (" + self.data_types[key].to_string() + ")"
+    #                                  for key in self.data_types)
             
-        if len(self.ikeys_to_dkeys) > SS.MAX_INFO_PIPE_EXAMPLE:
-            ikeys_to_dkeys_keys = list(self.ikeys_to_dkeys.keys())
-            len_start = int(np.ceil(SS.MAX_INFO_PIPE_EXAMPLE/2))
-            len_end = SS.MAX_INFO_PIPE_EXAMPLE - len_start
-            example_pipe = ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}"
-                                     for key in ikeys_to_dkeys_keys[:len_start])
-            example_pipe += ", ..., "
-            example_pipe += ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}"
-                                      for key in ikeys_to_dkeys_keys[-len_end:])
-        else:
-            example_pipe = ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}"
-                                     for key in self.ikeys_to_dkeys)
+    #     if len(self.ikeys_to_dkeys) > SS.MAX_INFO_PIPE_EXAMPLE:
+    #         ikeys_to_dkeys_keys = list(self.ikeys_to_dkeys.keys())
+    #         len_start = int(np.ceil(SS.MAX_INFO_PIPE_EXAMPLE/2))
+    #         len_end = SS.MAX_INFO_PIPE_EXAMPLE - len_start
+    #         example_pipe = ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}"
+    #                                  for key in ikeys_to_dkeys_keys[:len_start])
+    #         example_pipe += ", ..., "
+    #         example_pipe += ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}"
+    #                                   for key in ikeys_to_dkeys_keys[-len_end:])
+    #     else:
+    #         example_pipe = ", ".join("{" + key + " -> " + self.ikeys_to_dkeys[key] + "}"
+    #                                  for key in self.ikeys_to_dkeys)
 
         
-        log.info("Stored data is arranged into lists identified as follows.")
-        log.info("Keys: %s" % example_keys)
-        log.info("DataPorts pipe data into the lists as follows.")
-        log.info("Pipe: %s" % example_pipe)
+    #     log.info("Stored data is arranged into lists identified as follows.")
+    #     log.info("Keys: %s" % example_keys)
+    #     log.info("DataPorts pipe data into the lists as follows.")
+    #     log.info("Pipe: %s" % example_pipe)
         
     # # TODO: This currently breaks a ProblemSolver with feature keys. Decide what do.
     # # TODO: Update for queries!
@@ -807,56 +896,3 @@ class DataStorage:
                     
     #                 # Update directions for the DataPort.
     #                 self.ikeys_to_dkeys[key_port] = key_storage
-    
-    # # TODO: Error-check indices.
-    # def get_data(self, in_keys_features, in_key_target, 
-    #              in_format_x = None, in_format_y = None,
-    #             #  in_idx_start = 0, in_idx_stop = None,
-    #              from_queries = False):
-
-    #     source = self.observations
-    #     if from_queries:
-    #         source = self.queries
-
-    #     return source.get_data(in_keys_features = in_keys_features,
-    #                            in_key_target = in_key_target,
-    #                            in_format_x = in_format_x,
-    #                            in_format_y = in_format_y)
-
-            
-        # # Copy out the required data in default DataFormatX and DataFormatY style.
-        # x = {key_feature:deepcopy(source[key_feature][in_idx_start:in_idx_stop]) 
-        #      for key_feature in in_keys_features}
-        # y = deepcopy(source[in_key_target][in_idx_start:in_idx_stop])
-
-        # if in_format_x is None:
-        #     in_format_x = DataFormatX(0)
-        # if in_format_y is None:
-        #     in_format_y = DataFormatY(0)
-
-        # # Reformat the data.
-        # # If formats were not specified, the data is retrieved in 'standard' format.
-        # x = reformat_x(in_data = x, 
-        #                in_format_old = DataFormatX(0),
-        #                in_format_new = in_format_x,
-        #                in_keys_features = in_keys_features)
-        # y = reformat_y(in_data = y, 
-        #                in_format_old = DataFormatY(0),
-        #                in_format_new = in_format_y)
-
-        # return x, y
-        
-    # def get_dataframe(self, from_queries = False):
-    #     """
-    #     A utility method converting data dictionary into a Pandas dataframe.
-    #     This is slow and should be called sparingly.
-    #     """
-    #     source = self.observations
-    #     timestamps = self.timestamps_observations
-    #     if from_queries:
-    #         source = self.queries
-    #         timestamps = self.timestamps_queries
-
-    #     df = pd.DataFrame.from_dict(source)
-    #     df.index = timestamps
-    #     return df

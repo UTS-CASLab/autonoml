@@ -82,7 +82,7 @@ class AutonoMachine:
                 
         self.is_running = False
             
-    def ingest_file(self, in_filepath, in_tags = None, in_limit_rows = None):
+    def ingest_file(self, in_filepath, in_tags = None):
         """
         Take in a .csv file and convert its contents into data to learn from.
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
@@ -95,9 +95,9 @@ class AutonoMachine:
         ref = DataPort(in_data_storage = self.data_storage)
         self.data_ports[ref.name] = ref
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
-                                    in_tags = in_tags, in_limit_rows = in_limit_rows)
+                                    in_tags = in_tags)
         
-    def query_with_file(self, in_filepath, in_tags = None, in_limit_rows = None):
+    def query_with_file(self, in_filepath, in_tags = None):
         """
         Take in a .csv file and convert its contents into data to respond to.
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
@@ -109,7 +109,7 @@ class AutonoMachine:
         ref = DataPort(in_data_storage = self.data_storage)
         self.data_ports[ref.name] = ref
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
-                                    in_tags = in_tags, in_limit_rows = in_limit_rows, as_query = True)
+                                    in_tags = in_tags, as_query = True)
         
     # def ingest_stream(self, in_hostname, in_port):
     #     self.open_data_port(in_hostname = in_hostname, in_port = in_port)
@@ -124,14 +124,14 @@ class AutonoMachine:
     #                                                    in_hostname = in_hostname,
     #                                                    in_port = in_port)
     
-    @schedule_this
-    async def info_storage(self):
-        """
-        Utility method to give user info about data ports and storage.
-        """
-        log.info("AutonoMachine '%s' has %i DataPort(s): '%s'" 
-                 % (self.name, len(self.data_ports), "', '".join(self.data_ports.keys())))
-        self.data_storage.info()
+    # @schedule_this
+    # async def info_storage(self):
+    #     """
+    #     Utility method to give user info about data ports and storage.
+    #     """
+    #     log.info("AutonoMachine '%s' has %i DataPort(s): '%s'" 
+    #              % (self.name, len(self.data_ports), "', '".join(self.data_ports.keys())))
+    #     self.data_storage.info()
         
     def info_solver(self):
         """

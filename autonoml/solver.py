@@ -11,7 +11,7 @@ from .pipeline import MLPipeline, train_pipeline, test_pipeline
 from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipelines_default, create_pipeline_random
 from .solution import ProblemSolverInstructions, ProblemSolution, filter_observations, prepare_observations, develop_pipeline
 
-from .data_storage import DataStorage, DataCollection
+from .data_storage import DataStorage, DataCollection, SharedMemoryManager
 
 from typing import List
 
@@ -247,6 +247,10 @@ class ProblemSolver:
                                       in_hpo_instructions = object_dev, in_info_process = info_process, 
                                       in_key_group = key_group, in_data_filter = data_filter)
 
+                # Let other asynchronous tasks proceed if they are waiting.
+                # Prevents excessively unpacking development queue if development or inference is possible.
+                await asyncio.sleep(0)
+
     async def process_pipelines(self, in_executor, in_pipelines: List[MLPipeline], in_info_process,
                                 in_data_filter, in_key_group: str):
 
@@ -279,14 +283,32 @@ class ProblemSolver:
         log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
                 % (Timestamp(None), 1 - frac_validation, frac_validation, duration))
 
+        # For multiprocessing, create a manager object that writes data efficiently to disk.
+        data_sharer = None
+        if self.do_mp:
+            time_start = Timestamp().time
+            data_sharer = SharedMemoryManager(in_uses = len(in_pipelines))
+            data_sharer.save_observations(in_observations = observations, 
+                                          in_sets_training = sets_training, 
+                                          in_sets_validation = sets_validation)
+            observations = None
+            sets_training = None
+            sets_validation = None
+            time_end = Timestamp().time
+            duration = time_end - time_start
+            log.info("%s   Time taken to write observations and training/validation sets to temp files: %.3f s"
+                    % (Timestamp(None), duration))
+
+
         # Develop the pipelines.
         for pipeline in in_pipelines:
             # future_pipeline = develop_pipeline(pipeline, observations, sets_training, sets_validation, in_info_process)
-            future_pipeline = loop.run_in_executor(in_executor, develop_pipeline, pipeline, observations,
-                                                   sets_training, sets_validation, in_info_process)
+            future_pipeline = loop.run_in_executor(in_executor, develop_pipeline, pipeline, data_sharer,
+                                                   observations, sets_training, sets_validation, in_info_process)
             self.pipelines_in_dev[pipeline.name] = True
                 
-            create_async_task(self.push_to_production, future_pipeline, in_key_group = in_key_group)
+            create_async_task(self.push_to_production, future_pipeline, in_key_group = in_key_group, 
+                              in_data_sharer = data_sharer)
 
 
     async def process_hpo(self, in_executor, in_hpo_instructions: HPOInstructions, in_info_process,
@@ -385,7 +407,8 @@ class ProblemSolver:
 
 
 
-    async def push_to_production(self, in_future_pipeline, in_key_group: str, in_name_hpo: str = None):
+    async def push_to_production(self, in_future_pipeline, in_key_group: str, in_name_hpo: str = None, 
+                                 in_data_sharer: SharedMemoryManager = None):
         try:
             pipeline, info_process = await in_future_pipeline
 
@@ -436,7 +459,13 @@ class ProblemSolver:
                 log.info("%s   Pipelines still in development: %i" 
                          % (Timestamp(None), len(self.pipelines_in_dev)))
 
+            # Decrement the development queue.
             self.queue_dev.task_done()
+
+            # Decrement the use counter on a shared memory manager, if it exists.
+            # This may clean temporary files if no more pipelines are using the written data.
+            if not in_data_sharer is None:
+                in_data_sharer.decrement_uses()
 
 
     async def process_strategy(self):

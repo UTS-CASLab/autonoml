@@ -125,11 +125,13 @@ class SharedMemoryManager:
     """
     Used in multiprocessing for efficiently sharing data between processes.
     It does so by writing to and reading from memory-mapped files on disk.
+    When multiprocessing is disabled, simply stores references to data used for model development.
     """
     
     count = 0
 
-    def __init__(self, in_uses: int = 1):
+    def __init__(self, in_uses: int = 1, do_mp: bool = False):
+
         self.name = "shared_" + str(SharedMemoryManager.count)
         SharedMemoryManager.count += 1
         self.prefix = "./temp/"
@@ -140,6 +142,11 @@ class SharedMemoryManager:
         # Once it goes to zero, there should be no more references to memory-mapped data.
         # The local-disk files will be deleted at that stage.
         self.uses = in_uses
+
+        self.do_mp = do_mp
+        self.observations = None
+        self.sets_training = None
+        self.sets_validation = None
 
     @staticmethod
     def get_size(in_collection: DataCollection):
@@ -160,9 +167,11 @@ class SharedMemoryManager:
             with ipc.RecordBatchStreamWriter(sink, collection.data.schema) as writer:
                 writer.write_table(collection.data)
 
+    # TODO: Decide what the best choice for multiprocessing is.
     @staticmethod
     def load(in_filepath: str):
 
+        # with pa.OSFile(in_filepath, "r") as source:
         with pa.memory_map(in_filepath, "r") as source:
             with ipc.RecordBatchStreamReader(source) as reader:
                 data = reader.read_all()
@@ -174,49 +183,56 @@ class SharedMemoryManager:
                           in_sets_training: List[DataCollectionXY] = None, 
                           in_sets_validation: List[DataCollectionXY] = None):
 
-        # print(os.path.abspath(self.prefix + self.name + "_observations.arrow"))
-        
-        if in_sets_training is None:
-            in_sets_training = list()
-        if in_sets_validation is None:
-            in_sets_validation = list()
+        if self.do_mp:  
+            if in_sets_training is None:
+                in_sets_training = list()
+            if in_sets_validation is None:
+                in_sets_validation = list()
 
-        SharedMemoryManager.save(in_observations, self.prefix + self.name + "_observations.arrow")
+            SharedMemoryManager.save(in_observations, self.prefix + self.name + "_observations.arrow")
 
-        idx_set = 0
-        for set_training, set_validation in zip(in_sets_training, in_sets_validation):
-            SharedMemoryManager.save(set_training, self.prefix + self.name + "_training_" + str(idx_set) + ".arrow")
-            SharedMemoryManager.save(set_validation, self.prefix + self.name + "_validation_" + str(idx_set) + ".arrow")
-            idx_set += 1
+            idx_set = 0
+            for set_training, set_validation in zip(in_sets_training, in_sets_validation):
+                SharedMemoryManager.save(set_training, self.prefix + self.name + "_training_" + str(idx_set) + ".arrow")
+                SharedMemoryManager.save(set_validation, self.prefix + self.name + "_validation_" + str(idx_set) + ".arrow")
+                idx_set += 1
 
-        self.n_sets = idx_set
+            self.n_sets = idx_set
+
+        else:
+            self.observations = in_observations
+            self.sets_training = in_sets_training
+            self.sets_validation = in_sets_validation
 
     def load_observations(self):
 
-        collection = None
-        sets_training = list()
-        sets_validation = list()
+        if self.do_mp:
+            sets_training = list()
+            sets_validation = list()
 
-        collection = SharedMemoryManager.load(self.prefix + self.name + "_observations.arrow")
-        for idx_set in range(self.n_sets):
-            try:
+            observations = SharedMemoryManager.load(self.prefix + self.name + "_observations.arrow")
+            for idx_set in range(self.n_sets):
                 set_training = SharedMemoryManager.load(self.prefix + self.name + "_training_" + str(idx_set) + ".arrow")
                 set_validation = SharedMemoryManager.load(self.prefix + self.name + "_validation_" + str(idx_set) + ".arrow")
                 sets_training.append(set_training)
                 sets_validation.append(set_validation)
-            except:
-                break
 
-        return collection, sets_training, sets_validation
+        else:
+            observations = self.observations
+            sets_training = self.sets_training
+            sets_validation = self.sets_validation
+
+        return observations, sets_training, sets_validation
 
     def del_observations(self):
-        filepath = self.prefix + self.name + "_observations.arrow"
-        os.remove(filepath)
-        for idx_set in range(self.n_sets):
-            filepath = self.prefix + self.name + "_training_" + str(idx_set) + ".arrow"
+        if self.do_mp:
+            filepath = self.prefix + self.name + "_observations.arrow"
             os.remove(filepath)
-            filepath = self.prefix + self.name + "_validation_" + str(idx_set) + ".arrow"
-            os.remove(filepath)
+            for idx_set in range(self.n_sets):
+                filepath = self.prefix + self.name + "_training_" + str(idx_set) + ".arrow"
+                os.remove(filepath)
+                filepath = self.prefix + self.name + "_validation_" + str(idx_set) + ".arrow"
+                os.remove(filepath)
 
     def decrement_uses(self):
         self.uses -= 1

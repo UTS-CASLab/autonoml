@@ -10,7 +10,7 @@ from .pipeline import MLPipeline, train_pipeline, test_pipeline
 
 from .hyperparameter import HPInt, HPFloat
 from .strategy import Strategy, SearchSpace, pool_predictors, pool_preprocessors
-from .data_storage import DataCollectionXY
+from .data_storage import DataCollectionXY, SharedMemoryManager
 
 import ConfigSpace as CS
 from copy import deepcopy
@@ -69,7 +69,7 @@ def config_to_pipeline_structure(in_config):
 
 class HPOWorker(Worker):
 
-    def __init__(self, in_sets_training: List[DataCollectionXY], in_sets_validation: List[DataCollectionXY],
+    def __init__(self, in_data_sharer: SharedMemoryManager,
                  in_info_process, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -80,8 +80,18 @@ class HPOWorker(Worker):
         # self.sets_training.append(set_training)
         # self.sets_validation.append(set_validation)
 
-        self.sets_training = deepcopy(in_sets_training)
-        self.sets_validation = deepcopy(in_sets_validation)
+        # # If multiprocessing, read data efficiently from disk.
+        # if not in_data_sharer is None:
+        #     _, in_sets_training, in_sets_validation = in_data_sharer.load_observations()
+
+        # self.sets_training = in_sets_training
+        # self.sets_validation = in_sets_validation
+        # _, self.sets_training, self.sets_validation = in_data_sharer.load_observations()
+        # self.data_sharer = in_data_sharer
+
+        # For multiprocessing, do a lot of file reading, hopefully not passing around data.
+        _, sets_training, sets_validation = in_data_sharer.load_observations()
+        self.sets_training, self.sets_validation = sets_training, sets_validation
         self.info_process = deepcopy(in_info_process)
 
     # TODO: Consider the divide by zero runtime warnings generated seemingly when using categoricals.
@@ -94,7 +104,12 @@ class HPOWorker(Worker):
         
         losses = list()
 
-        for set_training, set_validation in zip(self.sets_training, self.sets_validation):
+        # # For multiprocessing, do a lot of file reading, hopefully not passing around data.
+        # _, sets_training, sets_validation = self.data_sharer.load_observations()
+
+        sets_training, sets_validation = self.sets_training, self.sets_validation
+
+        for set_training, set_validation in zip(sets_training, sets_validation):
 
             # TODO: Maybe ID the test names according to configuration number.
             pipeline = MLPipeline(in_name = "Test",
@@ -107,10 +122,16 @@ class HPOWorker(Worker):
                                          in_info_process = self.info_process,
                                          in_frac_data = budget)
             
+            # info = "\ntrain_prep %s" % self.info_process["duration_prep"]
+            # info += "\ntrain_proc %s" % self.info_process["duration_proc"]
+            
             print("Validation Size: %i" % set_validation.get_amount())
             pipeline, _ = test_pipeline(in_pipeline = pipeline,
                                         in_data_collection = set_validation,
                                         in_info_process = self.info_process)
+
+            # info += "\nvalid_prep %s" % self.info_process["duration_prep"]
+            # info += "\nvalid_proc %s" % self.info_process["duration_proc"]
             
             losses.append(pipeline.get_loss())
 
@@ -119,6 +140,7 @@ class HPOWorker(Worker):
 
         # TODO: Consider more informative info.
         return {"loss": loss, "info": None}
+        # return {"loss": loss, "info": info}
     
     # TODO: Deal with preprocessors.
     @staticmethod
@@ -202,9 +224,9 @@ def create_pipeline_random(in_keys_features, in_key_target, in_strategy):
     
     return pipeline
 
-def add_hpo_worker(in_hpo_instructions: HPOInstructions, 
-                   in_sets_training: List[DataCollectionXY], in_sets_validation: List[DataCollectionXY],
-                   in_info_process, in_idx: int, do_background = False):
+def add_hpo_worker(in_hpo_instructions: HPOInstructions,
+                   in_data_sharer: SharedMemoryManager,
+                   in_info_process, in_idx: int, do_background: bool = False):
     """
     Supplements a current HPO run with an additional worker.
     The worker should terminate when the name server is done with the run.
@@ -214,10 +236,7 @@ def add_hpo_worker(in_hpo_instructions: HPOInstructions,
     run_id = in_hpo_instructions.name
     name_server_host = in_hpo_instructions.name_server_host
 
-    # TODO: Consider just running initialisation without delay and repeating for exceptions.
-    # if not do_background:
-    #     time.sleep(5)   # Artificial delay to ensure the name server is already running.
-    worker = HPOWorker(in_sets_training = in_sets_training, in_sets_validation = in_sets_validation,
+    worker = HPOWorker(in_data_sharer = in_data_sharer,
                        in_info_process = in_info_process,
                        nameserver = name_server_host, run_id = run_id, id = in_idx, logger = log)
     try:
@@ -227,8 +246,7 @@ def add_hpo_worker(in_hpo_instructions: HPOInstructions,
         return e
 
 def run_hpo(in_hpo_instructions: HPOInstructions,
-            in_observations: DataCollectionXY,
-            in_sets_training: List[DataCollectionXY], in_sets_validation: List[DataCollectionXY],
+            in_data_sharer: SharedMemoryManager,
             in_info_process):
     """
     Runs a hyperparameter optimisation according to specified instructions.
@@ -237,7 +255,6 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     In detail, a name server is first set up to manage a specified number of workers.
     This function even constructs the first HPO worker to operate in the background.
     However, the other workers must be constructed via another function.
-    If there are not enough workers, HPO will not run.
     """
 
     run_id = in_hpo_instructions.name
@@ -254,8 +271,8 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     name_server.start()
 
     # The main thread/process can run a worker in the background around the name server.
-    worker = add_hpo_worker(in_hpo_instructions = in_hpo_instructions, 
-                            in_sets_training = in_sets_training, in_sets_validation = in_sets_validation,
+    # Note: No need to pass a data-sharer as the data has just been read from file.
+    worker = add_hpo_worker(in_hpo_instructions = in_hpo_instructions, in_data_sharer = in_data_sharer,
                             in_info_process = in_info_process, in_idx = 0, do_background = True)
 
     # # The main thread/process can run a worker in the background around the name server.
@@ -264,11 +281,15 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     #                    nameserver = name_server_host, run_id = run_id, id = 0, logger = log)
     # worker.run(background = True)
 
+    # extra = "\n" + str(Timestamp()) + " Start HPO"
+
     # Create the optimiser and start the run.
     optimiser = BOHB(configspace = worker.get_configspace(in_search_space = search_space),
                      run_id = run_id, nameserver = name_server_host, logger = log,
                      min_budget = budget_min, max_budget = budget_max, eta = n_partitions)
     result = optimiser.run(n_iterations = n_iterations)
+
+    # extra += "\n" + str(Timestamp()) + " End HPO"
 
     # Shutdown the optimiser and name server once complete.
     optimiser.shutdown(shutdown_workers = True)
@@ -286,6 +307,8 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     config_best = id_to_config[id_best]["config"]
     loss_best = run_best.loss
     _ = run_best.info   # TODO: Do something with the information.
+    # info = run_best.info
+    # extra += info
 
     text_hpo = ("%s - HPO run '%s' has sampled %i pipelines with %i unique configurations.\n"
                 "%s   Equivalent fully trained pipelines based on net budget: %.3f\n"
@@ -297,6 +320,11 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
                 Timestamp(None), config_best,
                 Timestamp(None), loss_best,
                 Timestamp(None), all_runs[-1].time_stamps["finished"] - all_runs[0].time_stamps["started"]))
+
+    # text_hpo += extra
+
+    # If multiprocessing, read data efficiently from disk.
+    in_observations, _, _ = in_data_sharer.load_observations()
 
     # Based on the best configuration, create a new pipeline.
     keys_features = in_info_process["keys_features"]

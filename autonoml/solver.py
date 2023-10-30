@@ -21,7 +21,7 @@ import concurrent.futures
 # import dill
 # import multiprocess as mp
 # from copy import deepcopy
-import time
+# import time
 
 
 
@@ -283,28 +283,22 @@ class ProblemSolver:
         log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
                 % (Timestamp(None), 1 - frac_validation, frac_validation, duration))
 
-        # For multiprocessing, create a manager object that writes data efficiently to disk.
-        data_sharer = None
+        # Create a manager object that stores and loads data, possibly writing it efficiently to disk.
+        time_start = Timestamp().time
+        data_sharer = SharedMemoryManager(in_uses = len(in_pipelines), do_mp = self.do_mp)
+        data_sharer.save_observations(in_observations = observations, 
+                                        in_sets_training = sets_training, 
+                                        in_sets_validation = sets_validation)
+        time_end = Timestamp().time
+        duration = time_end - time_start
         if self.do_mp:
-            time_start = Timestamp().time
-            data_sharer = SharedMemoryManager(in_uses = len(in_pipelines))
-            data_sharer.save_observations(in_observations = observations, 
-                                          in_sets_training = sets_training, 
-                                          in_sets_validation = sets_validation)
-            observations = None
-            sets_training = None
-            sets_validation = None
-            time_end = Timestamp().time
-            duration = time_end - time_start
             log.info("%s   Time taken to write observations and training/validation sets to temp files: %.3f s"
                     % (Timestamp(None), duration))
-
 
         # Develop the pipelines.
         for pipeline in in_pipelines:
             # future_pipeline = develop_pipeline(pipeline, observations, sets_training, sets_validation, in_info_process)
-            future_pipeline = loop.run_in_executor(in_executor, develop_pipeline, pipeline, data_sharer,
-                                                   observations, sets_training, sets_validation, in_info_process)
+            future_pipeline = loop.run_in_executor(in_executor, develop_pipeline, pipeline, data_sharer, in_info_process)
             self.pipelines_in_dev[pipeline.name] = True
                 
             create_async_task(self.push_to_production, future_pipeline, in_key_group = in_key_group, 
@@ -335,8 +329,9 @@ class ProblemSolver:
             time_start = Timestamp().time
             dict_observations = self.data_storage.observations
             tag_to_collection_ids = self.data_storage.tag_to_collection_ids
-            observations = await loop.run_in_executor(in_executor, filter_observations, dict_observations,
-                                                      tag_to_collection_ids, in_data_filter)
+            observations = filter_observations(dict_observations, tag_to_collection_ids, in_data_filter)
+            # observations = await loop.run_in_executor(in_executor, filter_observations, dict_observations,
+            #                                           tag_to_collection_ids, in_data_filter)
             time_end = Timestamp().time
             duration = time_end - time_start
             
@@ -349,9 +344,10 @@ class ProblemSolver:
             time_start = Timestamp().time
                 
             frac_validation = in_hpo_instructions.frac_validation
-            observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_observations,
-                                                                                      observations, in_info_process,
-                                                                                      frac_validation)
+            observations, sets_training, sets_validation = prepare_observations(observations, in_info_process, frac_validation)
+            # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_observations,
+            #                                                                           observations, in_info_process,
+            #                                                                           frac_validation)
 
             time_end = Timestamp().time
             duration = time_end - time_start
@@ -359,32 +355,42 @@ class ProblemSolver:
             log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
                      % (Timestamp(None), 1 - frac_validation, frac_validation, duration))
 
+            # Create a manager object that stores and loads data, possibly writing it efficiently to disk.
+            time_start = Timestamp().time
+            data_sharer = SharedMemoryManager(do_mp = self.do_mp)
+            data_sharer.save_observations(in_observations = observations, 
+                                            in_sets_training = sets_training, 
+                                            in_sets_validation = sets_validation)
+            time_end = Timestamp().time
+            duration = time_end - time_start
+            if self.do_mp:
+                log.info("%s   Time taken to write observations and training/validation sets to temp files: %.3f s"
+                        % (Timestamp(None), duration))
+
             # Activate the HPO run.
-            log.info("%s   Launching %i-worker HPO run '%s'." % (Timestamp(None), n_procs_hpo, name_hpo))
-            future_pipeline = loop.run_in_executor(in_executor, run_hpo, in_hpo_instructions, observations,
-                                                   sets_training, sets_validation, in_info_process)
+            log.info("%s   Launching %i-worker HPO run '%s'." % (Timestamp(), n_procs_hpo, name_hpo))
+            future_pipeline = loop.run_in_executor(in_executor, run_hpo, in_hpo_instructions, data_sharer, in_info_process)
             self.hpo_runs_in_dev[name_hpo] = True
 
             # Add HPO workers to the run.
             for idx_worker in range(1, n_procs_hpo):
                 if name_hpo in self.hpo_runs_in_dev:
-                    create_async_task(self.support_hpo, in_executor, idx_worker, in_hpo_instructions,
-                                    sets_training, sets_validation, in_info_process)
+                    create_async_task(self.support_hpo, in_executor, idx_worker, in_hpo_instructions, data_sharer, in_info_process)
                 
-            create_async_task(self.push_to_production, future_pipeline,
-                              in_key_group = in_key_group, in_name_hpo = name_hpo)
+            # The await prevents the semaphore being released until an HPO ends in production.
+            await create_async_task(self.push_to_production, future_pipeline,
+                                    in_key_group = in_key_group, in_name_hpo = name_hpo, in_data_sharer = data_sharer)
         
         
     async def support_hpo(self, in_executor, in_idx_worker: int, in_hpo_instructions: HPOInstructions, 
-                          in_sets_training, in_sets_validation, in_info_process):
+                          in_data_sharer: SharedMemoryManager, in_info_process):
         
         loop = asyncio.get_event_loop()
         name_hpo = in_hpo_instructions.name
 
         add_attempts = 0
         while True:
-            result = await loop.run_in_executor(in_executor, add_hpo_worker, in_hpo_instructions,
-                                                in_sets_training, in_sets_validation,
+            result = await loop.run_in_executor(in_executor, add_hpo_worker, in_hpo_instructions, in_data_sharer,
                                                 in_info_process, in_idx_worker)
             
             if not isinstance(result, Exception):
@@ -402,7 +408,7 @@ class ProblemSolver:
                                 % (Timestamp(None), name_hpo))
                     break
                 # If the HPO run is active, the manager is delayed in starting up. Try again.
-                time.sleep(1)
+                await asyncio.sleep(1)
             add_attempts += 1
 
 

@@ -182,12 +182,9 @@ def prepare_observations(in_observations: DataCollection, in_info_process,
 
 def develop_pipeline(in_pipeline: MLPipeline,
                      in_data_sharer: SharedMemoryManager,
-                     in_observations: DataCollectionXY,
-                     in_sets_training: List[DataCollectionXY], in_sets_validation: List[DataCollectionXY],
                      in_info_process):
 
-    if not in_data_sharer is None:
-        in_observations, in_sets_training, in_sets_validation = in_data_sharer.load_observations()
+    in_observations, in_sets_training, in_sets_validation = in_data_sharer.load_observations()
     
     losses = list()
 

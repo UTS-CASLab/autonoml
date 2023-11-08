@@ -17,12 +17,14 @@ if __name__ == '__main__':
     proj.ingest_file(in_filepath = "%s/train_dummy.csv" % dir_data, in_tags = {"file": 1, "special": 5})
     proj.ingest_file(in_filepath = "%s/train_dummy.csv" % dir_data, in_tags = {"file": 2})
     proj.query_with_file(in_filepath = "%s/test_dummy.csv" % dir_data)
+    proj.query_with_file(in_filepath = "%s/test_dummy.csv" % dir_data, in_tags = {"file": 2})
+    proj.query_with_file(in_filepath = "%s/test_dummy.csv" % dir_data, in_tags = {"alt": "a"})
 
     # proj.info_storage()
 
-    proj.learn("target_int", in_strategy = aml.import_strategy("./test_simple.strat"), 
-               in_keys_features = ["file"], do_exclude = True,
-               in_keys_allocation = [("file", aml.AllocationMethod.LEAVE_ONE_OUT)])
+    # proj.learn("target_int", in_strategy = aml.import_strategy("./test_simple.strat"), 
+    #            in_keys_features = ["file"], do_exclude = True,
+    #            in_keys_allocation = [("file", aml.AllocationMethod.LEAVE_ONE_OUT)])
 
     # if not True:
     #     # Run the following commands in online mode after data loading is done.

@@ -494,10 +494,9 @@ class ProblemSolver:
             if self.instructions.do_query_after_complete:
                 await self.queue_dev.join()
 
-            # Check if there are more queries in storage than have been processed.
+            # Check if there are more instances in storage than have been processed.
             # If not, wait until new queries arive.
-            # TODO: Compare against a data storage index rather than a length.
-            if not self.idx_queries < self.data_storage.get_amount(from_queries = True):
+            if not self.idx_queries < self.data_storage.data_id_last:
                 await self.data_storage.has_new_queries
 
             # Fix how many queries to process based on what is available at the time.

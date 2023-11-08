@@ -172,7 +172,8 @@ def prepare_observations(in_observations: DataCollection, in_info_process,
 
     # TODO: Let users decide how many training/validation pairs to form.
     for idx_set in range(in_n_sets):
-        set_validation, set_training = observations.split_randomly_by_fraction(in_fraction = in_frac_validation)
+        set_validation, set_training = observations.split_randomly_by_fraction(in_fraction = in_frac_validation, 
+                                                                               do_ids = False)
         sets_training.append(set_training)
         sets_validation.append(set_validation)
 

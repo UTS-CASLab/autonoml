@@ -175,6 +175,7 @@ class ProblemSolver:
     async def gather_ops(self):
         self.ops = list()
         self.ops.append(create_async_task(self.process_development))
+        self.ops.append(create_async_task(self.process_queries))
         # self.ops.extend([create_async_task(self.process_strategy),
         #                  create_async_task(self.process_queries)])
         group = asyncio.gather(*self.ops)
@@ -496,7 +497,7 @@ class ProblemSolver:
             # Check if there are more queries in storage than have been processed.
             # If not, wait until new queries arive.
             # TODO: Compare against a data storage index rather than a length.
-            if not self.idx_queries < self.data_storage.queries.get_amount():
+            if not self.idx_queries < self.data_storage.get_amount(from_queries = True):
                 await self.data_storage.has_new_queries
 
             # Fix how many queries to process based on what is available at the time.

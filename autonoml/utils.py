@@ -74,11 +74,17 @@ class Timestamp:
             self.ms = repr(self.time).split(".")[1][:3]
         
     def __str__(self):
-        if self.time:
+        if not self.time is None:
             return time.strftime("%y-%m-%d %H:%M:%S.{}".format(self.ms), 
                                  time.localtime(self.time))
         else:
             return " "*21
+
+    def __repr__(self):
+        if self.time:
+            return str(self)
+        else:
+            return super().__repr__()
     
     def update_from(self, in_timestamp: Type["Timestamp"]):
         self.time = in_timestamp.time

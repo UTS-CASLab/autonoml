@@ -8,9 +8,11 @@ Created on Fri May 12 22:21:05 2023
 from .utils import log, Timestamp
 from .concurrency import create_async_task_from_sync
 
-from typing import Type, List, Dict, Any
+from typing import Type, Union, List, Dict, Any
+from sortedcontainers import SortedList
 
 import asyncio
+from copy import deepcopy
 
 import __main__
 import os
@@ -22,38 +24,88 @@ import numpy as np
 
 
 class DataCollectionBase:
-    def __init__(self, *args, **kwargs):
-        pass
+    """
+    A base container for collections of data.
+    Each base collection stores IDs and insertion timestamps corresponding to instances of data.
+    Subclasses store the actual data.
 
-class DataCollection(DataCollectionBase):
-    def __init__(self, in_data: pa.Table = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if in_data is None:
-            empty_schema = pa.schema([])
-            self.data = pa.Table.from_batches([], schema=empty_schema)
-        else:
-            self.data = in_data
+    Notes:
+    - IDs and timestamps are auto-sorted by default because data inserted into subclasses is chronological.
+    - The uniqueness of IDs is managed externally, i.e. by a DataStorage object.
+    - For convenience, IDs/timestamps can be stored as unsorted lists but with constrained functionality.
+    """
+    def __init__(self, in_ids: SortedList = None, in_timestamps: SortedList = None, *args, **kwargs):
+        self.ids = SortedList()
+        self.timestamps = SortedList(key = lambda x: x.time)
+        if not in_ids is None:
+            self.ids = in_ids
+        if not in_timestamps is None:
+            self.timestamps = in_timestamps
+
+    def extend(self, in_ids: List[int], in_timestamps: List[Timestamp]):
+        try:
+            self.ids.update(in_ids)
+            self.timestamps.update(in_timestamps)
+        except:
+            raise NotImplementedError
+
+    def get_index_after_id(self, in_id: int):
+        try:
+            self.ids.bisect_right(in_id)
+        except:
+            raise NotImplementedError
+
+    def get_index_after_timestamp(self, in_timestamp: Timestamp):
+        try:
+            self.timestamps.bisect_right(in_timestamp)
+        except:
+            raise NotImplementedError
 
     def get_amount(self):
-        return self.data.num_rows
+        return len(self.ids)
 
-    def insert(self, in_data: pa.Table):
+
+class DataCollection(DataCollectionBase):
+    """
+    The standard container for a collection of data.
+    All data should be kept in this format unless temporarily reformatted for processing.
+    """
+
+    def __init__(self, in_data: pa.Table = None, 
+                 in_ids: SortedList = None, in_timestamps: SortedList = None, *args, **kwargs):
+        """
+        If IDs/timestamps exist, directly attach them with data to a DataCollection object.
+        If IDs/timestamps do not exist, insert data instead and generate new IDs/timestamps.
+        Note: Avoid initialising DataCollection directly if ID uniqueness matters.
+        """
+        super().__init__(in_ids = in_ids, in_timestamps = in_timestamps, *args, **kwargs)
+
+        empty_schema = pa.schema([])
+        self.data = pa.Table.from_batches([], schema=empty_schema)
+        if not in_data is None:
+            if in_ids is None and in_timestamps is None:
+                self.insert(in_data)
+            else:
+                self.data = in_data
+
+    def insert(self, in_data: pa.Table, in_id_new: int = 0):
         self.data = pa.concat_tables([self.data, in_data], promote=True)
+        self.extend(in_ids = [in_id_new + i for i in range(in_data.num_rows)],
+                    in_timestamps = [Timestamp()]*in_data.num_rows)
     
     def prepare_xy(self, in_keys_features: List[str], in_key_target: str):
         """
         Return a special version of DataCollection prepared with features (x) and target (y).
         """
-        
-        source = self.data
-        x = source.select(in_keys_features)
-        y = source.column(in_key_target)
-        
-        return DataCollectionXY(in_x = x, in_y = y)
+        x = self.data.select(in_keys_features)
+        y = self.data.column(in_key_target)
+
+        return DataCollectionXY(in_x = x, in_y = y, 
+                                in_ids = self.ids, in_timestamps = self.timestamps)
     
     def quick_split_xy(self):
         """
-        A convenience function that converts to DataCollectionXY.
+        A convenience function that quickly converts to DataCollectionXY.
         Assumes the last column array in the data table is y and all else is x.
         Loses y header.
         """
@@ -61,22 +113,21 @@ class DataCollection(DataCollectionBase):
         y = self.data.column(idx_col)
         x = self.data.remove_column(idx_col)
 
-        return DataCollectionXY(x, y)
-
+        return DataCollectionXY(in_x = x, in_y = y, 
+                                in_ids = self.ids, in_timestamps = self.timestamps)
 
 
 class DataCollectionXY(DataCollectionBase):
     """
     A container for data where feature (x) and target (y) selection has already been done.
     Is primarily used for HPO where repeat data manipulations are computationally expensive.
+    It is not intended for this container to grow, only to be sliced.
     """
-    def __init__(self, in_x: pa.Table, in_y: pa.ChunkedArray, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, in_x: pa.Table, in_y: pa.ChunkedArray,
+                 in_ids: SortedList = None, in_timestamps: SortedList = None, *args, **kwargs):
+        super().__init__(in_ids = in_ids, in_timestamps = in_timestamps, *args, **kwargs)
         self.x = in_x
         self.y = in_y
-
-    def get_amount(self):
-        return self.x.num_rows
     
     def get_data(self, in_fraction: float = 1.0):
         """
@@ -94,20 +145,31 @@ class DataCollectionXY(DataCollectionBase):
 
         return x, y
 
-    # TODO: Consider cases where empty collections are returned. Where to catch exceptions?
-    def split_randomly_by_fraction(self, in_fraction: float = 0.25, in_seed: int = 0):
+    def split_randomly_by_fraction(self, in_fraction: float = 0.25, in_seed: int = 0, do_ids: bool = True):
         """
         Return shuffled DataCollectionXYs inside/outside a specified fraction of instances.
+        Optionally apply shuffling to IDs and timestamps or just ignore it altogether for efficency.
         """
         np.random.seed(in_seed)
         n_instances = self.get_amount()
         n_samples = min(max(0, int(n_instances * in_fraction)), n_instances)
         indices = np.random.permutation(np.arange(n_instances))
 
-        collection_in = DataCollectionXY(in_x = self.x.take(indices[:n_samples]), 
-                                         in_y = self.y.take(indices[:n_samples]))
-        collection_out = DataCollectionXY(in_x = self.x.take(indices[n_samples:]),
-                                          in_y = self.y.take(indices[n_samples:]))
+        if do_ids:
+            # Store shuffled IDs and timestamps as unsorted lists, but beware of constrained functionality.
+            collection_in = DataCollectionXY(in_x = self.x.take(indices[:n_samples]), 
+                                             in_y = self.y.take(indices[:n_samples]),
+                                             in_ids = [self.ids[idx] for idx in indices[:n_samples]],
+                                             in_timestamps = [self.timestamps[idx] for idx in indices[:n_samples]])
+            collection_out = DataCollectionXY(in_x = self.x.take(indices[n_samples:]),
+                                              in_y = self.y.take(indices[n_samples:]),
+                                              in_ids = [self.ids[idx] for idx in indices[n_samples:]],
+                                              in_timestamps = [self.timestamps[idx] for idx in indices[n_samples:]])
+        else:
+            collection_in = DataCollectionXY(in_x = self.x.take(indices[:n_samples]), 
+                                             in_y = self.y.take(indices[:n_samples]))
+            collection_out = DataCollectionXY(in_x = self.x.take(indices[n_samples:]),
+                                              in_y = self.y.take(indices[n_samples:]))
 
         return collection_in, collection_out
     
@@ -117,7 +179,8 @@ class DataCollectionXY(DataCollectionBase):
         Concatenates y to x as the final column of a data table.
         Fakes y header.
         """
-        return DataCollection(in_data = self.x.append_column("_", self.y))
+        return DataCollection(in_data = self.x.append_column("_", self.y), 
+                              in_ids = self.ids, in_timestamps = self.timestamps)
     
 
 
@@ -527,6 +590,9 @@ class DataStorage:
         self.collection_id_to_tag_combos = dict()
         self.collection_id_no_tag = 0
         self.collection_id_new = 1
+
+        # Keep track of the unique id that a new instance of data should be given.
+        self.data_id_new = 0
         
         # # Ingested data arrives from data ports.
         # # For data port X, this data is sent as a list of elements.
@@ -689,7 +755,7 @@ class DataStorage:
             data_collection = self.queries[collection_id]
         else:
             data_collection = self.observations[collection_id]
-        data_collection.insert(in_data)
+        self.data_id_new = data_collection.insert(in_data, self.data_id_new)
 
         # Flick a switch so that learners can start ingesting new data.
         # Note: Resolving awaited futures are priority microtasks.

@@ -150,7 +150,7 @@ class MLPipeline:
         format_x = DataFormatX(0)
         format_y = DataFormatY(0)
 
-        response = None
+        responses = None
 
         num_components = len(self.components)
 
@@ -200,7 +200,7 @@ class MLPipeline:
                                         in_format_new = DataFormatY.LIST)
                             
                             if state == PipelineProcessState.QUERY:
-                                response = predictions
+                                responses = predictions
                                 self.update_loss(y_response = predictions, y_true = y)
                             else:
                                 self.update_loss(y_response = predictions, y_true = y, 
@@ -210,7 +210,7 @@ class MLPipeline:
                 if (state == PipelineProcessState.QUERY and do_learn):
                     x = x_mem
 
-        return response
+        return responses
 
     def inspect_structure(self):
         """
@@ -281,7 +281,7 @@ def process_pipeline(in_pipeline: MLPipeline,
     # print(duration_prep)
 
     time_start = Timestamp().time
-    _ = in_pipeline.process(x, y, do_query = do_query, do_learn = do_learn)
+    responses = in_pipeline.process(x, y, do_query = do_query, do_learn = do_learn)
     time_end = Timestamp().time
     duration_proc = time_end - time_start
     # print(duration_proc)
@@ -290,7 +290,7 @@ def process_pipeline(in_pipeline: MLPipeline,
     in_info_process["duration_proc"] = duration_proc
     in_info_process["n_instances"] = len(y)
 
-    return in_pipeline, in_info_process
+    return in_pipeline, responses, in_info_process
 
 def train_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY, #Union[DataCollection, DataCollectionXY],
                    in_info_process, in_frac_data: float = 1.0):

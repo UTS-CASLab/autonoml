@@ -9,9 +9,7 @@ from .utils import log, Timestamp
 from .concurrency import create_async_task_from_sync
 
 from typing import Type, Union, List, Dict, Any
-# from sortedcontainers import SortedList
 import bisect
-from itertools import chain
 
 import asyncio
 from copy import deepcopy
@@ -86,10 +84,42 @@ class DataCollection(DataCollectionBase):
                 self.data = in_data
 
     def insert(self, in_data: pa.Table, in_id_last: int = -1):
+        """
+        Insert data and extend associated list of IDs with increments from a specified ID.
+        Return the last ID to help in maintaining uniqueness.
+        Also store insertion timestamp.
+        """
         self.data = pa.concat_tables([self.data, in_data], promote=True)
         self.extend(in_ids = [in_id_last + i for i in range(1, 1 + in_data.num_rows)],
                     in_timestamps = [Timestamp()]*in_data.num_rows)
         return in_id_last + in_data.num_rows
+
+    def split_by_special_range(self, in_id_start_exclusive: int = None, 
+                               in_id_stop_inclusive: int = None):
+        """
+        Take a start ID and a stop ID and convert this into a range of indices for the data.
+        Non-traditionally, the range starts after the start ID and stops after the stop ID.
+        Return DataCollection objects for data inside and outside that range.
+        """
+        
+        id_start = self.ids[0] - 1 if in_id_start_exclusive is None else in_id_start_exclusive
+        id_stop = self.ids[-1] + 1 if in_id_stop_inclusive is None else in_id_stop_inclusive
+
+        indices = np.arange(self.get_amount())
+        idx_start = self.get_index_after_id(id_start)
+        idx_stop = self.get_index_after_id(id_stop)
+
+        collection_in = DataCollection(in_data = self.data.take(indices[idx_start:idx_stop]),
+                                       in_ids = self.ids[idx_start:idx_stop],
+                                       in_timestamps = self.timestamps[idx_start:idx_stop])
+        indices_out = np.concatenate((indices[:idx_start], indices[idx_stop:]))
+        collection_out = DataCollection(in_data = self.data.take(indices_out), 
+                                        in_ids = self.ids[:idx_start] + self.ids[idx_stop:],
+                                        in_timestamps = self.timestamps[:idx_start] 
+                                                        + self.timestamps[idx_stop:])
+
+        return collection_in, collection_out
+        
     
     def prepare_xy(self, in_keys_features: List[str], in_key_target: str):
         """
@@ -299,43 +329,6 @@ class SharedMemoryManager:
 
 
 
-def get_collection(in_dict_observations, in_tag_to_collection_ids, 
-                   in_tags_inclusive = None, in_tags_exclusive = None,
-                   do_compression: bool = False):
-    """
-    Returns a concatenation of data collections linked/unlinked to 'inclusive/exclusive' tags.
-    If there are no inclusive tags, all collections are selected prior to exclusions.
-    Note: This function is the DataStorage-external to enable multiprocessing.
-    """
-    if in_tags_inclusive is None:
-        in_tags_inclusive = dict()
-    if in_tags_exclusive is None:
-        in_tags_exclusive = dict()
-    
-    if len(in_tags_inclusive) == 0:
-        set_collection_ids = set(in_dict_observations.keys())
-    else:
-        set_collection_ids = set()
-
-    for key_tag, value_tag in in_tags_inclusive.items():
-        set_collection_ids = set_collection_ids | in_tag_to_collection_ids[key_tag][value_tag]
-    for key_tag, value_tag in in_tags_exclusive.items():
-        set_collection_ids = set_collection_ids - in_tag_to_collection_ids[key_tag][value_tag]
-
-    # Concatenate the collections.
-    data = pa.concat_tables([in_dict_observations[collection_id].data 
-                             for collection_id in list(set_collection_ids)], 
-                            promote = True)
-    ids = list(chain(*(in_dict_observations[collection_id].ids 
-                       for collection_id in list(set_collection_ids))))
-    timestamps = list(chain(*(in_dict_observations[collection_id].timestamps
-                              for collection_id in list(set_collection_ids))))
-    collection = DataCollection(in_data = data, in_ids = ids, in_timestamps = timestamps)
-
-    if do_compression:
-        collection.data.combine_chunks()
-
-    return collection
 
 
 # TODO: Consider how the data is best stored, including preallocated arrays.
@@ -365,7 +358,7 @@ class DataStorage:
         self.collection_id_new = 1
 
         # Keep track of the unique id that the last instance of data was given.
-        self.data_id_last = -1
+        self.id_data_last = -1
         
         # # Ingested data arrives from data ports.
         # # For data port X, this data is sent as a list of elements.
@@ -408,6 +401,17 @@ class DataStorage:
 
         return list(tag_to_collection_ids[in_key_tag].keys())
     
+    def get_tag_combo_from_collection_id(self, in_collection_id: int, as_query: bool = False):
+
+        if in_collection_id == self.collection_id_no_tag:
+            return None
+        else:
+            if not as_query:
+                tag_combo = self.observations_collection_id_to_tag_combos[in_collection_id]
+            else:
+                tag_combo = self.queries_collection_id_to_tag_combos[in_collection_id]
+            return tag_combo
+    
     def get_collection_ids(self, in_tags: Dict[str, str] = None, 
                            do_prepare_dicts: bool = False, do_exact_tag_combo: bool = False,
                            as_query: bool = False):
@@ -434,9 +438,6 @@ class DataStorage:
             set_collection_ids = set([self.collection_id_no_tag])
 
             if do_prepare_dicts:
-                # if not self.collection_id_no_tag in self.observations:
-                #     self.observations[self.collection_id_no_tag] = DataCollection()
-                #     self.queries[self.collection_id_no_tag] = DataCollection()
                 if not self.collection_id_no_tag in source:
                     source[self.collection_id_no_tag] = DataCollection()
 
@@ -462,7 +463,6 @@ class DataStorage:
             set_collection_ids_old = set_collection_ids
             set_collection_ids = set()
             for collection_id in set_collection_ids_old:
-                # if self.collection_id_to_tag_combos[collection_id] == in_tags:
                 if collection_id_to_tag_combos[collection_id] == in_tags:
                     set_collection_ids = set([collection_id])
                     break
@@ -471,10 +471,7 @@ class DataStorage:
             # If no collection associates with the tag combo, optionally create one.
             if len(set_collection_ids) == 0:
                 source[self.collection_id_new] = DataCollection()
-                # self.observations[self.collection_id_new] = DataCollection()
-                # self.queries[self.collection_id_new] = DataCollection()
                 for key_tag, value_tag in in_tags.items():
-                    # self.tag_to_collection_ids[key_tag][value_tag].add(self.collection_id_new)
                     tag_to_collection_ids[key_tag][value_tag].add(self.collection_id_new)
                 collection_id_to_tag_combos[self.collection_id_new] = in_tags
                 set_collection_ids = set([self.collection_id_new])
@@ -549,7 +546,7 @@ class DataStorage:
             data_collection = self.queries[collection_id]
         else:
             data_collection = self.observations[collection_id]
-        self.data_id_new = data_collection.insert(in_data, self.data_id_last)
+        self.id_data_last = data_collection.insert(in_data, self.id_data_last)
 
         # Flick a switch so that learners can start ingesting new data.
         # Note: Resolving awaited futures are priority microtasks.

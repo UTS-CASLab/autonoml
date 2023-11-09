@@ -35,7 +35,7 @@ setup(
         "pyarrow",
         "dill",
         "multiprocess",
-        "sortedcontainers",
+        # "sortedcontainers",
         "numpy",
         "pandas",
         "matplotlib",

@@ -8,7 +8,7 @@ Created on Fri Oct 27 17:06:45 2023
 """
 
 from autonoml.data_storage import DataCollection, SharedMemoryManager
-from autonoml.solution import prepare_observations
+from autonoml.solution import prepare_data
 
 import numpy as np
 import pyarrow as pa
@@ -35,8 +35,8 @@ if __name__ == '__main__':
 
     # Break up into sets.
     info_process = {"keys_features": keys_features, "key_target": key_target}
-    output = prepare_observations(in_observations = collection, in_info_process = info_process,
-                                  in_frac_validation = 0.25, in_n_sets = 3)
+    output = prepare_data(in_observations = collection, in_info_process = info_process,
+                          in_frac_validation = 0.25, in_n_sets = 3)
     observations, sets_training, sets_validation = output
 
     # Create memory-mapped files and read back from them.

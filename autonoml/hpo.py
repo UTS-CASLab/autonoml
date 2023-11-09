@@ -117,18 +117,18 @@ class HPOWorker(Worker):
                                 in_components = config_to_pipeline_structure(in_config = config))
 
             print("Training Size: %i" % int(budget*set_training.get_amount()))
-            pipeline, _ = train_pipeline(in_pipeline = pipeline,
-                                         in_data_collection = set_training,
-                                         in_info_process = self.info_process,
-                                         in_frac_data = budget)
+            pipeline, _, _ = train_pipeline(in_pipeline = pipeline,
+                                            in_data_collection = set_training,
+                                            in_info_process = self.info_process,
+                                            in_frac_data = budget)
             
             # info = "\ntrain_prep %s" % self.info_process["duration_prep"]
             # info += "\ntrain_proc %s" % self.info_process["duration_proc"]
             
             print("Validation Size: %i" % set_validation.get_amount())
-            pipeline, _ = test_pipeline(in_pipeline = pipeline,
-                                        in_data_collection = set_validation,
-                                        in_info_process = self.info_process)
+            pipeline, _, _ = test_pipeline(in_pipeline = pipeline,
+                                           in_data_collection = set_validation,
+                                           in_info_process = self.info_process)
 
             # info += "\nvalid_prep %s" % self.info_process["duration_prep"]
             # info += "\nvalid_proc %s" % self.info_process["duration_proc"]
@@ -332,9 +332,9 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     pipeline = MLPipeline(in_name = "Pipe_" + run_id,
                           in_keys_features = keys_features, in_key_target = key_target,
                           in_components = config_to_pipeline_structure(in_config = config_best))
-    pipeline, info_process = train_pipeline(in_pipeline = pipeline,
-                                            in_data_collection = in_observations,
-                                            in_info_process = in_info_process)
+    pipeline, _, info_process = train_pipeline(in_pipeline = pipeline,
+                                               in_data_collection = in_observations,
+                                               in_info_process = in_info_process)
     
     # Short of further testing, its starting loss is the validation score it received during HPO.
     pipeline.set_loss(loss_best)

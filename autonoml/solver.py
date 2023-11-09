@@ -7,21 +7,18 @@ Created on Mon May 22 21:58:33 2023
 
 from .utils import log, Timestamp, identify_exception
 from .concurrency import create_async_task_from_sync, create_async_task
-from .pipeline import MLPipeline, train_pipeline, test_pipeline
+from .pipeline import MLPipeline
 from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipelines_default, create_pipeline_random
-from .solution import ProblemSolverInstructions, ProblemSolution, filter_observations, prepare_observations, develop_pipeline
+from .solution import ProblemSolverInstructions, ProblemSolution
+from .solver_ops import (filter_observations, prepare_data, develop_pipeline, 
+                         anticipate_responses, get_responses, action_responses)
 
 from .data_storage import DataStorage, DataCollection, SharedMemoryManager
 
 from typing import List
 
-# import __main__
 import asyncio
 import concurrent.futures
-# import dill
-# import multiprocess as mp
-# from copy import deepcopy
-# import time
 
 
 
@@ -64,8 +61,8 @@ class ProblemSolver:
 
         # Keep track of the data-storage instance up to which model has used.
         # TODO: Consider variant starting points for the model and update log messages.
-        self.idx_data = 0
-        self.idx_queries = 0
+        self.id_observations_last = 0
+        self.id_queries_last = 0
         
         # # Set up a variable that can be awaited elsewhere.
         # # This 'switch', when flicked, signals that the pipelines can be queried.
@@ -262,7 +259,7 @@ class ProblemSolver:
 
         time_start = Timestamp().time
         dict_observations = self.data_storage.observations
-        tag_to_collection_ids = self.data_storage.tag_to_collection_ids
+        tag_to_collection_ids = self.data_storage.observations_tag_to_collection_ids
         observations = filter_observations(dict_observations, tag_to_collection_ids, in_data_filter)
         # observations = await loop.run_in_executor(in_executor, filter_observations, dict_observations, 
         #                                           tag_to_collection_ids, in_data_filter)
@@ -274,8 +271,8 @@ class ProblemSolver:
 
         time_start = Timestamp().time
         frac_validation = self.instructions.strategy.frac_validation
-        observations, sets_training, sets_validation = prepare_observations(observations, in_info_process, frac_validation)
-        # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_observations, 
+        observations, sets_training, sets_validation = prepare_data(observations, in_info_process, frac_validation)
+        # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_data, 
         #                                                                           observations, in_info_process,
         #                                                                           frac_validation)
         time_end = Timestamp().time
@@ -329,7 +326,7 @@ class ProblemSolver:
 
             time_start = Timestamp().time
             dict_observations = self.data_storage.observations
-            tag_to_collection_ids = self.data_storage.tag_to_collection_ids
+            tag_to_collection_ids = self.data_storage.observations_tag_to_collection_ids
             observations = filter_observations(dict_observations, tag_to_collection_ids, in_data_filter)
             # observations = await loop.run_in_executor(in_executor, filter_observations, dict_observations,
             #                                           tag_to_collection_ids, in_data_filter)
@@ -345,8 +342,8 @@ class ProblemSolver:
             time_start = Timestamp().time
                 
             frac_validation = in_hpo_instructions.frac_validation
-            observations, sets_training, sets_validation = prepare_observations(observations, in_info_process, frac_validation)
-            # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_observations,
+            observations, sets_training, sets_validation = prepare_data(observations, in_info_process, frac_validation)
+            # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_data,
             #                                                                           observations, in_info_process,
             #                                                                           frac_validation)
 
@@ -446,8 +443,8 @@ class ProblemSolver:
                         Timestamp(None), pipeline.get_loss(),
                         Timestamp(None), y_pred_last, y_last))
             
-            self.solution.insert_learner(in_pipeline = pipeline, in_key_group = in_key_group)
             log.info("%s   Pipeline '%s' is pushed to production." % (Timestamp(None), pipeline.name))
+            self.solution.insert_learner(in_pipeline = pipeline, in_key_group = in_key_group)
         except Exception as e:
             text_alert = "%s - ProblemSolver '%s' failed to process an MLPipeline." % (Timestamp(), self.name)
             identify_exception(e, text_alert)
@@ -479,14 +476,17 @@ class ProblemSolver:
         while True:
 
             # Check for new data and learn from it.
-            if self.idx_data < self.data_storage.observations.get_amount():
-                self.idx_data = self.data_storage.observations.get_amount()
+            if self.id_observations_last < self.data_storage.observations.get_amount():
+                self.id_observations_last = self.data_storage.observations.get_amount()
                 
             # TODO: Add things to the development queue as required.
                 
             await self.data_storage.has_new_observations
 
     async def process_queries(self):
+
+        # Do any preparatory work for responses, such as creating a folder for outputs.
+        anticipate_responses()
         
         while True:
 
@@ -496,62 +496,94 @@ class ProblemSolver:
 
             # Check if there are more instances in storage than have been processed.
             # If not, wait until new queries arive.
-            if not self.idx_queries < self.data_storage.data_id_last:
+            if not self.id_queries_last < self.data_storage.id_data_last:
                 await self.data_storage.has_new_queries
 
             # Fix how many queries to process based on what is available at the time.
-            idx_stop = self.data_storage.queries.get_amount()
+            idx_stop = self.data_storage.id_data_last
 
             info_process = {"keys_features": self.keys_features,
                             "key_target": self.key_target,
-                            "idx_start": self.idx_queries,
+                            "idx_start": self.id_queries_last,
                             "idx_stop": idx_stop}
 
-            # Grab the newest queries as a data collection.
-            queries, _ = self.data_storage.queries.split_by_range(in_idx_start = self.idx_queries,
-                                                                  in_idx_stop = idx_stop)
+            for collection_id, queries in self.data_storage.queries.items():
+                queries, _ = queries.split_by_special_range(in_id_start_exclusive = self.id_queries_last,
+                                                            in_id_stop_inclusive = idx_stop)
+                
+                queries, _, _ = prepare_data(in_collection = queries, 
+                                             in_info_process = info_process,
+                                             in_n_sets = 0)
 
-            # Go through every pipeline in production and process the queries.
-            # TODO: Ensemble them to derive a single set of responses.
-            for tags, list_pipelines in self.solution.groups.items():
-                # try:
-                #     pipeline = self.solution[pipeline_key]
-                # except Exception as e:
-                #     log.warning("%s - Pipeline '%s' disappeared in the middle of a query phase. "
-                #                 "Continuing to query the next pipeline." % (Timestamp(), pipeline_key))
-                #     log.debug(e)
-                #     continue
+                print(self.data_storage.get_tag_combo_from_collection_id(collection_id, as_query = True))
+                print(queries)
+                
+                for tags, list_pipelines in self.solution.groups.items():
+                    print(tags)
+                    print(list_pipelines)
 
-                for pipeline in list_pipelines:
+                    for pipeline in list_pipelines:
+                        responses, pipeline, info_process = get_responses(in_pipeline = pipeline,
+                                                                          in_queries = queries,
+                                                                          in_info_process = info_process)
+                        print(pipeline)
+                        print(responses)
 
-                    pipeline, metric = test_pipeline(in_pipeline = pipeline, in_data_collection = queries, 
-                                                    in_info_process = info_process)
+                action_responses(queries)
 
-                    idx_start = info_process["idx_start"]
-                    idx_stop = info_process["idx_stop"]
-                    duration_prep = info_process["duration_prep"]
-                    duration_proc = info_process["duration_proc"]
-                    # metric = info_process["metric"]
-                    y_last = pipeline.testing_y_true[-1]
-                    y_pred_last = pipeline.testing_y_response[-1]
+                
+                
 
-                    log.info("%s - Pipeline '%s' has responded to a total of %i queries.\n"
-                            "%s   Structure: %s\n"
-                            "%s   Time taken to retrieve data: %.3f s\n"
-                            "%s   Time taken to query/score pipeline on data: %.3f s\n"
-                            "%s   (Training loss: %f)\n"
-                            "%s   Testing loss: %f\n"
-                            "%s   Last observation: Prediction '%s' vs True Value '%s'"
-                            % (Timestamp(), pipeline.name, idx_stop - idx_start,
-                                Timestamp(None), pipeline.components_as_string(do_hpars = True),
-                                Timestamp(None), duration_prep,
-                                Timestamp(None), duration_proc,
-                                Timestamp(None), pipeline.get_loss(is_training = True),
-                                Timestamp(None), pipeline.get_loss(),
-                                Timestamp(None), y_pred_last, y_last))
+            # info_process = {"keys_features": self.keys_features,
+            #                 "key_target": self.key_target,
+            #                 "idx_start": self.id_queries_last,
+            #                 "idx_stop": idx_stop}
+
+            # # Grab the newest queries as a data collection.
+            # queries, _ = self.data_storage.queries.split_by_range(in_idx_start = self.id_queries_last,
+            #                                                       in_idx_stop = idx_stop)
+
+            # # Go through every pipeline in production and process the queries.
+            # # TODO: Ensemble them to derive a single set of responses.
+            # for tags, list_pipelines in self.solution.groups.items():
+            #     # try:
+            #     #     pipeline = self.solution[pipeline_key]
+            #     # except Exception as e:
+            #     #     log.warning("%s - Pipeline '%s' disappeared in the middle of a query phase. "
+            #     #                 "Continuing to query the next pipeline." % (Timestamp(), pipeline_key))
+            #     #     log.debug(e)
+            #     #     continue
+
+            #     for pipeline in list_pipelines:
+
+            #         pipeline, metric = test_pipeline(in_pipeline = pipeline, in_data_collection = queries, 
+            #                                         in_info_process = info_process)
+
+            #         idx_start = info_process["idx_start"]
+            #         idx_stop = info_process["idx_stop"]
+            #         duration_prep = info_process["duration_prep"]
+            #         duration_proc = info_process["duration_proc"]
+            #         # metric = info_process["metric"]
+            #         y_last = pipeline.testing_y_true[-1]
+            #         y_pred_last = pipeline.testing_y_response[-1]
+
+            #         log.info("%s - Pipeline '%s' has responded to a total of %i queries.\n"
+            #                 "%s   Structure: %s\n"
+            #                 "%s   Time taken to retrieve data: %.3f s\n"
+            #                 "%s   Time taken to query/score pipeline on data: %.3f s\n"
+            #                 "%s   (Training loss: %f)\n"
+            #                 "%s   Testing loss: %f\n"
+            #                 "%s   Last observation: Prediction '%s' vs True Value '%s'"
+            #                 % (Timestamp(), pipeline.name, idx_stop - idx_start,
+            #                     Timestamp(None), pipeline.components_as_string(do_hpars = True),
+            #                     Timestamp(None), duration_prep,
+            #                     Timestamp(None), duration_proc,
+            #                     Timestamp(None), pipeline.get_loss(is_training = True),
+            #                     Timestamp(None), pipeline.get_loss(),
+            #                     Timestamp(None), y_pred_last, y_last))
                 
             # Update an index to acknowledge the queries that have been processed.
-            self.idx_queries = idx_stop
+            self.id_queries_last = idx_stop
 
             # Let other asynchronous tasks proceed if they are waiting.
             # Prevents endlessly focussing on inference if development is possible.

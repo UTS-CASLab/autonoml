@@ -9,7 +9,7 @@ Created on Thu Nov  9 11:02:45 2023
 """
 
 from .data_storage import DataCollection, DataCollectionXY, SharedMemoryManager
-from .solution import AllocationMethod
+from .solution import AllocationMethod, ProblemSolution
 from .pipeline import MLPipeline, train_pipeline, test_pipeline
 
 from typing import List, Dict
@@ -21,6 +21,7 @@ import pyarrow as pa
 from pyarrow import csv as pacsv
 
 import os
+import numpy as np
 
 
 
@@ -157,6 +158,7 @@ def develop_pipeline(in_pipeline: MLPipeline,
 
 
 # TODO: Make destination for response outputs more modular, script-based, and user-controlled.
+# TODO: Consider moving 'magic values' to settings.
 
 def anticipate_responses():
     prefix = "./results/"
@@ -172,9 +174,75 @@ def get_responses(in_pipeline: MLPipeline,
     
     return responses, pipeline, info_process
 
-def action_responses(in_queries: DataCollectionXY):
-    prefix = "./results/"
-    filepath = prefix + "responses.csv"
+def ensemble_responses(in_dict_responses):
 
-    write_options = pacsv.WriteOptions(include_header = True)
-    pacsv.write_csv(in_queries.quick_merge_xy().data, filepath, write_options = write_options)
+    # Get the responses from the best-ranked learner of each group, i.e. rank 0.
+    all_responses = list()
+    for tags in in_dict_responses:
+        if 0 in in_dict_responses[tags]:
+            print(in_dict_responses[tags][0]["loss"])
+            all_responses.append(in_dict_responses[tags][0]["loss"])
+
+    # Calculate the average across all best-ranked learner responses.
+    return np.mean(all_responses, axis = 0)
+
+def action_responses(in_queries: DataCollectionXY,
+                     in_responses_best,
+                     in_responses_dict,
+                     in_collection_tag_string: str, 
+                     in_keys_features: List[str], in_key_target: str, 
+                     in_solution: ProblemSolution):
+    """
+    Do something with the responses returned by the solution.
+    Currently exports to a file defined by how the query collection was tagged by the user.
+    """
+    filepath_prefix = "./results/"
+    tag_string = in_collection_tag_string
+    if not tag_string == "":
+        tag_string = "_" + tag_string
+    filepath = filepath_prefix + "responses" + tag_string + ".csv"
+
+    if not os.path.isfile(filepath):
+        # Write headers to each response file.
+        with open(filepath, "w") as file:
+            headers_solution = ""
+            for tags in in_solution.groups.keys():
+                tags_for_prefix = tags
+                if not tags_for_prefix == "":
+                    tags_for_prefix = ":" + tags_for_prefix
+                for idx in range(1 + in_solution.n_challengers):
+                    header_prefix = "L%i%s" % (idx, tags_for_prefix)
+                    headers_learner = (header_prefix + "_" + in_key_target + "," + header_prefix + ":loss,"
+                                      + header_prefix + ":name")
+                    headers_solution += "," + headers_learner
+
+            file.write("IDs,%s,%s%s" % (",".join(["F_" + key for key in in_keys_features]), 
+                                         "T_" + in_key_target + ",S_" + in_key_target,
+                                         headers_solution))
+            
+    # TODO: Verify the columns of the header match the data.
+    table_export = in_queries.x.add_column(0, "IDs", in_queries.ids)
+    table_export = table_export.append_column("T_" + in_key_target, in_queries.y)
+    table_export = table_export.append_column("S_" + in_key_target, in_responses_best)
+    for tags in in_solution.groups.keys():
+        tags_for_prefix = tags
+        if not tags_for_prefix == "":
+            tags_for_prefix = ":" + tags_for_prefix
+        for idx in range(1 + in_solution.n_challengers):
+            header_prefix = "L%i%s" % (idx, tags_for_prefix)
+            for key_content in ["responses", "loss", "name"]:
+                if not idx in in_responses_dict[tags]:
+                    list_append = [""]*in_queries.get_amount()
+                else:
+                    list_append = in_responses_dict[tags][key_content]
+                if key_content == "responses":
+                    key_content_for_header = "_" + in_key_target
+                else:
+                    key_content_for_header = ":" + key_content
+                table_export = table_export.append_column(header_prefix + key_content_for_header, list_append)
+            
+    with open(filepath, "a") as file:
+        pass
+
+    # write_options = pacsv.WriteOptions(include_header = True)
+    # pacsv.write_csv(in_queries.quick_merge_xy().data, filepath, write_options = write_options)

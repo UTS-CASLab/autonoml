@@ -12,6 +12,8 @@ from .strategy import Strategy
 from .data_storage import DataStorage
 
 from enum import Enum
+import os
+import shutil
 
 # TODO: Make these options clear to a user.
 class AllocationMethod(Enum):
@@ -47,6 +49,8 @@ class ProblemSolution:
     A container for all learners currently in production.
     """
     def __init__(self, in_instructions: ProblemSolverInstructions, in_data_storage: DataStorage):
+
+        self.prepare_results()
 
         # Define a group as a champion and multiple challengers learning on a particular subset of data.
         # Define a filter as the rules for generating that subset of data.
@@ -113,6 +117,13 @@ class ProblemSolution:
                     Timestamp(None), self.n_challengers))
 
     def insert_learner(self, in_pipeline: MLPipeline, in_key_group: str):
+        """
+        Insert a new learner into a group of learners.
+        If there are too many challengers, remove the worst performer according to testing loss.
+        """
+
+        self.append_info_file(in_pipeline)
+
         list_pipelines = self.groups[in_key_group]
         list_pipelines.append(in_pipeline)
         self.groups[in_key_group] = sorted(list_pipelines, key=lambda p: p.get_loss())
@@ -122,3 +133,26 @@ class ProblemSolution:
             pipeline_removed = self.groups[in_key_group].pop()
             log.info("%s   Removing uncompetitive challenger pipeline '%s' with loss: %0.2f"
                      % (Timestamp(None), pipeline_removed.name, pipeline_removed.get_loss()))
+            
+    # TODO: Reconsider which objects should be responsible for preparing results.
+    def prepare_results(self):
+        """
+        Delete any pre-existing results folder and create a new one.
+        Start up a new file for describing pipelines.
+        """
+        prefix = "./results/"
+        if os.path.exists(prefix):
+            shutil.rmtree(prefix)
+        os.makedirs(prefix)
+
+        filepath = prefix + "info_pipelines.txt"
+        with open(filepath, "w") as file:
+            pass
+
+    # TODO: Consider if there is a feasible way to make the info sorted.
+    def append_info_file(self, in_pipeline: MLPipeline):
+        prefix = "./results/"
+        filepath = prefix + "info_pipelines.txt"
+
+        with open(filepath, "a") as file:
+            file.write("%s: %s\n" % (in_pipeline.name, in_pipeline.components_as_string(do_hpars = True)))

@@ -401,15 +401,21 @@ class DataStorage:
 
         return list(tag_to_collection_ids[in_key_tag].keys())
     
-    def get_tag_combo_from_collection_id(self, in_collection_id: int, as_query: bool = False):
+    def get_tag_combo_from_collection_id(self, in_collection_id: int, 
+                                         as_string: bool = True, as_query: bool = False):
 
         if in_collection_id == self.collection_id_no_tag:
-            return None
+            if as_string:
+                return ""
+            else:
+                return None
         else:
             if not as_query:
                 tag_combo = self.observations_collection_id_to_tag_combos[in_collection_id]
             else:
                 tag_combo = self.queries_collection_id_to_tag_combos[in_collection_id]
+            if as_string:
+                tag_combo = "&".join(["(%s==%s)" % (key_tag, value_tag) for key_tag, value_tag in tag_combo.items()])
             return tag_combo
     
     def get_collection_ids(self, in_tags: Dict[str, str] = None, 

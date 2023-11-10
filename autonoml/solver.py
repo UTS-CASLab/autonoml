@@ -11,7 +11,7 @@ from .pipeline import MLPipeline
 from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipelines_default, create_pipeline_random
 from .solution import ProblemSolverInstructions, ProblemSolution
 from .solver_ops import (filter_observations, prepare_data, develop_pipeline, 
-                         anticipate_responses, get_responses, action_responses)
+                         anticipate_responses, get_responses, ensemble_responses, action_responses)
 
 from .data_storage import DataStorage, DataCollection, SharedMemoryManager
 
@@ -19,6 +19,8 @@ from typing import List
 
 import asyncio
 import concurrent.futures
+import os
+import numpy as np
 
 
 
@@ -500,36 +502,55 @@ class ProblemSolver:
                 await self.data_storage.has_new_queries
 
             # Fix how many queries to process based on what is available at the time.
-            idx_stop = self.data_storage.id_data_last
+            id_stop = self.data_storage.id_data_last
 
             info_process = {"keys_features": self.keys_features,
                             "key_target": self.key_target,
-                            "idx_start": self.id_queries_last,
-                            "idx_stop": idx_stop}
+                            "id_start": self.id_queries_last,
+                            "id_stop": id_stop}
 
             for collection_id, queries in self.data_storage.queries.items():
                 queries, _ = queries.split_by_special_range(in_id_start_exclusive = self.id_queries_last,
-                                                            in_id_stop_inclusive = idx_stop)
+                                                            in_id_stop_inclusive = id_stop)
                 
                 queries, _, _ = prepare_data(in_collection = queries, 
                                              in_info_process = info_process,
                                              in_n_sets = 0)
-
-                print(self.data_storage.get_tag_combo_from_collection_id(collection_id, as_query = True))
-                print(queries)
+                
+                responses_dict = dict()
                 
                 for tags, list_pipelines in self.solution.groups.items():
-                    print(tags)
-                    print(list_pipelines)
 
-                    for pipeline in list_pipelines:
+                    responses_dict[tags] = dict()
+
+                    for rank_pipeline, pipeline in enumerate(list_pipelines):
+
+                        responses_dict[tags][rank_pipeline] = dict()
+
                         responses, pipeline, info_process = get_responses(in_pipeline = pipeline,
                                                                           in_queries = queries,
                                                                           in_info_process = info_process)
                         print(pipeline)
                         print(responses)
 
-                action_responses(queries)
+                        responses_dict[tags][rank_pipeline]["responses"] = responses
+                        record_loss = [""]*queries.get_amount()
+                        record_loss[-1] = pipeline.get_loss()
+                        responses_dict[tags][rank_pipeline]["loss"] = record_loss
+                        responses_dict[tags][rank_pipeline]["name"] = [pipeline.name]*queries.get_amount()
+
+                # responses_best = ensemble_responses(responses_dict)
+
+                tag_queries = self.data_storage.get_tag_combo_from_collection_id(collection_id,
+                                                                                 as_string = True,
+                                                                                 as_query = True)
+                # action_responses(in_queries = queries,
+                #                  in_responses_best = responses_best,
+                #                  in_responses_dict = responses_dict,
+                #                  in_collection_tag_string = tag_queries,
+                #                  in_keys_features = self.keys_features,
+                #                  in_key_target = self.key_target,
+                #                  in_solution = self.solution)
 
                 
                 
@@ -583,7 +604,7 @@ class ProblemSolver:
             #                     Timestamp(None), y_pred_last, y_last))
                 
             # Update an index to acknowledge the queries that have been processed.
-            self.id_queries_last = idx_stop
+            self.id_queries_last = id_stop
 
             # Let other asynchronous tasks proceed if they are waiting.
             # Prevents endlessly focussing on inference if development is possible.

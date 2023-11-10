@@ -58,6 +58,9 @@ class MLComponent:
     def learn(self, x, y):
         raise NotImplementedError
     
+    def update(self, x, y):
+        pass
+    
     def reformat_x(self, x, in_format_old):
         x = reformat_x(in_data = x, 
                        in_format_old = in_format_old, 

@@ -1,3 +1,7 @@
+# Ignore a specific folder.
+tests/temp/
+tests/results/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

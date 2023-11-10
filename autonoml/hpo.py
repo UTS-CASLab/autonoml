@@ -117,7 +117,7 @@ class HPOWorker(Worker):
                                 in_keys_features = keys_features, in_key_target = key_target, do_increment_count = False,
                                 in_components = config_to_pipeline_structure(in_config = config))
 
-            print("Training Size: %i" % int(budget*set_training.get_amount()))
+            # print("Training Size: %i" % int(budget*set_training.get_amount()))
             pipeline, _, _ = train_pipeline(in_pipeline = pipeline,
                                             in_data_collection = set_training,
                                             in_info_process = self.info_process,
@@ -126,7 +126,7 @@ class HPOWorker(Worker):
             # info = "\ntrain_prep %s" % self.info_process["duration_prep"]
             # info += "\ntrain_proc %s" % self.info_process["duration_proc"]
             
-            print("Validation Size: %i" % set_validation.get_amount())
+            # print("Validation Size: %i" % set_validation.get_amount())
             pipeline, _, _ = test_pipeline(in_pipeline = pipeline,
                                            in_data_collection = set_validation,
                                            in_info_process = self.info_process)
@@ -137,7 +137,7 @@ class HPOWorker(Worker):
             losses.append(pipeline.get_loss())
 
         loss = sum(losses)/len(losses)
-        print("Loss: %f" % loss)
+        # print("Loss: %f" % loss)
 
         # TODO: Consider more informative info.
         return {"loss": loss, "info": None}

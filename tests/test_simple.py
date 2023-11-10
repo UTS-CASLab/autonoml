@@ -22,6 +22,5 @@ if __name__ == '__main__':
 
     # proj.info_storage()
 
-    proj.learn("target_int", in_strategy = aml.import_strategy("./test_simple.strat"), 
-               in_keys_features = ["file"], do_exclude = True,
+    proj.learn("target_int", in_strategy = aml.import_strategy("./test_simple.strat"),
                in_keys_allocation = [("file", aml.AllocationMethod.LEAVE_ONE_OUT)])

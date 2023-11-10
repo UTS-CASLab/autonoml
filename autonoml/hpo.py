@@ -5,7 +5,8 @@ Created on Tue Aug 15 10:29:42 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp, CustomBool
+from .utils import log, DummyLogger, Timestamp, CustomBool
+from .settings import SystemSettings as SS
 from .pipeline import MLPipeline, train_pipeline, test_pipeline
 
 from .hyperparameter import HPInt, HPFloat
@@ -236,9 +237,14 @@ def add_hpo_worker(in_hpo_instructions: HPOInstructions,
     run_id = in_hpo_instructions.name
     name_server_host = in_hpo_instructions.name_server_host
 
+    if SS.LOG_HPO_WORKER:
+        log_to_use = log
+    else:
+        log_to_use = DummyLogger()
+
     worker = HPOWorker(in_data_sharer = in_data_sharer,
                        in_info_process = in_info_process,
-                       nameserver = name_server_host, run_id = run_id, id = in_idx, logger = log)
+                       nameserver = name_server_host, run_id = run_id, id = in_idx, logger = log_to_use)
     try:
         worker.run(background = do_background)
         return worker
@@ -275,17 +281,16 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     worker = add_hpo_worker(in_hpo_instructions = in_hpo_instructions, in_data_sharer = in_data_sharer,
                             in_info_process = in_info_process, in_idx = 0, do_background = True)
 
-    # # The main thread/process can run a worker in the background around the name server.
-    # worker = HPOWorker(in_observations = in_observations, 
-    #                    in_hpo_instructions = in_hpo_instructions, in_info_process = in_info_process,
-    #                    nameserver = name_server_host, run_id = run_id, id = 0, logger = log)
-    # worker.run(background = True)
-
     # extra = "\n" + str(Timestamp()) + " Start HPO"
 
     # Create the optimiser and start the run.
+    if SS.LOG_HPO_OPTIMISER:
+        log_to_use = log
+    else:
+        log_to_use = DummyLogger()
+
     optimiser = BOHB(configspace = worker.get_configspace(in_search_space = search_space),
-                     run_id = run_id, nameserver = name_server_host, logger = log,
+                     run_id = run_id, nameserver = name_server_host, logger = log_to_use,
                      min_budget = budget_min, max_budget = budget_max, eta = n_partitions)
     result = optimiser.run(n_iterations = n_iterations)
 

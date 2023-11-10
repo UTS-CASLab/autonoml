@@ -14,7 +14,7 @@ Optimiser:
     Validation Fraction: 0.25
 Search Space:
   OnlineLinearRegressor:
-    Include: y
+    Include: n
     Hpars:
       batch_size:
         Vary: y

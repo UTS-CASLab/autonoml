@@ -15,6 +15,10 @@ class SystemSettings:
     
     BASE_DELAY_FOR_ISSUE_CHECK = 10     # Seconds until checking for issues.
 
+    #%% Logger settings.
+    LOG_HPO_OPTIMISER = False
+    LOG_HPO_WORKER = False
+
     #%% Streamer-specific constants.
     DEFAULT_HOSTNAME = "localhost"  # Default IP address for connections.
     DEFAULT_PORT_DATA = 50001       # Ephemeral port within IANA-advised range.
@@ -28,11 +32,11 @@ class SystemSettings:
     DELAY_FOR_SERVER_ABANDON = 20       # Seconds until server abandons a socket without client confirm.
     SIGNAL_CONFIRM = "1\n"              # An endline-terminated signal used to confirm connection.
     
-    #%% IO settings.
-    MAX_ALERTS_IKEY_NEW = 5     # How many newly encountered DataPort inflow keys to individually acknowledge.
-    MAX_ALERTS_DKEY_NEW = 5     # How many newly established DataStorage data keys to individually acknowledge.
-    MAX_INFO_KEYS_EXAMPLE = 10  # How many DataStorage keys to exemplify when providing info.
-    MAX_INFO_PIPE_EXAMPLE = 10  # How many inflow-to-data pipes to exemplify when providing info.
+    # #%% IO settings.
+    # MAX_ALERTS_IKEY_NEW = 5     # How many newly encountered DataPort inflow keys to individually acknowledge.
+    # MAX_ALERTS_DKEY_NEW = 5     # How many newly established DataStorage data keys to individually acknowledge.
+    # MAX_INFO_KEYS_EXAMPLE = 10  # How many DataStorage keys to exemplify when providing info.
+    # MAX_INFO_PIPE_EXAMPLE = 10  # How many inflow-to-data pipes to exemplify when providing info.
     
     #%% Plot settings.
     MAX_LABELS_BAR = 25     # If there are more bars in a chart, label a fraction of them.

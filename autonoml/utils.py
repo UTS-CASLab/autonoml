@@ -58,6 +58,14 @@ def setup_logger(in_filename_script: str):
 
 setup_logger(in_filename_script = getattr(__main__, "__file__", None))
 
+class DummyLogger(logging.Logger):
+    """
+    A logger that ignores all messages.
+    """
+    def __init__(self):
+        super().__init__(name = "dummy_logger")
+        self.addHandler(logging.NullHandler())
+
 class Timestamp:
     """
     A wrapper for timestamps.

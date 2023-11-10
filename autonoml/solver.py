@@ -530,63 +530,27 @@ class ProblemSolver:
                         responses, pipeline, info_process = get_responses(in_pipeline = pipeline,
                                                                           in_queries = queries,
                                                                           in_info_process = info_process)
-                        print(pipeline)
-                        print(responses)
+                        # print(pipeline)
+                        # print(responses)
 
                         responses_dict[tags][rank_pipeline]["responses"] = responses
-                        record_loss = [""]*queries.get_amount()
+                        record_loss = [None]*queries.get_amount()
                         record_loss[-1] = pipeline.get_loss()
                         responses_dict[tags][rank_pipeline]["loss"] = record_loss
                         responses_dict[tags][rank_pipeline]["name"] = [pipeline.name]*queries.get_amount()
 
-                # responses_best = ensemble_responses(responses_dict)
+                responses_best = ensemble_responses(responses_dict)
 
                 tag_queries = self.data_storage.get_tag_combo_from_collection_id(collection_id,
                                                                                  as_string = True,
                                                                                  as_query = True)
-                # action_responses(in_queries = queries,
-                #                  in_responses_best = responses_best,
-                #                  in_responses_dict = responses_dict,
-                #                  in_collection_tag_string = tag_queries,
-                #                  in_keys_features = self.keys_features,
-                #                  in_key_target = self.key_target,
-                #                  in_solution = self.solution)
-
-                
-                
-
-            # info_process = {"keys_features": self.keys_features,
-            #                 "key_target": self.key_target,
-            #                 "idx_start": self.id_queries_last,
-            #                 "idx_stop": idx_stop}
-
-            # # Grab the newest queries as a data collection.
-            # queries, _ = self.data_storage.queries.split_by_range(in_idx_start = self.id_queries_last,
-            #                                                       in_idx_stop = idx_stop)
-
-            # # Go through every pipeline in production and process the queries.
-            # # TODO: Ensemble them to derive a single set of responses.
-            # for tags, list_pipelines in self.solution.groups.items():
-            #     # try:
-            #     #     pipeline = self.solution[pipeline_key]
-            #     # except Exception as e:
-            #     #     log.warning("%s - Pipeline '%s' disappeared in the middle of a query phase. "
-            #     #                 "Continuing to query the next pipeline." % (Timestamp(), pipeline_key))
-            #     #     log.debug(e)
-            #     #     continue
-
-            #     for pipeline in list_pipelines:
-
-            #         pipeline, metric = test_pipeline(in_pipeline = pipeline, in_data_collection = queries, 
-            #                                         in_info_process = info_process)
-
-            #         idx_start = info_process["idx_start"]
-            #         idx_stop = info_process["idx_stop"]
-            #         duration_prep = info_process["duration_prep"]
-            #         duration_proc = info_process["duration_proc"]
-            #         # metric = info_process["metric"]
-            #         y_last = pipeline.testing_y_true[-1]
-            #         y_pred_last = pipeline.testing_y_response[-1]
+                action_responses(in_queries = queries,
+                                 in_responses_best = responses_best,
+                                 in_responses_dict = responses_dict,
+                                 in_collection_tag_string = tag_queries,
+                                 in_keys_features = self.keys_features,
+                                 in_key_target = self.key_target,
+                                 in_solution = self.solution)
 
             #         log.info("%s - Pipeline '%s' has responded to a total of %i queries.\n"
             #                 "%s   Structure: %s\n"

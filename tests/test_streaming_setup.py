@@ -28,8 +28,8 @@ async def test():
     await aml.user_pause(5)
     
     print("USER: Opens a data port to an inactive streaming server.")
-    proj.open_data_port(server_hostname, server_port_data, in_id = "abrupto")
-    await aml.user_pause(15)
+    port = proj.ingest_stream(server_hostname, server_port_data, in_id_stream = "abrupto")
+    await aml.user_pause(10)
     
     print("USER: Notices the streaming server is activating.")
     with open(filename_log_streamer, "w") as file_log_streamer:
@@ -37,24 +37,31 @@ async def test():
                                           stdout = file_log_streamer, 
                                           stderr = subprocess.STDOUT,
                                           universal_newlines = True)
-    await aml.user_pause(15)
+    await aml.user_pause(5)
+
+    print("USER: Inspects data port for its automated field names.")
+    field_names = port.get_field_names()
+    print(field_names)
+    await aml.user_pause(5)
     
-    print("USER: User renames stored data columns from the streamer.")
-    proj.update_storage(["abrupto_0", "abrupto_1", "abrupto_2", "abrupto_3", "abrupto_4"],
-                        ["X1", "X2", "X3", "X4", "class"])
+    print("USER: Renames the column names and activates storage.")
+    port.set_field_names(["X1", "X2", "X3", "X4", "class"])
+    port.toggle_storage()
+    await aml.user_pause(10)
+
+    print("USER: Examines data in storage.")
+    proj.info_storage()
     await aml.user_pause(5)
     
     print("USER: Decides on a machine learning task.")
     proj.learn("class")
-    await aml.user_pause(15)
+    await aml.user_pause(5)
     
     print("USER: Stops the AutonoMachine.")
-    proj.stop()
+    proj = None
     
     # An unconnected server should die eventually, but terminate it anyway.
     server_process.kill()
-    
-    return proj
 
 if __name__ == "__main__":
     

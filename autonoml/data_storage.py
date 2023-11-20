@@ -685,6 +685,24 @@ class DataStorage:
     #     return unique_values
         
 
+    def info(self):
+        """
+        Utility method to give user info about storage.
+        """
+        log.info("Stored data is arranged as follows.")
+        for collection_id in self.observations:
+            log.info("Observation collection %i, tag combo '%s'..." 
+                     % (collection_id, 
+                        self.get_tag_combo_from_collection_id(collection_id)))
+            log.info(self.observations[collection_id].data)
+        for collection_id in self.queries:
+            log.info("Query collection %i, tag combo '%s'..." 
+                     % (collection_id, 
+                        self.get_tag_combo_from_collection_id(collection_id, as_query = True)))
+            log.info(self.queries[collection_id].data)
+
+
+
     # def info(self):
     #     """
     #     Utility method to give user info about data ports and storage.

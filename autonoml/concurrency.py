@@ -152,17 +152,6 @@ def schedule_this(bound_method):
 
 
 
-# class ProcessPoolExecutorEnhanced(concurrent.futures.ProcessPoolExecutor):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-
-#     def _initialize(self, *args, **kwargs):
-#         super()._initialize(*args, **kwargs)
-#         self._popen_kwargs["serializer"] = dill.dumps
-#         self._popen_kwargs["deserializer"] = dill.loads
-
-
-
 # import multiprocess as mp
 
 # # TODO: Consider ensuring returns that do not break a user script, if there are returns.

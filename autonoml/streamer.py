@@ -6,7 +6,7 @@ Created on Fri Apr 14 21:38:26 2023
 """
 
 from .utils import log, Timestamp
-from .concurrency import asyncio_task_from_method
+from .concurrency import create_async_task_from_sync, create_async_task
 from .settings import SystemSettings as SS
 
 from copy import deepcopy
@@ -63,18 +63,7 @@ class SimDataStreamer:
         
     def run(self):
         log.info("%s - The SimDataStreamer is now running." % Timestamp())
-        
-        # Check the Python environment for an asynchronous event loop.
-        # Gather operations and hand them to a new/existing event loop.
-        loop = asyncio.get_event_loop()
-        if loop.is_running() == False:
-            log.debug(("No asyncio event loop is currently running.\n"
-                       "One will be launched for simulated data streaming."))
-            asyncio.run(self.gather_ops())
-        else:
-            log.debug(("The Python environment is already running an asyncio event loop.\n"
-                       "It will be used for simulated data streaming."))
-            asyncio_task_from_method(self.gather_ops)
+        create_async_task_from_sync(self.gather_ops)
             
     async def gather_ops(self):
         """
@@ -84,12 +73,10 @@ class SimDataStreamer:
         - Generating the data to broadcast.
         - Checking when to shut down the server.
         """
-        
-        self.ops = [asyncio_task_from_method(op) for op in [self.run_server,
-                                                            self.get_data,
-                                                            self.check_stop]]
+        self.ops = [create_async_task(op) for op in [self.run_server,
+                                                     self.get_data,
+                                                     self.check_stop]]
         await asyncio.gather(*self.ops)
-        #, return_exceptions=True)
         
     async def check_stop(self):
         """
@@ -135,8 +122,11 @@ class SimDataStreamer:
         log.info("%s - SimDataStreamer has established connection with a client." % Timestamp())
         timestamp_confirm_local = Timestamp()
         # TODO: Update for asyncio_task_from_method.
-        ops = [asyncio.create_task(op) for op in [self.send_data_to_client(in_writer, timestamp_confirm_local, is_query),
-                                                  self.receive_confirm_from_client(in_reader, timestamp_confirm_local)]]
+        # ops = [asyncio.create_task(op) for op in [self.send_data_to_client(in_writer, timestamp_confirm_local, is_query),
+        #                                           self.receive_confirm_from_client(in_reader, timestamp_confirm_local)]]
+        ops = list()
+        ops.append(create_async_task(self.send_data_to_client, in_writer, timestamp_confirm_local, is_query))
+        ops.append(create_async_task(self.receive_confirm_from_client, in_reader, timestamp_confirm_local))
         for op in asyncio.as_completed(ops):
             await op
             for op_other in ops:

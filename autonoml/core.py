@@ -18,6 +18,8 @@ from .plot import plot_figures
 
 from .strategy import Strategy
 
+from typing import Dict
+
 import asyncio
 import multiprocess as mp
 from enum import Enum
@@ -82,7 +84,7 @@ class AutonoMachine:
                 
         self.is_running = False
             
-    def ingest_file(self, in_filepath, in_tags = None):
+    def ingest_file(self, in_filepath, in_tags: Dict[str, str] = None):
         """
         Take in a .csv file and convert its contents into data to learn from.
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
@@ -92,12 +94,11 @@ class AutonoMachine:
 
         log.info("%s - Scheduling request for AutonoMachine '%s' to ingest data file: %s" 
                  % (Timestamp(), self.name, in_filepath))
-        ref = DataPort(in_data_storage = self.data_storage)
+        ref = DataPort(in_data_storage = self.data_storage, in_tags = in_tags)
         self.data_ports[ref.name] = ref
-        create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
-                                    in_tags = in_tags)
+        create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath)
         
-    def query_with_file(self, in_filepath, in_tags = None):
+    def query_with_file(self, in_filepath, in_tags: Dict[str, str] = None):
         """
         Take in a .csv file and convert its contents into data to respond to.
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
@@ -106,32 +107,32 @@ class AutonoMachine:
 
         log.info("%s - Scheduling request to query AutonoMachine '%s' with file: %s" 
                  % (Timestamp(), self.name, in_filepath))
-        ref = DataPort(in_data_storage = self.data_storage)
+        ref = DataPort(in_data_storage = self.data_storage, in_tags = in_tags)
         self.data_ports[ref.name] = ref
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
-                                    in_tags = in_tags, as_query = True)
+                                    as_query = True)
         
-    # def ingest_stream(self, in_hostname, in_port):
-    #     self.open_data_port(in_hostname = in_hostname, in_port = in_port)
-                
-    # def open_data_port(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA,
-    #                    in_id = None):
-    #     id_data_port = str(len(self.data_ports))
-    #     if not in_id is None:
-    #         id_data_port = str(in_id)
-    #     self.data_ports[id_data_port] = DataPortStream(in_id = id_data_port,
-    #                                                    in_data_storage = self.data_storage,
-    #                                                    in_hostname = in_hostname,
-    #                                                    in_port = in_port)
-    
-    # @schedule_this
-    # async def info_storage(self):
-    #     """
-    #     Utility method to give user info about data ports and storage.
-    #     """
-    #     log.info("AutonoMachine '%s' has %i DataPort(s): '%s'" 
-    #              % (self.name, len(self.data_ports), "', '".join(self.data_ports.keys())))
-    #     self.data_storage.info()
+    def ingest_stream(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port: int = SS.DEFAULT_PORT_DATA, 
+                      in_id_stream: str = None, in_tags: Dict[str, str] = None):
+        ref = DataPortStream(in_data_storage = self.data_storage,
+                             in_hostname = in_hostname,
+                             in_port = in_port,
+                             in_id_stream = in_id_stream,
+                             in_tags = in_tags)
+        self.data_ports[ref.name] = ref
+        create_async_task_from_sync(self.data_ports[ref.name].run_connection)
+
+        return ref
+        
+
+    @schedule_this
+    async def info_storage(self):
+        """
+        Utility method to give user info about data ports and storage.
+        """
+        log.info("AutonoMachine '%s' has %i DataPort(s): '%s'" 
+                 % (self.name, len(self.data_ports), "', '".join(self.data_ports.keys())))
+        self.data_storage.info()
         
     def info_solver(self):
         """

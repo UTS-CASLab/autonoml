@@ -5,10 +5,13 @@ Created on Thu Jul  6 19:00:56 2023
 @author: David J. Kedziora
 """
 
-from .utils import log, Timestamp
+from .utils import log, Timestamp, identify_exception
 from .settings import SystemSettings as SS
+from .concurrency import create_async_task_from_sync, create_async_task, schedule_this
 
 from .data_storage import DataStorage
+
+from typing import Dict, List
 
 import asyncio
 
@@ -31,20 +34,29 @@ class DataPort:
     
     count = 0
 
-    def __init__(self, in_data_storage: DataStorage):
+    def __init__(self, in_data_storage: DataStorage, in_name: str = None, 
+                 in_tags: Dict[str, str] = None):
         self.name = "Port_" + str(DataPort.count)
         DataPort.count += 1
+        if not in_name is None:
+            self.name = in_name
         log.info("%s - Initialising DataPort '%s'." % (Timestamp(), self.name))
         
         # Reference to the DataStorage contained in the AutonoMachine.
         self.data_storage = in_data_storage
+
+        # Ensure tags are in string format.
+        self.tags = dict()
+        if not in_tags is None:
+            for key in in_tags:
+                self.tags[str(key)] = str(in_tags[key])
         
-        # An ordered list of keys associated with elements of inflow data.
-        self.keys = None
-        self.data_types = None
+        # # An ordered list of keys associated with elements of inflow data.
+        # self.keys = None
+        # self.data_types = None
         
     # TODO: Update logs for queries.
-    async def ingest_file(self, in_filepath: str, in_tags = None,
+    async def ingest_file(self, in_filepath: str,
                           in_file_has_headers: bool = True, as_query: bool = False):
 
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
@@ -57,14 +69,8 @@ class DataPort:
                                          autogenerate_column_names = not in_file_has_headers)
         data = pacsv.read_csv(in_filepath, read_options = read_options)
 
-        # Ensure tags are in string format.
-        tags = dict()
-        if not in_tags is None:
-            for key in in_tags:
-                tags[str(key)] = str(in_tags[key])
-
         self.data_storage.store_data(in_data = data,
-                                     in_tags = tags,
+                                     in_tags = self.tags,
                                      as_query = as_query)
 
         time_end = Timestamp().time
@@ -82,25 +88,92 @@ class DataPortStream(DataPort):
     A DataPort that connects to a server.
     """
     
-    def __init__(self, in_id, in_data_storage, 
-                 in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA):
-        super().__init__(in_id = in_id, in_data_storage = in_data_storage)
+    def __init__(self, in_data_storage, 
+                 in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA,
+                 in_id_stream: str = None, in_tags: Dict[str, str] = None):
+        super().__init__(in_data_storage = in_data_storage, in_name = in_id_stream,
+                         in_tags = in_tags)
         log.info("%s   This DataPort is designed for streams." % Timestamp(None))
         
         # Server details that this data port is targeting.
         self.target_hostname = in_hostname
         self.target_port = in_port
         
+        # Field names for the streamed data that will be encountered.
+        self.field_names = None
+
+        # A switch for whether encountered data is currently being streamed into storage.
+        self.is_storing = False
+        if not self.is_storing:
+            log.info("%s   It is currently not storing any streamed data it may encounter.\n"
+                     "%s   Do not toggle storage until field names are satisfactorily set." 
+                     % (Timestamp(None), Timestamp(None)))
+
         self.ops = None
-        self.task = asyncio.get_event_loop().create_task(self.run_connection())
-        
+
     def __del__(self):
-        # Cancel all asynchronous operations.
-        if self.ops:
-            for op in self.ops:
-                op.cancel()
+        log.debug("Finalising stream-based DataPort '%s'." % self.name)
+
+    def get_field_names(self):
+        return self.field_names
+
+    @schedule_this
+    async def set_field_names(self, in_field_names: List[str]):
+        self.field_names = in_field_names
+
+    @schedule_this
+    async def toggle_storage(self):
+        self.is_storing = not self.is_storing
+        if self.is_storing:
+            log.info("%s - DataPort '%s' has begun storing streamed data." % (Timestamp(), self.name))
+        else:
+            log.info("%s - DataPort '%s' has stopped storing streamed data." % (Timestamp(), self.name))
+
+    # def get_schema(self):
+    #     return self.schema
+    
+    # def get_schema_names(self):
+    #     return self.schema.names
+    
+    # @schedule_this
+    # async def set_schema(self, in_schema):
+    #     self.schema = in_schema
+
+    # @schedule_this
+    # async def set_schema_names(self, in_schema_names):
+    #     print(in_schema_names)
+    #     print(self.schema.names)
+    #     self.schema.names = in_schema_names
+    #     print(self.schema.names)
+    #     print(self.schema)
+
+
+    # def run(self):
+    #     log.info("%s - Stream-based DataPort '%s' is now running." % (Timestamp(), self.name))
+    #     create_async_task_from_sync(self.run_connection())
+            
+    # async def gather_ops(self):
+    #     try:
+    #         await create_async_task(self.run_connection())
+    #     except Exception as e:
+    #         text_alert = ("%s - Stream-based DataPort '%s' encountered an error. "
+    #                       "Cancelling Asyncio operations." % (Timestamp(), self.name))
+    #         identify_exception(e, text_alert)
+    #         for op in self.ops:
+    #             op.cancel()
+                
+    #     self.is_running = False
+
+
+    # def __del__(self):
+    #     # Cancel all asynchronous operations.
+    #     if self.ops:
+    #         for op in self.ops:
+    #             op.cancel()
         
-        self.task.cancel()
+    #     self.task.cancel()
+
+
         
     async def run_connection(self):
         while True:
@@ -108,8 +181,8 @@ class DataPortStream(DataPort):
                 reader, writer = await asyncio.open_connection(self.target_hostname, self.target_port)
                 log.warning("%s - DataPort '%s' is connected to host %s, port %s." 
                             % (Timestamp(), self.name, self.target_hostname, self.target_port))
-                self.ops = [asyncio.create_task(op) for op in [self.send_confirm_to_server(writer),
-                                                               self.receive_data_from_server(reader)]]
+                self.ops = [create_async_task(self.send_confirm_to_server, writer),
+                            create_async_task(self.receive_data_from_server, reader)]
                 for op in asyncio.as_completed(self.ops):
                     await op
                     for op_other in self.ops:
@@ -140,10 +213,18 @@ class DataPortStream(DataPort):
             except Exception as e:
                 log.warning(e)
                 break
-            data = message.decode("utf8").rstrip().split(",")
+
+            data_list = message.decode("utf8").rstrip().split(",")
+            if self.field_names is None:
+                data_dict_list = [{self.name + "_" + str(idx): data_list[idx] for idx in range(len(data_list))}]
+                data = pa.Table.from_pylist(data_dict_list)
+                self.field_names = data.schema.names
+            else:
+                data_dict_list = [{self.field_names[idx]: data_list[idx] for idx in range(len(data_list))}]
+                data = pa.Table.from_pylist(data_dict_list)
                 
             timestamp = Timestamp()
-            self.data_storage.store_data(in_timestamp = timestamp, 
-                                         in_elements = data, 
-                                         in_port_id = self.name)
-            log.info("%s - DataPort '%s' received data: %s" % (timestamp, self.name, data))
+            if self.is_storing:
+                self.data_storage.store_data(in_data = data, 
+                                            in_tags = self.tags)
+            # log.debug("%s - DataPort '%s' received data: %s" % (timestamp, self.name, data))

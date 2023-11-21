@@ -689,16 +689,22 @@ class DataStorage:
         """
         Utility method to give user info about storage.
         """
-        log.info("Stored data is arranged as follows.")
+        log.info("Stored data is arranged as follows.\n")
         for collection_id in self.observations:
-            log.info("Observation collection %i, tag combo '%s'..." 
-                     % (collection_id, 
-                        self.get_tag_combo_from_collection_id(collection_id)))
+            tag_combo =  self.get_tag_combo_from_collection_id(collection_id)
+            if tag_combo == "":
+                tag_text = ""
+            else:
+                tag_text = ", tag combo '%s'" % tag_combo
+            log.info("- Observation collection %i%s.\n" % (collection_id, tag_text))
             log.info(self.observations[collection_id].data)
         for collection_id in self.queries:
-            log.info("Query collection %i, tag combo '%s'..." 
-                     % (collection_id, 
-                        self.get_tag_combo_from_collection_id(collection_id, as_query = True)))
+            tag_combo =  self.get_tag_combo_from_collection_id(collection_id, as_query = True)
+            if tag_combo == "":
+                tag_text = ""
+            else:
+                tag_text = ", tag combo '%s'" % tag_combo
+            log.info("- Query collection %i%s.\n" % (collection_id, tag_text))
             log.info(self.queries[collection_id].data)
 
 

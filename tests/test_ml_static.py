@@ -7,7 +7,7 @@ Created on Mon Jun 26 14:52:35 2023
 
 import autonoml as aml
 
-dir_data = "./data"
+dir_data = "./data/sps"
 filename_substring = "sps_quality_1000_events"
 experimental_contexts = ["1p2uW_3000cps",
                          "2p5uW_4000cps",
@@ -31,7 +31,7 @@ if __name__ == '__main__':
                                                                    experimental_context), 
                              in_tags = {"context": experimental_context})
             
-    # proj.info_storage()
+    proj.info_storage()
 
     proj.learn(in_key_target = "best",
                in_keys_features = ["estimate"], do_exclude = True,

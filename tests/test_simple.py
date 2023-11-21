@@ -20,7 +20,7 @@ if __name__ == '__main__':
     proj.query_with_file(in_filepath = "%s/test_dummy.csv" % dir_data, in_tags = {"file": 2})
     proj.query_with_file(in_filepath = "%s/test_dummy.csv" % dir_data, in_tags = {"alt": "a", "file": 3})
 
-    # proj.info_storage()
+    proj.info_storage()
 
     proj.learn("target_int", in_strategy = aml.import_strategy("./test_simple.strat"),
                in_keys_allocation = [("file", aml.AllocationMethod.LEAVE_ONE_OUT)])

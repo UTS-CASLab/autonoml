@@ -114,6 +114,14 @@ class DataPortStream(DataPort):
     def __del__(self):
         log.debug("Finalising stream-based DataPort '%s'." % self.name)
 
+    # def __del__(self):
+    #     # Cancel all asynchronous operations.
+    #     if self.ops:
+    #         for op in self.ops:
+    #             op.cancel()
+        
+    #     self.task.cancel()
+
     def get_field_names(self):
         return self.field_names
 
@@ -128,50 +136,6 @@ class DataPortStream(DataPort):
             log.info("%s - DataPort '%s' has begun storing streamed data." % (Timestamp(), self.name))
         else:
             log.info("%s - DataPort '%s' has stopped storing streamed data." % (Timestamp(), self.name))
-
-    # def get_schema(self):
-    #     return self.schema
-    
-    # def get_schema_names(self):
-    #     return self.schema.names
-    
-    # @schedule_this
-    # async def set_schema(self, in_schema):
-    #     self.schema = in_schema
-
-    # @schedule_this
-    # async def set_schema_names(self, in_schema_names):
-    #     print(in_schema_names)
-    #     print(self.schema.names)
-    #     self.schema.names = in_schema_names
-    #     print(self.schema.names)
-    #     print(self.schema)
-
-
-    # def run(self):
-    #     log.info("%s - Stream-based DataPort '%s' is now running." % (Timestamp(), self.name))
-    #     create_async_task_from_sync(self.run_connection())
-            
-    # async def gather_ops(self):
-    #     try:
-    #         await create_async_task(self.run_connection())
-    #     except Exception as e:
-    #         text_alert = ("%s - Stream-based DataPort '%s' encountered an error. "
-    #                       "Cancelling Asyncio operations." % (Timestamp(), self.name))
-    #         identify_exception(e, text_alert)
-    #         for op in self.ops:
-    #             op.cancel()
-                
-    #     self.is_running = False
-
-
-    # def __del__(self):
-    #     # Cancel all asynchronous operations.
-    #     if self.ops:
-    #         for op in self.ops:
-    #             op.cancel()
-        
-    #     self.task.cancel()
 
 
         

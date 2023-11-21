@@ -12,6 +12,7 @@ from .settings import SystemSettings as SS
 from copy import deepcopy
 
 import asyncio
+import numpy as np
 
 class SimDataStreamer:
     """
@@ -20,7 +21,7 @@ class SimDataStreamer:
     The secondary server generates queries with expected responses.
     In practice the data instances are simply lines from the CSV file.
     
-    Per broadcasting cycle, the primary transmits 'instances_per_query' lines.
+    Per broadcasting cycle, the primary transmits 'observations_per_query' lines.
     The secondary then transmits one line while the primary takes a break.
     Non-integer ratios are allowed, which the broadcast averages to over time.
     The lines are broadcast with a period of 'period_data_stream'.
@@ -28,7 +29,7 @@ class SimDataStreamer:
     
     def __init__(self, 
                  in_filename_data = None,
-                 in_instances_per_query = 1,
+                 in_observations_per_query = np.inf,
                  in_period_data_stream = SS.PERIOD_DATA_STREAM,
                  in_file_has_headers = True,
                  in_hostname_data = SS.DEFAULT_HOSTNAME,
@@ -39,7 +40,7 @@ class SimDataStreamer:
         
         self.filename_data = in_filename_data
         self.file_has_headers = in_file_has_headers
-        self.instances_per_query = in_instances_per_query
+        self.observations_per_query = in_observations_per_query
         self.period_data_stream = in_period_data_stream
         
         self.hostname_data = in_hostname_data
@@ -121,9 +122,6 @@ class SimDataStreamer:
         """
         log.info("%s - SimDataStreamer has established connection with a client." % Timestamp())
         timestamp_confirm_local = Timestamp()
-        # TODO: Update for asyncio_task_from_method.
-        # ops = [asyncio.create_task(op) for op in [self.send_data_to_client(in_writer, timestamp_confirm_local, is_query),
-        #                                           self.receive_confirm_from_client(in_reader, timestamp_confirm_local)]]
         ops = list()
         ops.append(create_async_task(self.send_data_to_client, in_writer, timestamp_confirm_local, is_query))
         ops.append(create_async_task(self.receive_confirm_from_client, in_reader, timestamp_confirm_local))
@@ -154,6 +152,7 @@ class SimDataStreamer:
         while Timestamp().time - in_timestamp_confirm.time < SS.DELAY_FOR_SERVER_ABANDON:
             try:
                 # Any message from the client with an endline confirms the connection.
+                # TODO: Give the await timeout as well.
                 await in_reader.readline()
             except Exception as e:
                 log.warning(e)
@@ -167,7 +166,7 @@ class SimDataStreamer:
         """
         Iteratively reads the lines of a text file.
         Each line is sent to any connected clients elsewhere.
-        Training/testing ratio is set by 'instances_per_query'.
+        Training/testing ratio is set by 'observations_per_query'.
         The file is assumed to be in CSV format. 
         """
         
@@ -186,7 +185,7 @@ class SimDataStreamer:
                     # Set the result so they can transmit the data.
                     # Note: Resolving awaited futures are priority microtasks.
                     # The following reset runs after the writers get results.
-                    if count_instance < self.instances_per_query:
+                    if count_instance < self.observations_per_query:
                         log.info("%s - Data generated: %s" % (Timestamp(), line.rstrip()))
                         self.data.set_result(line)
                         self.data = asyncio.Future()
@@ -196,7 +195,7 @@ class SimDataStreamer:
                         self.query.set_result(line)
                         self.query = asyncio.Future()
                         # Allow non-integer train/test ratios by subtracting.
-                        count_instance -= self.instances_per_query
+                        count_instance -= self.observations_per_query
                     await asyncio.sleep(self.period_data_stream)
         except asyncio.CancelledError:
             pass

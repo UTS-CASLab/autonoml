@@ -19,7 +19,7 @@ async def test():
     server_port_data = aml.SystemSettings.DEFAULT_PORT_DATA
         
     # Define a log file for the streamer subprocess.
-    filename_log_streamer = "test_ml_continuous_streamer.log"
+    filename_log_streamer = "test_streaming_setup_streamer.log"
     
     
     
@@ -33,7 +33,7 @@ async def test():
     
     print("USER: Notices the streaming server is activating.")
     with open(filename_log_streamer, "w") as file_log_streamer:
-        server_process = subprocess.Popen(["python", "sim_data_streamer.py"],
+        server_process = subprocess.Popen(["python", "sim_stream_abrupto.py"],
                                           stdout = file_log_streamer, 
                                           stderr = subprocess.STDOUT,
                                           universal_newlines = True)
@@ -57,7 +57,7 @@ async def test():
     proj.learn("class")
     await aml.user_pause(5)
     
-    print("USER: Stops the AutonoMachine.")
+    print("USER: Deletes the AutonoMachine.")
     proj = None
     
     # An unconnected server should die eventually, but terminate it anyway.
@@ -73,4 +73,3 @@ if __name__ == "__main__":
         task = asyncio.run(test())
     else:
         task = loop.create_task(test())
-    # Use: proj = task.result()

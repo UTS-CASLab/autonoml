@@ -23,5 +23,6 @@ Datasets...
 pharma/indpensim_batch.csv
 
 Details...
+One batch from a large penicillin production dataset, with 202 and 201 removed as headers due to missing data in the last two columns.
 https://data.mendeley.com/datasets/pdnjz7zz5x/1
 Goldrick, Stephen (2019), "Data for: Modern day monitoring and control challenges outlined on an industrial-scale benchmark fermentation process", Mendeley Data, V1, doi: 10.17632/pdnjz7zz5x.1

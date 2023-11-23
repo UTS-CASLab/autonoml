@@ -28,10 +28,10 @@ class SimDataStreamer:
     """
     
     def __init__(self, 
-                 in_filename_data = None,
-                 in_observations_per_query = np.inf,
-                 in_period_data_stream = SS.PERIOD_DATA_STREAM,
-                 in_file_has_headers = True,
+                 in_filename_data: str = None,
+                 in_observations_per_query: float = np.inf,
+                 in_period_data_stream: float = SS.PERIOD_DATA_STREAM,
+                 in_file_has_headers: bool = True,
                  in_hostname_data = SS.DEFAULT_HOSTNAME,
                  in_port_data = SS.DEFAULT_PORT_DATA,
                  in_hostname_query = SS.DEFAULT_HOSTNAME,

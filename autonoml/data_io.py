@@ -90,6 +90,7 @@ class DataPortStream(DataPort):
     
     def __init__(self, in_data_storage, 
                  in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA,
+                 in_field_names: List[str] = None,
                  in_id_stream: str = None, in_tags: Dict[str, str] = None):
         super().__init__(in_data_storage = in_data_storage, in_name = in_id_stream,
                          in_tags = in_tags)
@@ -98,12 +99,20 @@ class DataPortStream(DataPort):
         # Server details that this data port is targeting.
         self.target_hostname = in_hostname
         self.target_port = in_port
+
+        self.connection_state = False
         
         # Field names for the streamed data that will be encountered.
         self.field_names = None
+        if not in_field_names is None:
+            self.field_names = in_field_names
 
         # A switch for whether encountered data is currently being streamed into storage.
+        # It will be flicked on only if field names are provided by the user.
+        # Otherwise, the user may want to inspect the streamed data first, manually deciding on field names.
         self.is_storing = False
+        if not self.field_names is None:
+            self.is_storing = True
         if not self.is_storing:
             log.info("%s   It is currently not storing any streamed data it may encounter.\n"
                      "%s   Do not toggle storage until field names are satisfactorily set." 
@@ -119,8 +128,8 @@ class DataPortStream(DataPort):
     #     if self.ops:
     #         for op in self.ops:
     #             op.cancel()
-        
-    #     self.task.cancel()
+
+
 
     def get_field_names(self):
         return self.field_names
@@ -137,14 +146,18 @@ class DataPortStream(DataPort):
         else:
             log.info("%s - DataPort '%s' has stopped storing streamed data." % (Timestamp(), self.name))
 
+    def is_connected(self):
+        return self.connection_state
+    
 
         
     async def run_connection(self):
         while True:
             try:
                 reader, writer = await asyncio.open_connection(self.target_hostname, self.target_port)
-                log.warning("%s - DataPort '%s' is connected to host %s, port %s." 
-                            % (Timestamp(), self.name, self.target_hostname, self.target_port))
+                self.connection_state = True    # TODO: Work out where to robustly mark this as false.
+                log.info("%s - DataPort '%s' is connected to host %s, port %s."
+                         % (Timestamp(), self.name, self.target_hostname, self.target_port))
                 self.ops = [create_async_task(self.send_confirm_to_server, writer),
                             create_async_task(self.receive_data_from_server, reader)]
                 for op in asyncio.as_completed(self.ops):
@@ -156,7 +169,9 @@ class DataPortStream(DataPort):
                 await writer.wait_closed()
                     
             except Exception as e:
-                log.debug(e)
+                identify_exception(e, "")
+                for op in self.ops:
+                    op.cancel()
                 log.warning("%s - DataPort '%s' cannot connect to host %s, port %s. Retrying." 
                             % (Timestamp(), self.name, self.target_hostname, self.target_port))
                 
@@ -178,14 +193,26 @@ class DataPortStream(DataPort):
                 log.warning(e)
                 break
 
-            data_list = message.decode("utf8").rstrip().split(",")
+            data_buffer = pa.py_buffer(message)
+            input_stream = pa.input_stream(data_buffer)
+            # TODO: Check if options should be defined once for performance.
             if self.field_names is None:
-                data_dict_list = [{self.name + "_" + str(idx): data_list[idx] for idx in range(len(data_list))}]
-                data = pa.Table.from_pylist(data_dict_list)
+                read_options = pacsv.ReadOptions(use_threads = True, autogenerate_column_names = True)
+                data = pacsv.read_csv(input_stream, read_options = read_options)
                 self.field_names = data.schema.names
             else:
-                data_dict_list = [{self.field_names[idx]: data_list[idx] for idx in range(len(data_list))}]
-                data = pa.Table.from_pylist(data_dict_list)
+                read_options = pacsv.ReadOptions(use_threads = True, column_names = self.field_names)
+                # convert_options = pacsv.ConvertOptions(include_columns = self.field_names, include_missing_columns = True)
+                data = pacsv.read_csv(input_stream, read_options = read_options) #, convert_options = convert_options)
+
+            # data_list = message.decode("utf8").rstrip().split(",")
+            # if self.field_names is None:
+            #     data_dict_list = [{self.name + "_" + str(idx): data_list[idx] for idx in range(len(data_list))}]
+            #     data = pa.Table.from_pylist(data_dict_list)
+            #     self.field_names = data.schema.names
+            # else:
+            #     data_dict_list = [{self.field_names[idx]: data_list[idx] for idx in range(len(data_list))}]
+            #     data = pa.Table.from_pylist(data_dict_list)
                 
             timestamp = Timestamp()
             if self.is_storing:

@@ -18,7 +18,7 @@ from .plot import plot_figures
 
 from .strategy import Strategy
 
-from typing import Dict
+from typing import Dict, List
 
 import asyncio
 import multiprocess as mp
@@ -112,11 +112,13 @@ class AutonoMachine:
         create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
                                     as_query = True)
         
-    def ingest_stream(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port: int = SS.DEFAULT_PORT_DATA, 
+    def ingest_stream(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port: int = SS.DEFAULT_PORT_DATA,
+                      in_field_names: List[str] = None,
                       in_id_stream: str = None, in_tags: Dict[str, str] = None):
         ref = DataPortStream(in_data_storage = self.data_storage,
                              in_hostname = in_hostname,
                              in_port = in_port,
+                             in_field_names = in_field_names,
                              in_id_stream = in_id_stream,
                              in_tags = in_tags)
         self.data_ports[ref.name] = ref

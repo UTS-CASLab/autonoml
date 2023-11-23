@@ -1,6 +1,7 @@
-# Ignore a specific folder.
+# Ignore a specific folder
 tests/temp/
 tests/results/
+tests/backup/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

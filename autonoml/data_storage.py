@@ -89,7 +89,9 @@ class DataCollection(DataCollectionBase):
         Return the last ID to help in maintaining uniqueness.
         Also store insertion timestamp.
         """
-        self.data = pa.concat_tables([self.data, in_data], promote=True)
+        # TODO: Consider cases where users do not want permissive type updating.
+        # TODO: Consider cases where type updating can actually break models, e.g. classifiers.
+        self.data = pa.concat_tables([self.data, in_data], promote_options = "permissive")
         self.extend(in_ids = [in_id_last + i for i in range(1, 1 + in_data.num_rows)],
                     in_timestamps = [Timestamp()]*in_data.num_rows)
         return in_id_last + in_data.num_rows

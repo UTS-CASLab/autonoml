@@ -32,7 +32,7 @@ setup(
     include_package_data=True,
     # TODO: Consider user installation options for only useful subsets of packages.
     install_requires=[
-        "pyarrow",
+        "pyarrow>=14.0",
         "dill",
         "multiprocess",
         # "sortedcontainers",

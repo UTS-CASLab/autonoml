@@ -11,6 +11,7 @@ from sklearn import metrics
 
 class LossFunction(Enum):
     RMSE = 0
+    # Accuracy = 1
 
 def calculate_loss(y_response, y_true, in_loss_function: LossFunction = None):
         """
@@ -20,6 +21,8 @@ def calculate_loss(y_response, y_true, in_loss_function: LossFunction = None):
         if in_loss_function == LossFunction.RMSE:
             val = metrics.mean_squared_error(y_true = y_true, y_pred = y_response, 
                                              squared = False)
+        # elif in_loss_function == LossFunction.Accuracy:
+        #     val = metrics.accuracy_score(y_true = y_true, y_pred = y_response)
         else:
             raise NotImplementedError
         

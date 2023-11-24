@@ -31,6 +31,7 @@ class SimDataStreamer:
                  in_filename_data: str = None,
                  in_observations_per_query: float = np.inf,
                  in_period_data_stream: float = SS.PERIOD_DATA_STREAM,
+                 in_delay_before_start: float = SS.DELAY_BEFORE_START,
                  in_file_has_headers: bool = True,
                  in_hostname_data = SS.DEFAULT_HOSTNAME,
                  in_port_data = SS.DEFAULT_PORT_DATA,
@@ -43,6 +44,9 @@ class SimDataStreamer:
         self.observations_per_query = in_observations_per_query
         self.period_data_stream = in_period_data_stream
         
+        # Give early listeners the chance to connect before broadcasting starts.
+        self.delay_before_start = in_delay_before_start
+
         self.hostname_data = in_hostname_data
         self.port_data = in_port_data
         self.hostname_query = in_hostname_query
@@ -53,8 +57,9 @@ class SimDataStreamer:
         self.server_query = None
         
         # 'Future' objects that will be updated with data/queries to broadcast.
-        self.data = asyncio.Future()
-        self.query = asyncio.Future()
+        # They must be initialised later within the asynchronous thread.
+        self.data = None
+        self.query = None
         
         # A timestamp used to track the last confirmation of client connection.
         # This is a 'global' value, in case multiple clients connect.
@@ -74,6 +79,10 @@ class SimDataStreamer:
         - Generating the data to broadcast.
         - Checking when to shut down the server.
         """
+        # Initialise the 'future' objects here.
+        self.data = asyncio.Future()
+        self.query = asyncio.Future()
+
         self.ops = [create_async_task(op) for op in [self.run_server,
                                                      self.get_data,
                                                      self.check_stop]]
@@ -169,8 +178,8 @@ class SimDataStreamer:
         Training/testing ratio is set by 'observations_per_query'.
         The file is assumed to be in CSV format. 
         """
-        
         try:
+            await asyncio.sleep(self.delay_before_start)
             with open(self.filename_data, "r") as data_file:
                 # Ignore the header line.
                 if self.file_has_headers:

@@ -9,4 +9,5 @@ import autonoml as aml
 
 filename_data = "./data/pharma/indpensim_batch.csv"
 
-streamer = aml.SimDataStreamer(filename_data, in_period_data_stream = 1.0)
+streamer = aml.SimDataStreamer(filename_data, in_period_data_stream = 1.0,
+                               in_delay_before_start = 1.0)

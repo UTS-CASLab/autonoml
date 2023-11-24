@@ -214,8 +214,7 @@ class DataPortStream(DataPort):
             #     data_dict_list = [{self.field_names[idx]: data_list[idx] for idx in range(len(data_list))}]
             #     data = pa.Table.from_pylist(data_dict_list)
                 
-            timestamp = Timestamp()
             if self.is_storing:
                 self.data_storage.store_data(in_data = data, 
                                             in_tags = self.tags)
-            # log.debug("%s - DataPort '%s' received data: %s" % (timestamp, self.name, data))
+            # log.debug("%s - DataPort '%s' received data: %s" % (Timestamp(), self.name, data))

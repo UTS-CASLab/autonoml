@@ -26,10 +26,11 @@ class SystemSettings:
     PERIOD_DATA_STREAM = 1.0        # Seconds between streamed data instances.
     
     # The following manages when the data-streaming server knows when to shut down.
-    PERIOD_SHUTDOWN_CHECK = 20          # Seconds between server checks to see if any client is connected.
-    DELAY_FOR_SHUTDOWN_CONFIRM = 30     # Seconds beyond which a server without clients shuts down.
-    DELAY_FOR_CLIENT_CONFIRM = 10       # Seconds until client confirms socket is still connected.
-    DELAY_FOR_SERVER_ABANDON = 20       # Seconds until server abandons a socket without client confirm.
+    PERIOD_SHUTDOWN_CHECK = 20.0        # Seconds between server checks to see if any client is connected.
+    DELAY_BEFORE_START = 0.0            # Seconds before simulator starts to generate data to broadcast.
+    DELAY_FOR_SHUTDOWN_CONFIRM = 30.0   # Seconds beyond which a server without clients shuts down.
+    DELAY_FOR_CLIENT_CONFIRM = 10.0     # Seconds until client confirms socket is still connected.
+    DELAY_FOR_SERVER_ABANDON = 20.0     # Seconds until server abandons a socket without client confirm.
     SIGNAL_CONFIRM = "1\n"              # An endline-terminated signal used to confirm connection.
     
     # #%% IO settings.

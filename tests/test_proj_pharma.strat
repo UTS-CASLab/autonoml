@@ -1,0 +1,106 @@
+Overview: This file dictates how an AutonoMachine will try to learn the solution to
+  an ML problem. Edit it as desired and import it when starting a learning process.
+Strategy:
+  Info: The defaults strategy starts the learning process with one ML pipeline per
+    predictor that has been enabled in the search space below, where all hyperparameters
+    are set to default values. The random strategy starts with a number of pipelines
+    and hyperparameters randomly sampled from the enabled search space. The HPO strategy
+    runs a thread/process intensive hyperparameter optimisation to find one optimal
+    pipeline from the enabled search space. It is recommended not to run too many
+    HPOs concurrently. Note that these strategies are applied once per learner group,
+    in the case where problem-solving involves allocations. In all cases, a pipeline
+    is initially scored on a validation fraction of training data, averaged over a
+    number of folds.
+  Do Defaults: y
+  Do Random: n
+  Number of Samples: 10
+  Do HPO: n
+  Max HPO Concurrency: 2
+  Validation Fraction: 0.25
+  Validation Folds: 1
+Optimiser:
+  BOHB:
+    Info: Prior to HPO, the dataset is randomly split into a training fraction and
+      a validation fraction. For i iterations and p partitions, BOHB seeks to sample
+      p^i models on 1/p^i of training data at the 1st iteration, then propagate the
+      best 1/p models to the next iteration.
+    Iterations: 4
+    Partitions: 3
+Inclusions/Exclusions:
+  Info: These options are quick ways to include/exclude categories of components.
+    Mark them y/n if desired, but leave them unmarked otherwise. Otherwise, they will
+    override any specific choices in the search space. Also decide whether inclusions
+    or exclusions are higher priority, in the case that a component exists in multiple
+    categories.
+  Prioritise Inclusions: y
+  Modules:
+    autonoml.components.custom_ttk: 'y'
+    autonoml.components.river: ''
+    autonoml.components.sklearn: ''
+  Categories:
+    MLPreprocessor: ''
+    MLPredictor: ''
+Search Space:
+  autonoml.components.custom_ttk.OnlineSupportVectorRegressor:
+    Info: MLPredictor
+    Include: n
+    Hpars:
+      C:
+        Info: Regularisation parameter, defining the limit on how close the learner
+          must adhere to the dataset (smoothness).
+        Vary: y
+        Default: 1.0
+        Min: 0.1
+        Max: 10.0
+      epsilon:
+        Info: The acceptable error, defining the width of what is sometimes called
+          the 'SVR tube'.
+        Vary: y
+        Default: 1.0
+        Min: 0.0
+        Max: 2.0
+      gamma:
+        Info: The kernel parameter, which is the scaling factor for comparing feature
+          distance. This implementation uses a Radial Basis Function.
+        Vary: y
+        Default: 0.01
+        Min: 0.0001
+        Max: 1.0
+  autonoml.components.river.OnlineStandardScaler:
+    Info: MLPreprocessor
+    Include: n
+    Hpars:
+      batch_size:
+        Vary: y
+        Default: 1
+        Min: 1
+        Max: 1000
+  autonoml.components.river.OnlineLinearRegressor:
+    Info: MLPredictor
+    Include: n
+    Hpars:
+      batch_size:
+        Vary: y
+        Default: 1
+        Min: 1
+        Max: 1000
+      learning_rate:
+        Vary: y
+        Default: 0.001
+        Min: 1.0e-06
+        Max: 1.0
+  autonoml.components.sklearn.StandardScaler:
+    Info: MLPreprocessor
+    Include: n
+  autonoml.components.sklearn.DummyRegressor:
+    Info: MLPredictor
+    Include: n
+  autonoml.components.sklearn.LinearRegressor:
+    Info: MLPredictor
+    Include: n
+  autonoml.components.sklearn.LinearSupportVectorRegressor:
+    Info: MLPredictor
+    Include: n
+  autonoml.components.sklearn.PartialLeastSquaresRegressor:
+    Info: MLPredictor
+    Include: n

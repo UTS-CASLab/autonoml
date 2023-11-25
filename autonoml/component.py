@@ -9,11 +9,12 @@ from .utils import log, Timestamp
 from .data import reformat_x, reformat_y
 from .hyperparameter import Hyperparameter
 
+from typing import List
+
 class MLComponent:
     """
     A base class for components of a learning pipeline.
     """
-    
     count = 0
     
     def __init__(self, in_hpars = None, do_random_hpars: bool = False, *args, **kwargs):
@@ -48,18 +49,22 @@ class MLComponent:
         self.keys_features = None
         self.format_x = None
 
+    #%% Component-specific methods that should be overwritten by custom subclasses.
+
     @staticmethod
     def new_hpars():
         return dict()
-    
-    def hpars_as_string(self):
-        return ", ".join(key + ": " + str(self.hpars[key].val) for key in self.hpars)
 
     def learn(self, x, y):
         raise NotImplementedError
     
     def update(self, x, y):
         pass
+
+    #%% Utility methods that should not be overwritten by custom subclasses.
+
+    def hpars_as_string(self):
+        return ", ".join(key + ": " + str(self.hpars[key].val) for key in self.hpars)
     
     def reformat_x(self, x, in_format_old):
         x = reformat_x(in_data = x, 
@@ -70,13 +75,29 @@ class MLComponent:
     
     def reformat_y(self, y, in_format_old):
         return y, in_format_old
+    
+    def set_keys_features(self, in_keys_features: List[str]):
+        self.keys_features = in_keys_features
+
+
+
+#%% MLPreprocessor subclass.
 
 class MLPreprocessor(MLComponent):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    #%% Component-specific methods that must be overwritten by custom subclasses.
+
     def transform(self, x):
+        """
+        Should return a transformed feature space in the format of: self.format_x
+        """ 
         raise NotImplementedError
+    
+
+
+#%% MLPredictor subclass.
 
 class MLPredictor(MLComponent):
     def __init__(self, *args, **kwargs):
@@ -86,25 +107,30 @@ class MLPredictor(MLComponent):
         # This data represents a target variable.
         self.key_target = None
         self.format_y = None
-
-    # @staticmethod
-    # def score(y_pred, y_true, in_loss_function: LossFunction = None):
-    #     """
-    #     Compare a set of predictions against a set of expected values.
-    #     The output must be a loss.
-    #     """
-    #     if in_loss_function is None:
-    #         in_loss_function = LossFunction(0)      # Default loss function.
-    #     return calculate_loss(y_pred, y_true, in_loss_function)
     
+    #%% Component-specific methods that must be overwritten by custom subclasses.
+
     def query(self, x):
+        """
+        Should return a target space in the format of: self.format_y
+        """ 
         raise NotImplementedError
     
+    #%% Utility methods that can be overwritten by custom subclasses.
+    
+    def get_feature_importance(self):
+        """
+        Should return an array of weights of equal size to the vector of features.
+        """
+        return None
+    
+    #%% Utility methods that should not be overwritten by custom subclasses.
+
     def reformat_y(self, y, in_format_old):
         y = reformat_y(in_data = y, 
                        in_format_old = in_format_old, 
                        in_format_new = self.format_y)
         return y, self.format_y
-
-    def get_feature_importance(self):
-        return None
+    
+    def set_key_target(self, in_key_target: str):
+        self.key_target = in_key_target

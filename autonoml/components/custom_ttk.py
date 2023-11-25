@@ -21,6 +21,12 @@ def sign(x):
         return -1
 
 class OnlineSVR:
+    """
+    C is the regularization parameter, essentially defining the limit on how close the learner must adhere to the dataset (smoothness).
+    Epsilon is the acceptable error, and defines the width of what is sometimes called the "SVR tube".
+    The kernel parameter (gamma) is the scaling factor for comparing feature distance (this implementation uses a Radial Basis Function). 
+    """
+
     def __init__(self, n_features, C, eps, gamma, bias = 0, debug = False):
         # Configurable Parameters
         self.n_features = n_features
@@ -542,19 +548,54 @@ class OnlineSVR:
 
 #%% The MLComponents.
 
+from ..hyperparameter import HPFloat
 from ..component import MLPredictor
 from ..data import DataFormatX, DataFormatY
+
+from typing import List
 
 class OnlineSupportVectorRegressor(MLPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.model = OnlineSVR()
+        # Warning: Components are typically initialised without knowing data ahead of time.
+        #          Currently, number of features is unknown until a surrounding pipeline is constructed.
+        #          Therefore, this component should not be used outside of a pipeline without care.
+        # TODO: Reconsider whether MLComponent should require an in_keys_features argument.
+        self.model = OnlineSVR(n_features = None, 
+                               C = self.hpars["C"], 
+                               eps = self.hpars["epsilon"], 
+                               gamma = self.hpars["gamma"])
         self.name += "_CustomTTK_OnlineSVR"
         self.format_x = DataFormatX.NUMPY_ARRAY
         self.format_y = DataFormatY.NUMPY_ARRAY
+
+    @staticmethod
+    def new_hpars():
+        hpars = dict()
+        info = ("Regularisation parameter, defining the limit on how close "
+                "the learner must adhere to the dataset (smoothness).")
+        hpars["C"] = HPFloat(in_default = 1.0, in_min = 0.1, in_max = 10.0,
+                             is_log_scale = True, in_info = info)
+        info = ("The acceptable error, defining the width of what is sometimes "
+                "called the 'SVR tube'.")
+        hpars["epsilon"] = HPFloat(in_default = 1.0, in_min = 0.0, in_max = 2.0,
+                                   in_info = info)
+        info = ("The kernel parameter, which is the scaling factor for comparing feature distance. "
+                "This implementation uses a Radial Basis Function.")
+        hpars["gamma"] = HPFloat(in_default = 0.01, in_min = 0.0001, in_max = 1.0,
+                                 is_log_scale = True, in_info = info)
+        return hpars
 
     def learn(self, x, y):
         self.model.learn(new_X=x, new_Y=y)
 
     def query(self, x):
         return self.model.predict(X=x)
+    
+    def set_keys_features(self, in_keys_features: List[str]):
+        """
+        Custom utility function overwrite.
+        This is required for updating the model with the number of features to expect.
+        """
+        self.keys_features = in_keys_features
+        self.model.n_features = len(self.keys_features)

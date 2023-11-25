@@ -8,13 +8,13 @@ Created on Tue Aug  1 12:13:43 2023
 from .utils import log, Timestamp
 from .plot import gen_fig_feature_importance, gen_fig_performance
 from .data import DataFormatX, DataFormatY, reformat_y
-from .component import MLPredictor, MLPreprocessor
+from .component import MLComponent, MLPredictor, MLPreprocessor
 from .components.sklearn import DummyRegressor      # TODO: Revisit this import.
 from .metrics import LossFunction, calculate_loss
 
 from .data_storage import DataCollection, DataCollectionXY
 
-from typing import Union
+from typing import List
 
 from copy import deepcopy
 from enum import Enum
@@ -35,7 +35,8 @@ class MLPipeline:
 
     count = 0   # Used only for naming unnamed pipelines.
 
-    def __init__(self, in_keys_features, in_key_target, in_components = None,
+    def __init__(self, in_keys_features: List[str], in_key_target: str, 
+                 in_components: List[MLComponent] = None,
                  in_name: str = None, do_increment_count: bool = True):
         if in_name is None:
             self.name = "Pipe_" + str(MLPipeline.count)
@@ -56,9 +57,10 @@ class MLPipeline:
 
             # Pass on the relevant variable keys to individual components.
             # TODO: Consider feature selection/generation down pipeline.
-            component.keys_features = deepcopy(in_keys_features)
+            #       This will probably require creating/tracking new intermediate feature keys.
+            component.set_keys_features(in_keys_features)
             if isinstance(component, MLPredictor):
-                component.key_target = in_key_target
+                component.set_key_target(in_key_target)
 
             self.components.append(component)
             log.info("%s   Attached MLComponent '%s'." 

@@ -56,28 +56,12 @@ if __name__ == '__main__':
     time.sleep(1)   # Wait a moment for the first observations to be stored.
 
     # Sanity-check that the initial data looks fine in storage.
-    proj.info_storage()
-    
-    # print("USER: Notices the streaming server is activating.")
-    # await aml.user_pause(5)
-
-    # print("USER: Inspects data port for its automated field names.")
-    # field_names = port.get_field_names()
-    # print(field_names)
-    # await aml.user_pause(5)
-    
-    # print("USER: Renames the column names and activates storage.")
-    # port.set_field_names(["X1", "X2", "X3", "X4", "class"])
-    # port.toggle_storage()
-    # await aml.user_pause(10)
-
-    # print("USER: Examines data in storage.")
     # proj.info_storage()
-    # await aml.user_pause(5)
-    
-    # print("USER: Decides on a machine learning task.")
-    # proj.learn("class")
-    # await aml.user_pause(5)
-    
-    # print("USER: Stops the AutonoMachine.")
-    # proj = None
+
+    # Import the appropriate strategy file.
+    strategy = aml.import_strategy("./test_proj_pharma.strat")
+
+    # Start learning the target variable.
+    proj.learn(in_key_target = "Penicillin concentration(P:g/L)",
+               in_keys_features = ["Time (h)"], do_exclude = True,
+               in_strategy = strategy)

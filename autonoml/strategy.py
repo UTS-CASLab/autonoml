@@ -47,14 +47,14 @@ class ComponentCatalogue():
         # id_component = 0
 
         # Import all modules within the components folder.
-        for importer, module, is_pkg in pkgutil.iter_modules(components.__path__):
-            full_module = "%s.%s" % (components.__name__, module)
-            loaded_module = importlib.import_module(full_module)
+        for _, module_short, _ in pkgutil.iter_modules(components.__path__):
+            module_full = "%s.%s" % (components.__name__, module_short)
+            loaded_module = importlib.import_module(module_full)
 
-            self.module_to_cids[module] = dict()
+            self.module_to_cids[module_full] = dict()
                 
             # Find all classes in the loaded modules that are MLComponents.
-            for name, obj in vars(loaded_module).items():
+            for _, obj in vars(loaded_module).items():
                 if isinstance(obj, type) and issubclass(obj, MLComponent):
 
                     # Consider ones that are as deep in their hierarchy without becoming unselectable.
@@ -68,7 +68,7 @@ class ComponentCatalogue():
 
                             self.components[id_component] = obj
                             # self.cid_to_module[id_component] = module
-                            self.module_to_cids[module][id_component] = True
+                            self.module_to_cids[module_full][id_component] = True
 
                             self.cid_to_categories[id_component] = list()
                             for category in self.categories:
@@ -97,8 +97,8 @@ catalogue = ComponentCatalogue()
 
 # # Import all modules within the components folder.
 # for importer, module, is_pkg in pkgutil.iter_modules(components.__path__):
-#     full_module = "%s.%s" % (components.__name__, module)
-#     loaded_module = importlib.import_module(full_module)
+#     module_full = "%s.%s" % (components.__name__, module)
+#     loaded_module = importlib.import_module(module_full)
         
 #     # Find all classes in the loaded modules that are MLComponents.
 #     for name, obj in vars(loaded_module).items():
@@ -171,7 +171,7 @@ def custom_bool_representer(dumper, data):
 CustomDumper.add_representer(CustomBool, custom_bool_representer)
 
 def template_strategy(in_filepath: str = "./template.strat", 
-                      do_all_components: bool = False, do_all_hyperparameters: bool = False):
+                      do_all_components: bool = False, do_all_hyperparameters: bool = True):
     """
     Generate a template file for the user to dictate how a problem will be solved.
     """
@@ -279,21 +279,34 @@ def import_strategy(in_filepath: str):
             # CustomBool does not accept blank values, so roll on with any exceptions.
             # If a module does not exist in this version of the package, roll with the exception too.
             try:
-                if CustomBool(overrides["Modules"][module]) == override_flag:
+                user_choice = overrides["Modules"][module]
+                if bool(CustomBool(user_choice)) == override_flag:
                     for id_component in catalogue.module_to_cids[module]:
                         if id_component in search_space:
-                            search_space[id_component]["Include"] = CustomBool(override_flag).__repr__()
+                            search_space[id_component]["Include"] = user_choice
             except:
                 continue
         for category in catalogue.categories:
             if category.__name__ in overrides["Categories"]:
                 try:
-                    if CustomBool(overrides["Categories"][category.__name__]) == override_flag:
+                    user_choice = overrides["Categories"][category.__name__]
+                    if bool(CustomBool(user_choice)) == override_flag:
                         for id_component in catalogue.category_to_cids[category]:
                             if id_component in search_space:
-                                search_space[id_component]["Include"] = CustomBool(override_flag).__repr__()
+                                search_space[id_component]["Include"] = user_choice
                 except:
                     continue
+
+    log.info("%s   Search space..." % Timestamp(None))
+    text_list = []
+    for id_component in search_space:
+        if CustomBool(search_space[id_component]["Include"]):
+            text_list.append("%s      %s" % (Timestamp(None), id_component))
+    if len(text_list) == 0:
+        log.warning("%s   NONE" % Timestamp(None))
+    else:
+        for text in text_list:
+            log.info(text)
 
     strategy = Strategy(in_search_space = search_space,
                         do_defaults = bool(CustomBool(specs["Strategy"]["Do Defaults"])),
@@ -302,7 +315,7 @@ def import_strategy(in_filepath: str):
                         in_n_samples = int(specs["Strategy"]["Number of Samples"]),
                         in_max_hpo_concurrency = int(specs["Strategy"]["Max HPO Concurrency"]),
                         in_frac_validation = float(specs["Strategy"]["Validation Fraction"]),
-                        in_folds_validation = float(specs["Strategy"]["Validation Folds"]),
+                        in_folds_validation = int(specs["Strategy"]["Validation Folds"]),
                         in_n_iterations = int(specs["Optimiser"]["BOHB"]["Iterations"]),
                         in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]))
 

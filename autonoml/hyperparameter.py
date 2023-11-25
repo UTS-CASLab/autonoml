@@ -15,9 +15,9 @@ class Hyperparameter:
     A class containing information for a hyperparameter of an MLComponent.
     This information guides hyperparameter optimisation (HPO).
     """
-
     def __init__(self, in_val = None,
-                 in_default = None, in_min = None, in_max = None, is_log_scale: bool = False):
+                 in_default = None, in_min = None, in_max = None, is_log_scale: bool = False,
+                 in_info: str = None):
         self.default = in_default
         self.min = in_min
         self.max = in_max
@@ -27,6 +27,9 @@ class Hyperparameter:
             self.val = self.default
         else:
             self.val = in_val
+
+        # An optional description of the hyperparameter to be displayed in strategy files.
+        self.info = in_info
 
     def sample(self):
         try:
@@ -39,8 +42,13 @@ class Hyperparameter:
             pass
 
     def to_dict_config(self, do_vary = False):
-        dict_config = {"Vary": CustomBool(do_vary), 
-                       "Default": self.default, "Min": self.min, "Max": self.max}
+        dict_config = dict()
+        if not self.info is None:
+            dict_config["Info"] = self.info
+        dict_config["Vary"] = CustomBool(do_vary)
+        dict_config["Default"] = self.default
+        dict_config["Min"] = self.min
+        dict_config["Max"] = self.max
         return dict_config
     
     def from_dict_config(self, in_dict_config):

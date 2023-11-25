@@ -51,7 +51,7 @@ def get_collection(in_dict_observations, in_tag_to_collection_ids,
     # Concatenate the collections.
     data = pa.concat_tables([in_dict_observations[collection_id].data 
                              for collection_id in list(set_collection_ids)], 
-                            promote = True)
+                            promote_options = "permissive")
     ids = list(chain(*(in_dict_observations[collection_id].ids 
                        for collection_id in list(set_collection_ids))))
     timestamps = list(chain(*(in_dict_observations[collection_id].timestamps

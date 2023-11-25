@@ -125,8 +125,7 @@ class ProblemSolver:
 
         # TODO: Consider giving random pipelines some validation, not challenging with inf loss.
         if strategy.do_random:
-            # TODO: Let user decide how many random pipelines to develop.
-            for count_pipeline in range(1):
+            for _ in range(strategy.n_samples):
                 for key_group in self.solution.groups:
                     data_filter = self.solution.filters[key_group]
                     pipeline = create_pipeline_random(in_keys_features = self.keys_features,
@@ -273,7 +272,9 @@ class ProblemSolver:
 
         time_start = Timestamp().time
         frac_validation = self.instructions.strategy.frac_validation
-        observations, sets_training, sets_validation = prepare_data(observations, in_info_process, frac_validation)
+        folds_validation = self.instructions.strategy.folds_validation
+        observations, sets_training, sets_validation = prepare_data(observations, in_info_process, 
+                                                                    frac_validation, folds_validation)
         # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_data, 
         #                                                                           observations, in_info_process,
         #                                                                           frac_validation)
@@ -344,7 +345,9 @@ class ProblemSolver:
             time_start = Timestamp().time
                 
             frac_validation = in_hpo_instructions.frac_validation
-            observations, sets_training, sets_validation = prepare_data(observations, in_info_process, frac_validation)
+            folds_validation = in_hpo_instructions.folds_validation
+            observations, sets_training, sets_validation = prepare_data(observations, in_info_process, 
+                                                                        frac_validation, folds_validation)
             # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_data,
             #                                                                           observations, in_info_process,
             #                                                                           frac_validation)

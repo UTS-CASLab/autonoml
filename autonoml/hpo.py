@@ -10,7 +10,7 @@ from .settings import SystemSettings as SS
 from .pipeline import MLPipeline, train_pipeline, test_pipeline
 
 from .hyperparameter import HPInt, HPFloat
-from .strategy import Strategy, SearchSpace, pool_predictors, pool_preprocessors
+from .strategy import catalogue, Strategy, SearchSpace
 from .data_storage import DataCollectionXY, SharedMemoryManager
 
 import ConfigSpace as CS
@@ -36,16 +36,20 @@ class HPOInstructions:
         self.name_server_host = "127.0.0.1"
         self.name_server_port = None
 
+        if in_strategy is None:
+            in_strategy = Strategy()
+
         # The fraction of data to be reserved for validation.
         # This step is done before successive halving, so quickly trained models are well-validated.
-        self.frac_validation = 0.25 if in_strategy is None else in_strategy.frac_validation
+        self.frac_validation = in_strategy.frac_validation
+        self.folds_validation = in_strategy.folds_validation
 
         # Successive 'halving' tests candidate configurations for a number of iterations.
         # Budgets, usually representing dataset size, range from minimum to maximum over the iterations.
         # Only one of the number of partitions per iteration advances.
         # The actual number of candidate tests may vary; refer to HPO package documentation for details.
-        self.n_iterations = 4 if in_strategy is None else in_strategy.n_iterations
-        self.n_partitions = 3 if in_strategy is None else in_strategy.n_partitions
+        self.n_iterations = in_strategy.n_iterations
+        self.n_partitions = in_strategy.n_partitions
         self.budget_min = 1/(self.n_partitions**self.n_iterations)
         self.budget_max = 1
 
@@ -58,10 +62,10 @@ def config_to_pipeline_structure(in_config):
 
     structure = list()
     key_predictor = in_config["predictor"]
-    type_predictor = pool_predictors[key_predictor][0]
+    type_predictor = catalogue.components[key_predictor]
 
     config_hpars = dict()
-    for key_hpar in pool_predictors[key_predictor][1]:
+    for key_hpar in catalogue.components[key_predictor].new_hpars():
         if key_hpar in in_config:
             config_hpars[key_hpar] = in_config[key_hpar]
     structure.append(type_predictor(in_hpars = config_hpars))
@@ -152,23 +156,21 @@ class HPOWorker(Worker):
         categories_predictors = list()
         categories_preprocessors = list()
 
-        pool, categories = pool_predictors, categories_predictors
-
         categories_predictors = in_search_space.list_predictors()
         
         predictor = CS.CategoricalHyperparameter("predictor", categories_predictors)
         cs.add_hyperparameter(predictor)
 
         # Check whether to include any associated hyperparameters in the config space.
-        for typename_component in categories_predictors:
-            if "Hpars" in in_search_space[typename_component]:
-                dict_hpars = in_search_space[typename_component]["Hpars"]
+        for id_component in categories_predictors:
+            if "Hpars" in in_search_space[id_component]:
+                dict_hpars = in_search_space[id_component]["Hpars"]
                 for name_hpar in dict_hpars:
                     do_vary = CustomBool(dict_hpars[name_hpar]["Vary"])
 
                     if do_vary:
                         # Copy the appropriate hyperparameter and update it as desired.
-                        hpar = deepcopy(pool[typename_component][1][name_hpar])
+                        hpar = deepcopy(catalogue.components[id_component].new_hpars()[name_hpar])
                         hpar.from_dict_config(dict_hpars[name_hpar])
 
                         # Create the right config-space hyperparameter.
@@ -190,7 +192,7 @@ class HPOWorker(Worker):
                         
                         # Use the hyperparameter if the right predictor is being used.
                         cs.add_hyperparameter(hp)
-                        cond = CS.EqualsCondition(hp, predictor, typename_component)
+                        cond = CS.EqualsCondition(hp, predictor, id_component)
                         cs.add_condition(cond)
 
         return(cs)
@@ -207,7 +209,7 @@ def create_pipelines_default(in_keys_features, in_key_target, in_strategy):
     pipelines = list()
     for predictor_name in predictor_names:
         pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target,
-                              in_components = [pool_predictors[predictor_name][0]()])
+                              in_components = [catalogue.components[predictor_name]()])
         pipelines.append(pipeline)
     
     return pipelines

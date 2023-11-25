@@ -17,48 +17,136 @@ import os
 
 import yaml
 
-pool_preprocessors = dict()
-pool_predictors = dict()
+# pool_preprocessors = dict()
+# pool_predictors = dict()
 
-# Import all modules within the components folder.
-for importer, module_name, is_pkg in pkgutil.iter_modules(components.__path__):
-    full_module_name = "%s.%s" % (components.__name__, module_name)
-    loaded_module = importlib.import_module(full_module_name)
+class ComponentCatalogue():
+    """
+    Provides a complete dictionary of all the components available in the package.
+    """
+    def __init__(self):
+        # Set up a mapping from a module/name tuple to the actual component types.
+        self.components = dict()
         
-    # Find all classes in the loaded modules that are MLComponents.
-    for name, obj in vars(loaded_module).items():
-        if isinstance(obj, type) and issubclass(obj, MLComponent):
+        # Set up a mapping between IDs of components and the modules they came from. 
+        # self.cid_to_module = dict()
+        self.module_to_cids = dict()
 
-            # Consider ones that are as deep in their hierarchy without becoming unselectable.
-            # Note: The False in getattr is the value if the attribute cannot be found.
-            if not getattr(obj, "is_unselectable", False):
-                subclasses = obj.__subclasses__()
-                if (len(subclasses) == 0 
-                    or all(getattr(subclass, "is_unselectable", False) for subclass in subclasses)):
+        # Set up a mapping between IDs of components and their categories.
+        # For example, this will identify if a component is a preprocessor.
+        self.categories = [MLPreprocessor, MLPredictor]
+        self.cid_to_categories = dict()
+        self.category_to_cids = {category: dict() for category in self.categories}
+
+        self.compile()
+
+    def compile(self):
+        """
+        Go through the components folder and construct a catalogue of available components.
+        """
+        # id_component = 0
+
+        # Import all modules within the components folder.
+        for importer, module, is_pkg in pkgutil.iter_modules(components.__path__):
+            full_module = "%s.%s" % (components.__name__, module)
+            loaded_module = importlib.import_module(full_module)
+
+            self.module_to_cids[module] = dict()
+                
+            # Find all classes in the loaded modules that are MLComponents.
+            for name, obj in vars(loaded_module).items():
+                if isinstance(obj, type) and issubclass(obj, MLComponent):
+
+                    # Consider ones that are as deep in their hierarchy without becoming unselectable.
+                    # Note: The False in getattr is the value if the attribute cannot be found.
+                    if not getattr(obj, "is_unselectable", False):
+                        subclasses = obj.__subclasses__()
+                        if (len(subclasses) == 0 
+                            or all(getattr(subclass, "is_unselectable", False) for subclass in subclasses)):
+
+                            id_component = ".".join([obj.__module__, obj.__name__])
+
+                            self.components[id_component] = obj
+                            # self.cid_to_module[id_component] = module
+                            self.module_to_cids[module][id_component] = True
+
+                            self.cid_to_categories[id_component] = list()
+                            for category in self.categories:
+                                if issubclass(obj, category):
+                                    self.cid_to_categories[id_component].append(category)
+                                    self.category_to_cids[category][id_component] = True
+
+                            # id_component += 1
+
+                            # if issubclass(obj, MLPreprocessor):
+                            #     if obj.__name__ in pool_preprocessors:
+                            #         text_error = ("There are multiple preprocessors called '%s' in the AutonoML package." 
+                            #                     % obj.__name__)
+                            #         log.error("%s - %s" % (Timestamp(), text_error))
+                            #         raise Exception(text_error)
+                            #     pool_preprocessors[obj.__name__] = (obj, obj.new_hpars())
+                            # elif issubclass(obj, MLPredictor):
+                            #     if obj.__name__ in pool_predictors:
+                            #         text_error = ("There are multiple predictors called '%s' in the AutonoML package." 
+                            #                     % obj.__name__)
+                            #         log.error("%s - %s" % (Timestamp(), text_error))
+                            #         raise Exception(text_error)
+                            #     pool_predictors[obj.__name__] = (obj, obj.new_hpars())
+
+catalogue = ComponentCatalogue()
+
+# # Import all modules within the components folder.
+# for importer, module, is_pkg in pkgutil.iter_modules(components.__path__):
+#     full_module = "%s.%s" % (components.__name__, module)
+#     loaded_module = importlib.import_module(full_module)
+        
+#     # Find all classes in the loaded modules that are MLComponents.
+#     for name, obj in vars(loaded_module).items():
+#         if isinstance(obj, type) and issubclass(obj, MLComponent):
+
+#             # Consider ones that are as deep in their hierarchy without becoming unselectable.
+#             # Note: The False in getattr is the value if the attribute cannot be found.
+#             if not getattr(obj, "is_unselectable", False):
+#                 subclasses = obj.__subclasses__()
+#                 if (len(subclasses) == 0 
+#                     or all(getattr(subclass, "is_unselectable", False) for subclass in subclasses)):
                     
-                    if issubclass(obj, MLPreprocessor):
-                        pool_preprocessors[obj.__name__] = (obj, obj.new_hpars())
-                    elif issubclass(obj, MLPredictor):
-                        pool_predictors[obj.__name__] = (obj, obj.new_hpars())
+#                     if issubclass(obj, MLPreprocessor):
+#                         if obj.__name__ in pool_preprocessors:
+#                             text_error = ("There are multiple preprocessors called '%s' in the AutonoML package." 
+#                                           % obj.__name__)
+#                             log.error("%s - %s" % (Timestamp(), text_error))
+#                             raise Exception(text_error)
+#                         pool_preprocessors[obj.__name__] = (obj, obj.new_hpars())
+#                     elif issubclass(obj, MLPredictor):
+#                         if obj.__name__ in pool_predictors:
+#                             text_error = ("There are multiple predictors called '%s' in the AutonoML package." 
+#                                           % obj.__name__)
+#                             log.error("%s - %s" % (Timestamp(), text_error))
+#                             raise Exception(text_error)
+#                         pool_predictors[obj.__name__] = (obj, obj.new_hpars())
 
 class SearchSpace(dict):
-
+    """
+    A dictionary of components/hyperparameters representing user choices for an ML problem.
+    """
     def list_predictors(self):
         categories = list()
-        for typename_component in self:
-            do_include = CustomBool(self[typename_component]["Include"])
+        for id_component in self:
+            do_include = CustomBool(self[id_component]["Include"])
             if do_include:
-                if typename_component in pool_predictors:
-                    categories.append(typename_component)
+                if id_component in catalogue.category_to_cids[MLPredictor]:
+                    categories.append(id_component)
         return categories
 
 class Strategy:
-
     def __init__(self, in_search_space: SearchSpace = None,
                  do_defaults: bool = False, do_random: bool = False, do_hpo: bool = False,
+                 in_n_samples: int = 10,
                  in_max_hpo_concurrency: int = 2,
                  in_n_iterations: int = 4, in_n_partitions: int = 3,
-                 in_frac_validation: float = 0.25):
+                 in_frac_validation: float = 0.25,
+                 in_folds_validation: int = 1):
         
         if in_search_space is None:
             self.search_space = SearchSpace()
@@ -67,12 +155,15 @@ class Strategy:
 
         self.do_defaults = do_defaults
         self.do_random = do_random
+        self.n_samples = in_n_samples
         self.do_hpo = do_hpo
         self.max_hpo_concurrency = in_max_hpo_concurrency
 
+        self.frac_validation = in_frac_validation
+        self.folds_validation = in_folds_validation
+
         self.n_iterations = in_n_iterations
         self.n_partitions = in_n_partitions
-        self.frac_validation = in_frac_validation
 
 class CustomDumper(yaml.Dumper): pass
 def custom_bool_representer(dumper, data):
@@ -80,39 +171,83 @@ def custom_bool_representer(dumper, data):
 CustomDumper.add_representer(CustomBool, custom_bool_representer)
 
 def template_strategy(in_filepath: str = "./template.strat", 
-                      do_all_components = True, do_all_hyperparameters = True):
-
+                      do_all_components: bool = False, do_all_hyperparameters: bool = False):
+    """
+    Generate a template file for the user to dictate how a problem will be solved.
+    """
     # Create/overwrite the YAML dumper Hyperparameter representer based on user requirements.
     def hyperparameter_representer(dumper, data):
         return dumper.represent_dict(data.to_dict_config(do_vary = do_all_hyperparameters))
     CustomDumper.add_representer(HPInt, hyperparameter_representer)
     CustomDumper.add_representer(HPFloat, hyperparameter_representer)
 
+    overview = ("This file dictates how an AutonoMachine will try "
+                "to learn the solution to an ML problem. "
+                "Edit it as desired and import it when starting a learning process.")
+    
+    info_strategy = ("The defaults strategy starts the learning process with one ML pipeline "
+                     "per predictor that has been enabled in the search space below, "
+                     "where all hyperparameters are set to default values. "
+                     "The random strategy starts with a number of pipelines and hyperparameters "
+                     "randomly sampled from the enabled search space. "
+                     "The HPO strategy runs a thread/process intensive hyperparameter optimisation "
+                     "to find one optimal pipeline from the enabled search space. "
+                     "It is recommended not to run too many HPOs concurrently. "
+                     "Note that these strategies are applied once per learner group, in the case "
+                     "where problem-solving involves allocations. "
+                     "In all cases, a pipeline is initially scored on a validation fraction of "
+                     "training data, averaged over a number of folds.")
+
+    info_bohb = ("Prior to HPO, the dataset is randomly split into "
+                 "a training fraction and a validation fraction. "
+                 "For i iterations and p partitions, BOHB seeks to "
+                 "sample p^i models on 1/p^i of training data at the 1st iteration, "
+                 "then propagate the best 1/p models to the next iteration.")
+    
+    info_override = ("These options are quick ways to include/exclude categories of components. "
+                     "Mark them y/n if desired, but leave them unmarked otherwise. "
+                     "Otherwise, they will override any specific choices in the search space. "
+                     "Also decide whether inclusions or exclusions are higher priority, "
+                     "in the case that a component exists in multiple categories.")
+    
     config_space = dict()
-    count_component = 0
-    # TODO: Re-enable preprocessors when they work in HPO.
-    for pool in [pool_predictors]:#, pool_preprocessors]:
-        for typename_component, tuple_component in pool.items():
-            hpars = tuple_component[1]
-            hpar_space = {"Include": CustomBool(do_all_components)}
-            if hpars:
-                hpar_space["Hpars"] = hpars
-            config_space[typename_component] = hpar_space
-            count_component += 1
+    module_overrides = dict()
+
+    for id_component, component in catalogue.components.items():
+
+        module, _ = id_component.rsplit('.', 1)
+        if not module in module_overrides:
+            module_overrides[module] = ""
+
+        hpars = component.new_hpars()
+        
+        hpar_space = {"Info": ", ".join([category.__name__ for category 
+                                         in catalogue.cid_to_categories[id_component]]),
+                      "Include": CustomBool(do_all_components)}
+        if hpars:
+            hpar_space["Hpars"] = hpars
+        config_space[id_component] = hpar_space
+
+    overrides = {"Info": info_override,
+                 "Prioritise Inclusions": CustomBool(True),
+                 "Modules": module_overrides,
+                 "Categories": {category.__name__: "" for category in catalogue.categories}}
 
     strategy = Strategy()
 
-    dict_strategy = {"Strategy": {"Do Defaults": CustomBool(strategy.do_defaults),
-                                  "Do Random": CustomBool(strategy.do_random), 
+    dict_strategy = {"Overview": overview,
+                     "Strategy": {"Info": info_strategy,
+                                  "Do Defaults": CustomBool(strategy.do_defaults),
+                                  "Do Random": CustomBool(strategy.do_random),
+                                  "Number of Samples": strategy.n_samples,
                                   "Do HPO": CustomBool(strategy.do_hpo),
-                                  "Max HPO Concurrency": strategy.max_hpo_concurrency},
-                     "Optimiser": {"BOHB": {"Note": ("Prior to HPO, the dataset is randomly split into "
-                                                     "a training fraction and a validation fraction. "
-                                                     "For i iterations and p partitions, BOHB seeks to "
-                                                     "sample p^i models on 1/p^i of training data at the 1st iteration, "
-                                                     "then propagate the best 1/p models to the next iteration."),
-                                            "Iterations": strategy.n_iterations, "Partitions": strategy.n_partitions, 
-                                            "Validation Fraction": strategy.frac_validation}},
+                                  "Max HPO Concurrency": strategy.max_hpo_concurrency,
+                                  "Validation Fraction": strategy.frac_validation,
+                                  "Validation Folds": strategy.folds_validation},
+                     "Optimiser": {"BOHB": {"Info": info_bohb,
+                                            "Iterations": strategy.n_iterations, 
+                                            "Partitions": strategy.n_partitions}}, 
+                     "Inclusions/Exclusions": overrides,
                      "Search Space": config_space}
 
     with open(in_filepath, "w") as file:
@@ -121,18 +256,54 @@ def template_strategy(in_filepath: str = "./template.strat",
     log.info("%s - Template strategy generated at: %s" 
              % (Timestamp(), os.path.abspath(in_filepath)))
 
+# TODO: Develop a migration process based on version to update old strategy files.
+# TODO: Create constants for magic-value strings to ensure there are no inconsistencies.
 def import_strategy(in_filepath: str):
+
+    log.info("%s - Importing strategy from: %s" 
+             % (Timestamp(), os.path.abspath(in_filepath)))
 
     with open(in_filepath, "r") as file:
         specs = yaml.safe_load(file)
 
-    strategy = Strategy(in_search_space = SearchSpace(specs["Search Space"]),
+    # Deal with user-specified search-space overrides.
+    # Note: Whatever override is prioritised must be applied last.
+    search_space = SearchSpace(specs["Search Space"])
+    overrides = specs["Inclusions/Exclusions"]
+    if CustomBool(overrides["Prioritise Inclusions"]):
+        order = [False, True]
+    else:
+        order = [True, False]
+    for override_flag in order:
+        for module in overrides["Modules"]:
+            # CustomBool does not accept blank values, so roll on with any exceptions.
+            # If a module does not exist in this version of the package, roll with the exception too.
+            try:
+                if CustomBool(overrides["Modules"][module]) == override_flag:
+                    for id_component in catalogue.module_to_cids[module]:
+                        if id_component in search_space:
+                            search_space[id_component]["Include"] = CustomBool(override_flag).__repr__()
+            except:
+                continue
+        for category in catalogue.categories:
+            if category.__name__ in overrides["Categories"]:
+                try:
+                    if CustomBool(overrides["Categories"][category.__name__]) == override_flag:
+                        for id_component in catalogue.category_to_cids[category]:
+                            if id_component in search_space:
+                                search_space[id_component]["Include"] = CustomBool(override_flag).__repr__()
+                except:
+                    continue
+
+    strategy = Strategy(in_search_space = search_space,
                         do_defaults = bool(CustomBool(specs["Strategy"]["Do Defaults"])),
                         do_random = bool(CustomBool(specs["Strategy"]["Do Random"])),
                         do_hpo = bool(CustomBool(specs["Strategy"]["Do HPO"])),
+                        in_n_samples = int(specs["Strategy"]["Number of Samples"]),
                         in_max_hpo_concurrency = int(specs["Strategy"]["Max HPO Concurrency"]),
+                        in_frac_validation = float(specs["Strategy"]["Validation Fraction"]),
+                        in_folds_validation = float(specs["Strategy"]["Validation Folds"]),
                         in_n_iterations = int(specs["Optimiser"]["BOHB"]["Iterations"]),
-                        in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]),
-                        in_frac_validation = float(specs["Optimiser"]["BOHB"]["Validation Fraction"]))
+                        in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]))
 
     return strategy

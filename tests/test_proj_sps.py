@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Nov 21 10:09:18 2023
+Created on Sun Nov 26 18:41:29 2023
 
 @author: David J. Kedziora
 """
-
 import autonoml as aml
 import subprocess
 
@@ -17,10 +16,10 @@ if __name__ == '__main__':
     # Define them here for the AutonoMachine to connect with.
     server_hostname = aml.SystemSettings.DEFAULT_HOSTNAME
     server_port_data = aml.SystemSettings.DEFAULT_PORT_DATA
-    
+
     # Name the data/log file for the streamer subprocess as well as the broadcasting period.
-    filename_data_streamer = "./data/pharma/indpensim_batch.csv"
-    filename_log_streamer = "./test_proj_pharma_streamer.log"
+    filename_data_streamer = "./data/sps/train_sps_quality_1000_events_1p2uW_3000cps.csv"
+    filename_log_streamer = "./test_proj_sps_streamer.log"
     period_data_stream = 1.0
     delay_before_start = 1.0
 
@@ -67,6 +66,6 @@ if __name__ == '__main__':
     strategy = aml.import_strategy("./test_proj_pharma.strat")
 
     # Start learning the target variable.
-    proj.learn(in_key_target = "Penicillin concentration(P:g/L)",
-               in_keys_features = ["Time (h)"], do_exclude = True,
+    proj.learn(in_key_target = "estimate",
+               in_keys_features = ["best"], do_exclude = True,
                in_strategy = strategy)

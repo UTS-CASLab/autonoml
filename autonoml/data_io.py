@@ -170,8 +170,9 @@ class DataPortStream(DataPort):
                     
             except Exception as e:
                 identify_exception(e, "")
-                for op in self.ops:
-                    op.cancel()
+                if not self.ops is None:
+                    for op in self.ops:
+                        op.cancel()
                 log.warning("%s - DataPort '%s' cannot connect to host %s, port %s. Retrying." 
                             % (Timestamp(), self.name, self.target_hostname, self.target_port))
                 
@@ -204,15 +205,6 @@ class DataPortStream(DataPort):
                 read_options = pacsv.ReadOptions(use_threads = True, column_names = self.field_names)
                 # convert_options = pacsv.ConvertOptions(include_columns = self.field_names, include_missing_columns = True)
                 data = pacsv.read_csv(input_stream, read_options = read_options) #, convert_options = convert_options)
-
-            # data_list = message.decode("utf8").rstrip().split(",")
-            # if self.field_names is None:
-            #     data_dict_list = [{self.name + "_" + str(idx): data_list[idx] for idx in range(len(data_list))}]
-            #     data = pa.Table.from_pylist(data_dict_list)
-            #     self.field_names = data.schema.names
-            # else:
-            #     data_dict_list = [{self.field_names[idx]: data_list[idx] for idx in range(len(data_list))}]
-            #     data = pa.Table.from_pylist(data_dict_list)
                 
             if self.is_storing:
                 self.data_storage.store_data(in_data = data, 

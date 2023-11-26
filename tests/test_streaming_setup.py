@@ -18,8 +18,10 @@ async def test():
     server_hostname = aml.SystemSettings.DEFAULT_HOSTNAME
     server_port_data = aml.SystemSettings.DEFAULT_PORT_DATA
         
-    # Define a log file for the streamer subprocess.
-    filename_log_streamer = "test_streaming_setup_streamer.log"
+    # Name the data/log file for the streamer subprocess as well as the broadcasting period.
+    filename_data_streamer = "./data/drift/mixed_0101_abrupto.csv"
+    filename_log_streamer = "./test_streaming_setup_streamer.log"
+    period_data_stream = 1.0
     
     
     
@@ -33,7 +35,9 @@ async def test():
     
     print("USER: Notices the streaming server is activating.")
     with open(filename_log_streamer, "w") as file_log_streamer:
-        server_process = subprocess.Popen(["python", "sim_stream_abrupto.py"],
+        server_process = subprocess.Popen(["python", "sim_stream.py", 
+                                           "--filename_data", filename_data_streamer, 
+                                           "--period_data_stream", str(period_data_stream)],
                                           stdout = file_log_streamer, 
                                           stderr = subprocess.STDOUT,
                                           universal_newlines = True)

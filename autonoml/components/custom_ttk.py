@@ -562,9 +562,9 @@ class OnlineSupportVectorRegressor(MLPredictor):
         #          Therefore, this component should not be used outside of a pipeline without care.
         # TODO: Reconsider whether MLComponent should require an in_keys_features argument.
         self.model = OnlineSVR(n_features = None, 
-                               C = self.hpars["C"], 
-                               eps = self.hpars["epsilon"], 
-                               gamma = self.hpars["gamma"])
+                               C = self.hpars["C"].val, 
+                               eps = self.hpars["epsilon"].val, 
+                               gamma = self.hpars["gamma"].val)
         self.name += "_CustomTTK_OnlineSVR"
         self.format_x = DataFormatX.NUMPY_ARRAY
         self.format_y = DataFormatY.NUMPY_ARRAY

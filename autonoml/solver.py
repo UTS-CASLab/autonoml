@@ -302,7 +302,8 @@ class ProblemSolver:
             future_pipeline = loop.run_in_executor(in_executor, develop_pipeline, pipeline, data_sharer, in_info_process)
             self.pipelines_in_dev[pipeline.name] = True
                 
-            create_async_task(self.push_to_production, future_pipeline, in_key_group = in_key_group, 
+            create_async_task(self.push_to_production, future_pipeline, 
+                              in_key_group = in_key_group, in_name_pipeline = pipeline.name, 
                               in_data_sharer = data_sharer)
 
 
@@ -382,7 +383,8 @@ class ProblemSolver:
                 
             # The await prevents the semaphore being released until an HPO ends in production.
             await create_async_task(self.push_to_production, future_pipeline,
-                                    in_key_group = in_key_group, in_name_hpo = name_hpo, in_data_sharer = data_sharer)
+                                    in_key_group = in_key_group, in_name_hpo = name_hpo, 
+                                    in_data_sharer = data_sharer)
         
         
     async def support_hpo(self, in_executor, in_idx_worker: int, in_hpo_instructions: HPOInstructions, 
@@ -416,7 +418,8 @@ class ProblemSolver:
 
 
 
-    async def push_to_production(self, in_future_pipeline, in_key_group: str, in_name_hpo: str = None, 
+    async def push_to_production(self, in_future_pipeline, in_key_group: str, 
+                                 in_name_pipeline: set = None, in_name_hpo: str = None,
                                  in_data_sharer: SharedMemoryManager = None):
         try:
             pipeline, info_process = await in_future_pipeline
@@ -459,12 +462,12 @@ class ProblemSolver:
                 del self.hpo_runs_in_dev[in_name_hpo]
                 log.info("%s   HPO runs still in development: %i" 
                          % (Timestamp(None), len(self.hpo_runs_in_dev)))
-            else:
-                if pipeline.name in self.pipelines_in_dev:
-                    del self.pipelines_in_dev[pipeline.name]
+            elif not in_name_pipeline is None:
+                if in_name_pipeline in self.pipelines_in_dev:
+                    del self.pipelines_in_dev[in_name_pipeline]
                 else:
                     log.warning("%s   Noted multiple attempts to clear pipeline '%s' from development. "
-                                "Possibly a non-unique name." % (Timestamp(), pipeline.name))
+                                "Possibly a non-unique name." % (Timestamp(), in_name_pipeline))
                 log.info("%s   Pipelines still in development: %i" 
                          % (Timestamp(None), len(self.pipelines_in_dev)))
 

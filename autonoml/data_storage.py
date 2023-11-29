@@ -145,6 +145,13 @@ class DataCollection(DataCollectionBase):
 
         return DataCollectionXY(in_x = x, in_y = y, 
                                 in_ids = self.ids, in_timestamps = self.timestamps)
+    
+    def combine_chunks(self):
+        """
+        If data is a chunked table, combine those chunks.
+        Necessary when writing to csv file, otherwise each chunk has its own schema.
+        """
+        self.data = self.data.combine_chunks()
 
 
 class DataCollectionXY(DataCollectionBase):

@@ -20,10 +20,10 @@ class SystemSettings:
     LOG_HPO_WORKER = False
 
     #%% Streamer-specific constants.
-    DEFAULT_HOSTNAME = "localhost"  # Default IP address for connections.
-    DEFAULT_PORT_DATA = 50001       # Ephemeral port within IANA-advised range.
-    DEFAULT_PORT_QUERY = 50002      # Ephemeral port within IANA-advised range.
-    PERIOD_DATA_STREAM = 1.0        # Seconds between streamed data instances.
+    DEFAULT_HOSTNAME = "localhost"          # Default IP address for connections.
+    DEFAULT_PORT_OBSERVATIONS = 50001       # Ephemeral port within IANA-advised range.
+    DEFAULT_PORT_QUERIES = 50002            # Ephemeral port within IANA-advised range.
+    PERIOD_DATA_STREAM = 1.0                # Seconds between streamed data instances.
     
     # The following manages when the data-streaming server knows when to shut down.
     PERIOD_SHUTDOWN_CHECK = 20.0        # Seconds between server checks to see if any client is connected.

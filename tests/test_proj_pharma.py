@@ -16,7 +16,7 @@ if __name__ == '__main__':
     # The data streamer will be broadcasting on the default host/port.
     # Define them here for the AutonoMachine to connect with.
     server_hostname = aml.SystemSettings.DEFAULT_HOSTNAME
-    server_port_data = aml.SystemSettings.DEFAULT_PORT_DATA
+    server_port_observations = aml.SystemSettings.DEFAULT_PORT_OBSERVATIONS
     
     # Name the data/log file for the streamer subprocess as well as the broadcasting period.
     filename_data_streamer = "./data/pharma/indpensim_batch.csv"
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     # Connect the AutonoMachine to the expected data-broadcasting server.
     # Because the user provides preset field names, the storage will begin upon connection.
     # Note: The port should keep trying to reconnect unless deleted.
-    port = proj.ingest_stream(server_hostname, server_port_data, 
+    port = proj.ingest_stream(server_hostname, server_port_observations, 
                               in_id_stream = "pharma", 
                               in_field_names = get_field_names(filename_data_streamer))
 
@@ -61,10 +61,10 @@ if __name__ == '__main__':
     time.sleep(1)   # Wait a moment for the first observations to be stored.
 
     # Sanity-check that the initial data looks fine in storage.
-    # proj.info_storage()
+    proj.info_storage()
 
     # Import the appropriate strategy file.
-    strategy = aml.import_strategy("./test_proj_pharma.strat")
+    strategy = aml.import_strategy("./test_proj.strat")
 
     # Start learning the target variable.
     proj.learn(in_key_target = "Penicillin concentration(P:g/L)",

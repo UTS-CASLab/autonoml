@@ -44,6 +44,10 @@ class MLComponent:
                     text_warning = "Component '%s' does not possess hyperparameter '%s'."
                     log.warning("%s - %s" % (Timestamp(), text_warning))
 
+        # Store a flag that determines whether component updates involve learning or adapting.
+        # There is an initial learning, while subsequent observations can be adapted to.
+        self.is_untouched = True
+
         # Every component operates on input data organised in a certain format.
         # This data represents a set of features.
         self.keys_features = None
@@ -58,10 +62,17 @@ class MLComponent:
     def learn(self, x, y):
         raise NotImplementedError
     
-    def update(self, x, y):
+    def adapt(self, x, y):
         pass
 
     #%% Utility methods that should not be overwritten by custom subclasses.
+
+    def update(self, x, y):
+        if self.is_untouched:
+            self.learn(x, y)
+            self.is_untouched = False
+        else:
+            self.adapt(x, y)
 
     def hpars_as_string(self):
         return ", ".join(key + ": " + str(self.hpars[key].val) for key in self.hpars)

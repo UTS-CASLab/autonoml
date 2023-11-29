@@ -17,7 +17,7 @@ import numpy as np
 class SimDataStreamer:
     """
     An object that simulates data-streaming servers based on a CSV file.
-    The primary server generates training data.
+    The primary server generates observations for training/adaptation.
     The secondary server generates queries with expected responses.
     In practice the data instances are simply lines from the CSV file.
     
@@ -33,10 +33,10 @@ class SimDataStreamer:
                  in_period_data_stream: float = SS.PERIOD_DATA_STREAM,
                  in_delay_before_start: float = SS.DELAY_BEFORE_START,
                  in_file_has_headers: bool = True,
-                 in_hostname_data = SS.DEFAULT_HOSTNAME,
-                 in_port_data = SS.DEFAULT_PORT_DATA,
-                 in_hostname_query = SS.DEFAULT_HOSTNAME,
-                 in_port_query = SS.DEFAULT_PORT_QUERY):
+                 in_hostname_observations = SS.DEFAULT_HOSTNAME,
+                 in_port_observations = SS.DEFAULT_PORT_OBSERVATIONS,
+                 in_hostname_queries = SS.DEFAULT_HOSTNAME,
+                 in_port_queries = SS.DEFAULT_PORT_QUERIES):
         log.info("%s - A SimDataStreamer has been initialised." % Timestamp())
         
         self.filename_data = in_filename_data
@@ -47,10 +47,10 @@ class SimDataStreamer:
         # Give early listeners the chance to connect before broadcasting starts.
         self.delay_before_start = in_delay_before_start
 
-        self.hostname_data = in_hostname_data
-        self.port_data = in_port_data
-        self.hostname_query = in_hostname_query
-        self.port_query = in_port_query
+        self.hostname_observations = in_hostname_observations
+        self.port_observations = in_port_observations
+        self.hostname_queries = in_hostname_queries
+        self.port_queries = in_port_queries
         
         self.ops = None
         self.server_data = None
@@ -66,6 +66,9 @@ class SimDataStreamer:
         self.timestamp_confirm_global = Timestamp()
         
         self.run()
+
+    def __del__(self):
+        log.debug("Finalising SimDataStreamer.")
         
     def run(self):
         log.info("%s - The SimDataStreamer is now running." % Timestamp())
@@ -116,11 +119,11 @@ class SimDataStreamer:
 
     async def run_server(self):
         self.server_data = await asyncio.start_server(self.handle_client,
-                                                      self.hostname_data,
-                                                      self.port_data)
+                                                      self.hostname_observations,
+                                                      self.port_observations)
         self.server_query = await asyncio.start_server(lambda r, w: self.handle_client(r, w, is_query = True),
-                                                       self.hostname_query,
-                                                       self.port_query)
+                                                       self.hostname_queries,
+                                                       self.port_queries)
         async with self.server_data, self.server_query:
             await asyncio.gather(self.server_data.serve_forever(), self.server_query.serve_forever())
 

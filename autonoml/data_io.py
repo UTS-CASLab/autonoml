@@ -79,6 +79,9 @@ class DataPort:
                  "%s   Time taken: %.3f s" 
                   % (Timestamp(), self.name, data.num_rows,
                      Timestamp(None), time_end - time_start))
+        
+    def __del__(self):
+        log.debug("Finalising DataPort '%s'." % self.name)
 
                 
 
@@ -89,7 +92,7 @@ class DataPortStream(DataPort):
     """
     
     def __init__(self, in_data_storage, 
-                 in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_DATA,
+                 in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_OBSERVATIONS,
                  in_field_names: List[str] = None,
                  in_id_stream: str = None, in_tags: Dict[str, str] = None):
         super().__init__(in_data_storage = in_data_storage, in_name = in_id_stream,

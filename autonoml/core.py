@@ -96,7 +96,7 @@ class AutonoMachine:
                  % (Timestamp(), self.name, in_filepath))
         ref = DataPort(in_data_storage = self.data_storage, in_tags = in_tags)
         self.data_ports[ref.name] = ref
-        create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath)
+        create_async_task_from_sync(ref.ingest_file, in_filepath)
         
     def query_with_file(self, in_filepath, in_tags: Dict[str, str] = None):
         """
@@ -109,10 +109,10 @@ class AutonoMachine:
                  % (Timestamp(), self.name, in_filepath))
         ref = DataPort(in_data_storage = self.data_storage, in_tags = in_tags)
         self.data_ports[ref.name] = ref
-        create_async_task_from_sync(self.data_ports[ref.name].ingest_file, in_filepath, 
+        create_async_task_from_sync(ref.ingest_file, in_filepath, 
                                     as_query = True)
         
-    def ingest_stream(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port: int = SS.DEFAULT_PORT_DATA,
+    def ingest_stream(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port: int = SS.DEFAULT_PORT_OBSERVATIONS,
                       in_field_names: List[str] = None,
                       in_id_stream: str = None, in_tags: Dict[str, str] = None):
         ref = DataPortStream(in_data_storage = self.data_storage,
@@ -122,7 +122,7 @@ class AutonoMachine:
                              in_id_stream = in_id_stream,
                              in_tags = in_tags)
         self.data_ports[ref.name] = ref
-        create_async_task_from_sync(self.data_ports[ref.name].run_connection)
+        create_async_task_from_sync(ref.run_connection)
 
         return ref
         

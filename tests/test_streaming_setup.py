@@ -16,7 +16,7 @@ async def test():
     
     # Define a default data server host/port for the user to connect with.
     server_hostname = aml.SystemSettings.DEFAULT_HOSTNAME
-    server_port_data = aml.SystemSettings.DEFAULT_PORT_DATA
+    server_port_observations = aml.SystemSettings.DEFAULT_PORT_OBSERVATIONS
         
     # Name the data/log file for the streamer subprocess as well as the broadcasting period.
     filename_data_streamer = "./data/drift/mixed_0101_abrupto.csv"
@@ -30,7 +30,7 @@ async def test():
     await aml.user_pause(5)
     
     print("USER: Opens a data port to an inactive streaming server.")
-    port = proj.ingest_stream(server_hostname, server_port_data, in_id_stream = "abrupto")
+    port = proj.ingest_stream(server_hostname, server_port_observations, in_id_stream = "abrupto")
     await aml.user_pause(10)
     
     print("USER: Notices the streaming server is activating.")

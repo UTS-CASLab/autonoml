@@ -10,7 +10,7 @@ Created on Thu Nov  9 11:02:45 2023
 
 from .data_storage import DataCollection, DataCollectionXY, SharedMemoryManager
 from .solution import AllocationMethod, ProblemSolution
-from .pipeline import MLPipeline, train_pipeline, test_pipeline
+from .pipeline import MLPipeline, train_pipeline, test_pipeline, adapt_pipeline
 
 from typing import List, Dict
 
@@ -27,8 +27,9 @@ import numpy as np
 
 def get_collection(in_dict_observations, in_tag_to_collection_ids, 
                    in_tags_inclusive = None, in_tags_exclusive = None,
+                   in_id_start_exclusive: int = None, in_id_stop_inclusive: int = None,
                    do_compression: bool = False):
-    """
+    """ 
     Returns a concatenation of data collections linked/unlinked to 'inclusive/exclusive' tags.
     If there are no inclusive tags, all collections are selected prior to exclusions.
     Note: This function is external to DataStorage to enable multiprocessing.
@@ -48,25 +49,40 @@ def get_collection(in_dict_observations, in_tag_to_collection_ids,
     for key_tag, value_tag in in_tags_exclusive.items():
         set_collection_ids = set_collection_ids - in_tag_to_collection_ids[key_tag][value_tag]
 
-    # Concatenate the collections.
-    data = pa.concat_tables([in_dict_observations[collection_id].data 
-                             for collection_id in list(set_collection_ids)], 
-                            promote_options = "permissive")
-    ids = list(chain(*(in_dict_observations[collection_id].ids 
-                       for collection_id in list(set_collection_ids))))
-    timestamps = list(chain(*(in_dict_observations[collection_id].timestamps
-                              for collection_id in list(set_collection_ids))))
+    # Create the basis of an empty data collection.
+    empty_schema = pa.schema([])
+    data = pa.Table.from_batches([], schema=empty_schema)
+    ids = list()
+    timestamps = list()
+
+    # Permissively extend the contents per collection that is selected.
+    for collection_id in list(set_collection_ids):
+        collection, _ = in_dict_observations[collection_id].split_by_special_range(in_id_start_exclusive = in_id_start_exclusive,
+                                                                                   in_id_stop_inclusive = in_id_stop_inclusive)
+        data = pa.concat_tables([data, collection.data],
+                                promote_options = "permissive")
+        ids.extend(collection.ids)
+        timestamps.extend(collection.timestamps)
+        
+    # data = pa.concat_tables([in_dict_observations[collection_id].data 
+    #                          for collection_id in list(set_collection_ids)], 
+    #                         promote_options = "permissive")
+    # ids = list(chain(*(in_dict_observations[collection_id].ids 
+    #                    for collection_id in list(set_collection_ids))))
+    # timestamps = list(chain(*(in_dict_observations[collection_id].timestamps
+    #                           for collection_id in list(set_collection_ids))))
     collection = DataCollection(in_data = data, in_ids = ids, in_timestamps = timestamps)
 
     if do_compression:
-        collection.data.combine_chunks()
+        collection.combine_chunks()
 
     return collection
 
 
 
 def filter_observations(in_dict_observations: Dict[int, DataCollection], 
-                        in_tag_to_collection_ids, in_filter = None):
+                        in_tag_to_collection_ids, in_filter = None,
+                        in_id_start_exclusive: int = None, in_id_stop_inclusive: int = None):
     """
     Based on allocation-specific filtering requirements, collate training data.
     """
@@ -84,16 +100,9 @@ def filter_observations(in_dict_observations: Dict[int, DataCollection],
     observations = get_collection(in_dict_observations = in_dict_observations, 
                                   in_tag_to_collection_ids = in_tag_to_collection_ids,
                                   in_tags_inclusive = tags_inclusive, in_tags_exclusive = tags_exclusive,
+                                  in_id_start_exclusive = in_id_start_exclusive, 
+                                  in_id_stop_inclusive = in_id_stop_inclusive,
                                   do_compression = True)
-        
-        # # TODO: Decide what history of data to train pipelines on.
-        # idx_start = 0
-        # idx_stop = None
-        # if idx_stop is None:
-        #     idx_stop = observations.get_amount()
-
-        # observations, _ = observations.split_by_range(in_idx_start = idx_start,
-        #                                               in_idx_stop = idx_stop)
 
     return observations
 
@@ -160,9 +169,74 @@ def develop_pipeline(in_pipeline: MLPipeline,
 # TODO: Make destination for response outputs more modular, script-based, and user-controlled.
 # TODO: Consider moving 'magic values' to settings.
 
-def anticipate_responses():
-    prefix = "./results/"
-    os.makedirs(prefix, exist_ok = True)
+# def anticipate_results():
+#     prefix = "./results/"
+#     os.makedirs(prefix, exist_ok = True)
+
+#%% Functions for processing new observations, i.e. adaptation.
+
+def adapt_to_data(in_pipeline: MLPipeline,
+                  in_observations: DataCollectionXY,
+                  in_info_process):
+    
+    pipeline, responses, info_process = adapt_pipeline(in_pipeline = in_pipeline,
+                                                       in_data_collection = in_observations,
+                                                       in_info_process = in_info_process)
+    
+    return responses, pipeline, info_process
+
+def track_dynamics(in_observations: DataCollectionXY,
+                     in_results_dict,
+                     in_key_group: str,
+                     in_solution: ProblemSolution,
+                     in_info_process):
+    """
+    Track the dynamics of a group of learners as they adapt to data.
+    """
+    filepath_prefix = "./results/"
+    group_string = in_key_group
+    if not group_string == "":
+        group_string = "_" + group_string
+    filepath = filepath_prefix + "dynamics" + group_string + ".csv"
+
+    key_target = in_info_process["key_target"]
+            
+    # Construct a table from all the exportable information.
+    table_export = in_observations.x.rename_columns(['F_' + col for col in in_observations.x.schema.names])
+    table_export = table_export.add_column(0, "IDs", pa.array(in_observations.ids))
+    # table_export = table_export.add_column(0, "Timestamps", pa.array(in_observations.timestamps))   # TODO: Convert to string.
+    table_export = table_export.append_column("T_" + key_target, in_observations.y)
+    for idx in range(1 + in_solution.n_challengers):
+        header_prefix = "L%i" % idx
+        for key_content in ["responses", "loss", "name"]:
+            if not idx in in_results_dict:
+                list_append = [None]*in_observations.get_amount()
+            else:
+                list_append = in_results_dict[idx][key_content]
+            if key_content == "responses":
+                key_content_for_header = "_" + key_target
+            else:
+                key_content_for_header = ":" + key_content
+            table_export = table_export.append_column(header_prefix + key_content_for_header, pa.array(list_append))
+
+    # print(table_export)
+
+    if not os.path.isfile(filepath):
+        write_options = pacsv.WriteOptions(include_header = True)
+        file_options = "wb"
+    else:
+        write_options = pacsv.WriteOptions(include_header = False)
+        file_options = "ab"
+
+    with open(filepath, file_options) as file:
+        with pacsv.CSVWriter(file, table_export.schema, write_options = write_options) as writer:
+            writer.write_table(table_export)
+
+
+
+
+
+#%% Functions for processing new queries.
 
 def get_responses(in_pipeline: MLPipeline,
                   in_queries: DataCollectionXY,
@@ -187,10 +261,10 @@ def ensemble_responses(in_dict_responses):
 
 def action_responses(in_queries: DataCollectionXY,
                      in_responses_best,
-                     in_responses_dict,
-                     in_collection_tag_string: str, 
-                     in_keys_features: List[str], in_key_target: str, 
-                     in_solution: ProblemSolution):
+                     in_results_dict,
+                     in_collection_tag_string: str,
+                     in_solution: ProblemSolution,
+                     in_info_process):
     """
     Do something with the responses returned by the solution.
     Currently exports to a file defined by how the query collection was tagged by the user.
@@ -201,29 +275,14 @@ def action_responses(in_queries: DataCollectionXY,
         tag_string = "_" + tag_string
     filepath = filepath_prefix + "responses" + tag_string + ".csv"
 
-    # if not os.path.isfile(filepath):
-    #     # Write headers to each response file.
-    #     with open(filepath, "w") as file:
-    #         headers_solution = ""
-    #         for tags in in_solution.groups.keys():
-    #             tags_for_prefix = tags
-    #             if not tags_for_prefix == "":
-    #                 tags_for_prefix = ":" + tags_for_prefix
-    #             for idx in range(1 + in_solution.n_challengers):
-    #                 header_prefix = "L%i%s" % (idx, tags_for_prefix)
-    #                 headers_learner = (header_prefix + "_" + in_key_target + "," + header_prefix + ":loss,"
-    #                                   + header_prefix + ":name")
-    #                 headers_solution += "," + headers_learner
-
-    #         file.write("IDs,%s,%s%s" % (",".join(["F_" + key for key in in_keys_features]), 
-    #                                      "T_" + in_key_target + ",S_" + in_key_target,
-    #                                      headers_solution))
+    key_target = in_info_process["key_target"]
             
     # Construct a table from all the exportable information.
     table_export = in_queries.x.rename_columns(['F_' + col for col in in_queries.x.schema.names])
     table_export = table_export.add_column(0, "IDs", pa.array(in_queries.ids))
-    table_export = table_export.append_column("T_" + in_key_target, in_queries.y)
-    table_export = table_export.append_column("S_" + in_key_target, pa.array(in_responses_best))
+    # table_export = table_export.add_column(0, "Timestamps", pa.array(in_queries.timestamps))   # TODO: Convert to string.
+    table_export = table_export.append_column("T_" + key_target, in_queries.y)
+    table_export = table_export.append_column("S_" + key_target, pa.array(in_responses_best))
     for tags in in_solution.groups.keys():
         tags_for_prefix = tags
         if not tags_for_prefix == "":
@@ -231,12 +290,12 @@ def action_responses(in_queries: DataCollectionXY,
         for idx in range(1 + in_solution.n_challengers):
             header_prefix = "L%i%s" % (idx, tags_for_prefix)
             for key_content in ["responses", "loss", "name"]:
-                if not idx in in_responses_dict[tags]:
+                if not idx in in_results_dict[tags]:
                     list_append = [None]*in_queries.get_amount()
                 else:
-                    list_append = in_responses_dict[tags][idx][key_content]
+                    list_append = in_results_dict[tags][idx][key_content]
                 if key_content == "responses":
-                    key_content_for_header = "_" + in_key_target
+                    key_content_for_header = "_" + key_target
                 else:
                     key_content_for_header = ":" + key_content
                 table_export = table_export.append_column(header_prefix + key_content_for_header, pa.array(list_append))

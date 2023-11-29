@@ -34,7 +34,7 @@ Inclusions/Exclusions:
     categories.
   Prioritise Inclusions: y
   Modules:
-    autonoml.components.custom_ttk: 'y'
+    autonoml.components.custom_ttk: ''
     autonoml.components.river: ''
     autonoml.components.sklearn: ''
   Categories:
@@ -97,7 +97,7 @@ Search Space:
     Include: n
   autonoml.components.sklearn.LinearRegressor:
     Info: MLPredictor
-    Include: n
+    Include: y
   autonoml.components.sklearn.LinearSupportVectorRegressor:
     Info: MLPredictor
     Include: n

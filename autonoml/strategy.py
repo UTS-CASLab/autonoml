@@ -76,55 +76,7 @@ class ComponentCatalogue():
                                     self.cid_to_categories[id_component].append(category)
                                     self.category_to_cids[category][id_component] = True
 
-                            # id_component += 1
-
-                            # if issubclass(obj, MLPreprocessor):
-                            #     if obj.__name__ in pool_preprocessors:
-                            #         text_error = ("There are multiple preprocessors called '%s' in the AutonoML package." 
-                            #                     % obj.__name__)
-                            #         log.error("%s - %s" % (Timestamp(), text_error))
-                            #         raise Exception(text_error)
-                            #     pool_preprocessors[obj.__name__] = (obj, obj.new_hpars())
-                            # elif issubclass(obj, MLPredictor):
-                            #     if obj.__name__ in pool_predictors:
-                            #         text_error = ("There are multiple predictors called '%s' in the AutonoML package." 
-                            #                     % obj.__name__)
-                            #         log.error("%s - %s" % (Timestamp(), text_error))
-                            #         raise Exception(text_error)
-                            #     pool_predictors[obj.__name__] = (obj, obj.new_hpars())
-
 catalogue = ComponentCatalogue()
-
-# # Import all modules within the components folder.
-# for importer, module, is_pkg in pkgutil.iter_modules(components.__path__):
-#     module_full = "%s.%s" % (components.__name__, module)
-#     loaded_module = importlib.import_module(module_full)
-        
-#     # Find all classes in the loaded modules that are MLComponents.
-#     for name, obj in vars(loaded_module).items():
-#         if isinstance(obj, type) and issubclass(obj, MLComponent):
-
-#             # Consider ones that are as deep in their hierarchy without becoming unselectable.
-#             # Note: The False in getattr is the value if the attribute cannot be found.
-#             if not getattr(obj, "is_unselectable", False):
-#                 subclasses = obj.__subclasses__()
-#                 if (len(subclasses) == 0 
-#                     or all(getattr(subclass, "is_unselectable", False) for subclass in subclasses)):
-                    
-#                     if issubclass(obj, MLPreprocessor):
-#                         if obj.__name__ in pool_preprocessors:
-#                             text_error = ("There are multiple preprocessors called '%s' in the AutonoML package." 
-#                                           % obj.__name__)
-#                             log.error("%s - %s" % (Timestamp(), text_error))
-#                             raise Exception(text_error)
-#                         pool_preprocessors[obj.__name__] = (obj, obj.new_hpars())
-#                     elif issubclass(obj, MLPredictor):
-#                         if obj.__name__ in pool_predictors:
-#                             text_error = ("There are multiple predictors called '%s' in the AutonoML package." 
-#                                           % obj.__name__)
-#                             log.error("%s - %s" % (Timestamp(), text_error))
-#                             raise Exception(text_error)
-#                         pool_predictors[obj.__name__] = (obj, obj.new_hpars())
 
 class SearchSpace(dict):
     """

@@ -17,10 +17,10 @@ async def test():
     
     # Define two data servers by host/port for the user to connect with.
     server_hostname = aml.SystemSettings.DEFAULT_HOSTNAME
-    server_port_data_1 = aml.SystemSettings.DEFAULT_PORT_DATA
-    server_port_query_1 = aml.SystemSettings.DEFAULT_PORT_QUERY
-    server_port_data_2 = aml.SystemSettings.DEFAULT_PORT_DATA + 10
-    server_port_query_2 = aml.SystemSettings.DEFAULT_PORT_QUERY + 10
+    server_port_observations_1 = aml.SystemSettings.DEFAULT_PORT_OBSERVATIONS
+    server_port_queries_1 = aml.SystemSettings.DEFAULT_PORT_QUERIES
+    server_port_observations_2 = aml.SystemSettings.DEFAULT_PORT_OBSERVATIONS + 10
+    server_port_queries_2 = aml.SystemSettings.DEFAULT_PORT_QUERIES + 10
         
     # Define a log file for the streamer subprocesses.
     filename_log_streamer_1 = "test_data_ports_streamer_1.log"
@@ -45,8 +45,8 @@ async def test():
     await aml.user_pause(5)
     
     print("USER: Opens two data ports to the streaming servers.")
-    proj.open_data_port(server_hostname, server_port_data_1, in_id = "abrupto")
-    proj.open_data_port(server_hostname, server_port_data_2, in_id = "gradual")
+    proj.open_data_port(server_hostname, server_port_observations_1, in_id = "abrupto")
+    proj.open_data_port(server_hostname, server_port_observations_2, in_id = "gradual")
     await aml.user_pause(15)
     
     print("USER: User checks how data is being stored.")

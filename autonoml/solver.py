@@ -10,8 +10,9 @@ from .concurrency import create_async_task_from_sync, create_async_task
 from .pipeline import MLPipeline
 from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipelines_default, create_pipeline_random
 from .solution import ProblemSolverInstructions, ProblemSolution
-from .solver_ops import (filter_observations, prepare_data, develop_pipeline, 
-                         anticipate_responses, get_responses, ensemble_responses, action_responses)
+from .solver_ops import (filter_observations, prepare_data, develop_pipeline,
+                         adapt_to_data, track_dynamics,
+                         get_responses, ensemble_responses, action_responses)
 
 from .data_storage import DataStorage, DataCollection, SharedMemoryManager
 
@@ -123,7 +124,6 @@ class ProblemSolver:
                          "running default pipelines.") % self.name
             log.info("%s - %s" % (Timestamp(), text_info))
 
-        # TODO: Consider giving random pipelines some validation, not challenging with inf loss.
         if strategy.do_random:
             for _ in range(strategy.n_samples):
                 for key_group in self.solution.groups:
@@ -159,6 +159,9 @@ class ProblemSolver:
                           "Its Strategy does not suggest any pipelines.") % self.name
             log.error("%s - %s" % (Timestamp(), text_error))
             raise Exception(text_error)
+        
+        # # Do any preparatory work for results, such as creating a folder for outputs.
+        # anticipate_results()
 
         # Once instructions are processed, begin the problem solving.
         self.run()
@@ -173,6 +176,7 @@ class ProblemSolver:
     async def gather_ops(self):
         self.ops = list()
         self.ops.append(create_async_task(self.process_development))
+        self.ops.append(create_async_task(self.process_observations))
         self.ops.append(create_async_task(self.process_queries))
         # self.ops.extend([create_async_task(self.process_strategy),
         #                  create_async_task(self.process_queries)])
@@ -480,21 +484,106 @@ class ProblemSolver:
                 in_data_sharer.decrement_uses()
 
 
-    async def process_strategy(self):
+    # async def process_strategy(self):
+    #     while True:
+
+    #         # Check for new data and learn from it.
+    #         if self.id_observations_last < self.data_storage.observations.get_amount():
+    #             self.id_observations_last = self.data_storage.observations.get_amount()
+                
+    #         # TODO: Add things to the development queue as required.
+                
+    #         await self.data_storage.has_new_observations
+
+    async def process_observations(self):
+        
         while True:
 
-            # Check for new data and learn from it.
-            if self.id_observations_last < self.data_storage.observations.get_amount():
-                self.id_observations_last = self.data_storage.observations.get_amount()
+            # Check if there are more instances in storage than have been processed.
+            # If not, wait until new observations arive.
+            if not self.id_observations_last < self.data_storage.id_data_last:
+                await self.data_storage.has_new_observations
+
+            # Fix how many observations to process based on what is available at the time.
+            id_stop = self.data_storage.id_data_last
+
+            info_process = {"keys_features": self.keys_features,
+                            "key_target": self.key_target,
+                            "id_start": self.id_observations_last,
+                            "id_stop": id_stop}
+            
+            # Go through each learner group and grab the data the learners would be interested in.
+            # This involves filtering out irrelevant data according to tags and grabbing the right range.
+            # This also involves preparing the data in X and Y format, i.e. feature/target space.
+            for key_group in self.solution.groups:
+                data_filter = self.solution.filters[key_group]
+
+                time_start = Timestamp().time
+                dict_observations = self.data_storage.observations
+                tag_to_collection_ids = self.data_storage.observations_tag_to_collection_ids
+                observations = filter_observations(dict_observations, tag_to_collection_ids, data_filter,
+                                                   in_id_start_exclusive = self.id_observations_last,
+                                                   in_id_stop_inclusive = id_stop)
+                print(observations.data)
+                observations, _, _ = prepare_data(in_collection = observations,
+                                                  in_info_process = info_process,
+                                                  in_n_sets = 0)
+                print(observations.x)
+                time_end = Timestamp().time
+                duration = time_end - time_start
                 
-            # TODO: Add things to the development queue as required.
+                print(data_filter)
+                print(duration)
+                print(observations.get_amount())
+                print(observations.x.num_rows)
+                print(len(observations.ids))
+                print(len(observations.timestamps))
+
+                # No point adapting if the new data has not landed in a particular allocation.
+                if observations.get_amount() > 0:
+
+                    results_dict = dict()
+                    
+                    # Pop learners from the group, taking note of current rank, and adapt them to the new data.
+                    rank_pipeline = 0
+                    list_adapted = list()
+                    while len(self.solution.groups[key_group]) > 0:
+                        pipeline = self.solution.groups[key_group].pop(0)
+
+                        results_dict[rank_pipeline] = dict()
+
+                        responses, pipeline, info_process = adapt_to_data(in_pipeline = pipeline,
+                                                                        in_observations = observations,
+                                                                        in_info_process = info_process)
+
+                        list_adapted.append(pipeline)
+
+                        results_dict[rank_pipeline]["responses"] = responses
+                        record_loss = [None]*observations.get_amount()
+                        record_loss[-1] = pipeline.get_loss()
+                        results_dict[rank_pipeline]["loss"] = record_loss
+                        results_dict[rank_pipeline]["name"] = [pipeline.name]*observations.get_amount()
+
+                        rank_pipeline += 1
+
+                    # Reinsert learners into their appropriate groups, which will re-sort them based on new losses.
+                    while len(list_adapted) > 0:
+                        self.solution.insert_learner(in_pipeline = list_adapted.pop(0), in_key_group = key_group)
+
+                    track_dynamics(in_observations = observations,
+                                   in_results_dict = results_dict,
+                                   in_key_group = key_group,
+                                   in_solution = self.solution,
+                                   in_info_process = info_process)
                 
-            await self.data_storage.has_new_observations
+            # Update an index to acknowledge the observations that have been processed.
+            self.id_observations_last = id_stop
+
+            # Let other asynchronous tasks proceed if they are waiting.
+            # Prevents endlessly focussing on adaptation if inference is possible.
+            await asyncio.sleep(0)
 
     async def process_queries(self):
-
-        # Do any preparatory work for responses, such as creating a folder for outputs.
-        anticipate_responses()
         
         while True:
 
@@ -523,55 +612,37 @@ class ProblemSolver:
                                              in_info_process = info_process,
                                              in_n_sets = 0)
                 
-                responses_dict = dict()
+                results_dict = dict()
                 
                 for tags, list_pipelines in self.solution.groups.items():
 
-                    responses_dict[tags] = dict()
+                    results_dict[tags] = dict()
 
                     for rank_pipeline, pipeline in enumerate(list_pipelines):
 
-                        responses_dict[tags][rank_pipeline] = dict()
+                        results_dict[tags][rank_pipeline] = dict()
 
                         responses, pipeline, info_process = get_responses(in_pipeline = pipeline,
                                                                           in_queries = queries,
                                                                           in_info_process = info_process)
-                        # print(pipeline)
-                        # print(responses)
 
-                        responses_dict[tags][rank_pipeline]["responses"] = responses
+                        results_dict[tags][rank_pipeline]["responses"] = responses
                         record_loss = [None]*queries.get_amount()
                         record_loss[-1] = pipeline.get_loss()
-                        responses_dict[tags][rank_pipeline]["loss"] = record_loss
-                        responses_dict[tags][rank_pipeline]["name"] = [pipeline.name]*queries.get_amount()
+                        results_dict[tags][rank_pipeline]["loss"] = record_loss
+                        results_dict[tags][rank_pipeline]["name"] = [pipeline.name]*queries.get_amount()
 
-                responses_best = ensemble_responses(responses_dict)
+                responses_best = ensemble_responses(results_dict)
 
                 tag_queries = self.data_storage.get_tag_combo_from_collection_id(collection_id,
                                                                                  as_string = True,
                                                                                  as_query = True)
                 action_responses(in_queries = queries,
                                  in_responses_best = responses_best,
-                                 in_responses_dict = responses_dict,
+                                 in_results_dict = results_dict,
                                  in_collection_tag_string = tag_queries,
-                                 in_keys_features = self.keys_features,
-                                 in_key_target = self.key_target,
-                                 in_solution = self.solution)
-
-            #         log.info("%s - Pipeline '%s' has responded to a total of %i queries.\n"
-            #                 "%s   Structure: %s\n"
-            #                 "%s   Time taken to retrieve data: %.3f s\n"
-            #                 "%s   Time taken to query/score pipeline on data: %.3f s\n"
-            #                 "%s   (Training loss: %f)\n"
-            #                 "%s   Testing loss: %f\n"
-            #                 "%s   Last observation: Prediction '%s' vs True Value '%s'"
-            #                 % (Timestamp(), pipeline.name, idx_stop - idx_start,
-            #                     Timestamp(None), pipeline.components_as_string(do_hpars = True),
-            #                     Timestamp(None), duration_prep,
-            #                     Timestamp(None), duration_proc,
-            #                     Timestamp(None), pipeline.get_loss(is_training = True),
-            #                     Timestamp(None), pipeline.get_loss(),
-            #                     Timestamp(None), y_pred_last, y_last))
+                                 in_solution = self.solution,
+                                 in_info_process = info_process)
                 
             # Update an index to acknowledge the queries that have been processed.
             self.id_queries_last = id_stop
@@ -579,6 +650,8 @@ class ProblemSolver:
             # Let other asynchronous tasks proceed if they are waiting.
             # Prevents endlessly focussing on inference if development is possible.
             await asyncio.sleep(0)
+
+
             
     # TODO: Include error checking for no features. Error-check target existence somewhere too.
     async def set_target_and_features(self, in_key_target: str,

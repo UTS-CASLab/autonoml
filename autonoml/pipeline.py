@@ -256,8 +256,11 @@ class MLPipeline:
     
 
 
+
+#%% Functions that act on an MLPipeline object.
+
 def process_pipeline(in_pipeline: MLPipeline,
-                     in_data_collection:  DataCollectionXY, #Union[DataCollection, DataCollectionXY],
+                     in_data_collection:  DataCollectionXY,
                      in_info_process,
                      in_frac_data: float = 1.0,
                      do_query: bool = False,
@@ -268,12 +271,6 @@ def process_pipeline(in_pipeline: MLPipeline,
     """
 
     time_start = Timestamp().time
-    # if isinstance(in_data_collection, DataCollection):
-    #     keys_features = in_info_process["keys_features"]
-    #     key_target = in_info_process["key_target"]
-    #     x, y = in_data_collection.get_data(in_keys_features = keys_features,
-    #                                     in_key_target = key_target,
-    #                                     in_fraction = in_frac_data)
     if isinstance(in_data_collection, DataCollectionXY):
         x, y = in_data_collection.get_data(in_fraction = in_frac_data)
     else:
@@ -294,12 +291,17 @@ def process_pipeline(in_pipeline: MLPipeline,
 
     return in_pipeline, responses, in_info_process
 
-def train_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY, #Union[DataCollection, DataCollectionXY],
+def train_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY,
                    in_info_process, in_frac_data: float = 1.0):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
                             do_learn = True)
 
-def test_pipeline(in_pipeline: MLPipeline, in_data_collection:  DataCollectionXY, #Union[DataCollection, DataCollectionXY], 
+def test_pipeline(in_pipeline: MLPipeline, in_data_collection:  DataCollectionXY,
                   in_info_process):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process,
                             do_query = True)
+
+def adapt_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY,
+                   in_info_process, in_frac_data: float = 1.0):
+    return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
+                            do_query = True, do_learn = True)

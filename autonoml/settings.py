@@ -13,7 +13,7 @@ class SystemSettings:
     Therefore, the real time delays are greater in practice.
     """
     
-    BASE_DELAY_FOR_ISSUE_CHECK = 10     # Seconds until checking for issues.
+    BASE_DELAY_FOR_ISSUE_CHECK = 10.0   # Seconds until checking for issues.
 
     #%% Logger settings.
     LOG_HPO_OPTIMISER = False
@@ -38,6 +38,10 @@ class SystemSettings:
     # MAX_ALERTS_DKEY_NEW = 5     # How many newly established DataStorage data keys to individually acknowledge.
     # MAX_INFO_KEYS_EXAMPLE = 10  # How many DataStorage keys to exemplify when providing info.
     # MAX_INFO_PIPE_EXAMPLE = 10  # How many inflow-to-data pipes to exemplify when providing info.
+
+    #%% Solver settings.
+    MAX_ATTEMPTS_DEVELOPMENT = 5    # How many times a failed development package will return to the queue.
+    BASE_DELAY_BEFORE_RETRY = 2.0   # Baseline seconds to wait before retrying a failed development.
     
     #%% Plot settings.
     MAX_LABELS_BAR = 25     # If there are more bars in a chart, label a fraction of them.

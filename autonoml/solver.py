@@ -5,13 +5,15 @@ Created on Mon May 22 21:58:33 2023
 @author: David J. Kedziora
 """
 
+from .settings import SystemSettings as SS
 from .utils import log, Timestamp, identify_exception
 from .concurrency import create_async_task_from_sync, create_async_task
 from .pipeline import MLPipeline
 from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipelines_default, create_pipeline_random
 from .solution import ProblemSolverInstructions, ProblemSolution
 from .strategy import Strategy
-from .solver_ops import (filter_observations, prepare_data, develop_pipeline,
+from .solver_ops import (ProcessInformation,
+                         filter_observations, prepare_data, develop_pipeline,
                          adapt_to_data, track_dynamics,
                          get_responses, ensemble_responses, action_responses)
 
@@ -21,6 +23,7 @@ from typing import List
 
 import asyncio
 import concurrent.futures
+
 
 
 
@@ -67,13 +70,8 @@ class ProblemSolver:
         self.pipelines_in_dev = dict()  # A dictionary to track what pipelines are in development.
 
         # Keep track of the data-storage instance up to which model has used.
-        # TODO: Consider variant starting points for the model and update log messages.
-        self.id_observations_last = 0
-        self.id_queries_last = 0
-        
-        # # Set up a variable that can be awaited elsewhere.
-        # # This 'switch', when flicked, signals that the pipelines can be queried.
-        # self.can_query = asyncio.Future()
+        self.id_observations_last = -1
+        self.id_queries_last = -1
         
         self.ops = None
         self.is_running = False
@@ -109,13 +107,21 @@ class ProblemSolver:
         else:
             self.semaphore_hpo = asyncio.Semaphore(self.strategy.max_hpo_concurrency)
 
+        # Prepare to develop pipelines on all the data is presently available.
+        self.id_observations_last = self.data_storage.id_data_last
+        info_process = ProcessInformation(in_keys_features = self.keys_features,
+                                          in_key_target = self.key_target,
+                                          in_id_last_new = self.data_storage.id_data_last)
+        info_process.set_n_available(self.data_storage.get_amount())
+
+        attempt = 0
         if self.strategy.do_defaults:
             for key_group in self.solution.groups:
                 data_filter = self.solution.filters[key_group]
                 pipelines = create_pipelines_default(in_keys_features = self.keys_features,
                                                      in_key_target = self.key_target,
                                                      in_strategy = self.strategy)
-                dev_package = (pipelines, key_group, data_filter)
+                dev_package = (pipelines, key_group, data_filter, info_process, attempt)
                 await self.queue_dev.put(dev_package)
 
                 # The queue counter will be decremented per pipeline or HPO run.
@@ -134,7 +140,7 @@ class ProblemSolver:
                     pipeline = create_pipeline_random(in_keys_features = self.keys_features,
                                                       in_key_target = self.key_target,
                                                       in_strategy = self.strategy)
-                    dev_package = (pipeline, key_group, data_filter)
+                    dev_package = (pipeline, key_group, data_filter, info_process, attempt)
                     await self.queue_dev.put(dev_package)
         else:
             text_info = ("The Strategy for ProblemSolver '%s' does not suggest "
@@ -145,7 +151,8 @@ class ProblemSolver:
             if len(self.strategy.search_space.list_predictors()) > 0:
                 for key_group in self.solution.groups:
                     data_filter = self.solution.filters[key_group]
-                    dev_package = (HPOInstructions(in_strategy = self.strategy), key_group, data_filter)
+                    dev_package = (HPOInstructions(in_strategy = self.strategy), 
+                                   key_group, data_filter, info_process, attempt)
                     await self.queue_dev.put(dev_package)
             else:
                 text_warning = ("The Strategy for ProblemSolver '%s' does not suggest "
@@ -162,9 +169,6 @@ class ProblemSolver:
                           "Its Strategy does not suggest any pipelines.") % self.name
             log.error("%s - %s" % (Timestamp(), text_error))
             raise Exception(text_error)
-        
-        # # Do any preparatory work for results, such as creating a folder for outputs.
-        # anticipate_results()
 
         # Once instructions are processed, begin the problem solving.
         self.run()
@@ -214,7 +218,6 @@ class ProblemSolver:
                     continue
                 object_dev = dev_package[0]
                 key_group = dev_package[1]
-                data_filter = dev_package[2]
 
                 if key_group == "":
                     text_group = "."
@@ -223,18 +226,6 @@ class ProblemSolver:
                 log.info("%s - Development request received for learner-group%s" 
                          % (Timestamp(), text_group))
 
-                # # TODO: Decide what history of data to train pipelines on.
-                # idx_start = 0
-                # idx_stop = None
-                # if idx_stop is None:
-                #     idx_stop = observations.get_amount()
-
-                info_process = {"keys_features": self.keys_features,
-                                "key_target": self.key_target,
-                                # "idx_start": idx_start,
-                                # "idx_stop": idx_stop,
-                                "n_available": self.data_storage.get_amount()}
-
                 # Put solitary pipelines into a list.
                 if isinstance(object_dev, MLPipeline):
                     object_dev = [object_dev]
@@ -242,33 +233,34 @@ class ProblemSolver:
                 if isinstance(object_dev, list) and all(isinstance(item, MLPipeline) for item in object_dev):
 
                     create_async_task(self.process_pipelines, in_executor = executor, 
-                                      in_pipelines = object_dev, in_info_process = info_process, 
-                                      in_key_group = key_group, in_data_filter = data_filter)
+                                      in_dev_package = dev_package)
                     
                 elif isinstance(object_dev, HPOInstructions):
 
                     create_async_task(self.process_hpo, in_executor = executor, 
-                                      in_hpo_instructions = object_dev, in_info_process = info_process, 
-                                      in_key_group = key_group, in_data_filter = data_filter)
+                                      in_dev_package = dev_package)
 
                 # Let other asynchronous tasks proceed if they are waiting.
                 # Prevents excessively unpacking development queue if development or inference is possible.
                 await asyncio.sleep(0)
 
-    async def process_pipelines(self, in_executor, in_pipelines: List[MLPipeline], in_info_process,
-                                in_data_filter, in_key_group: str):
+    async def process_pipelines(self, in_executor, in_dev_package):
+
+        pipelines = in_dev_package[0]
+        data_filter = in_dev_package[2]
+        info_process = in_dev_package[3]
 
         loop = asyncio.get_event_loop()
 
         log.info("%s - Preparing development of MLPipelines: '%s'."
-                % (Timestamp(), ", ".join([pipeline.name for pipeline in in_pipelines])))
+                % (Timestamp(), ", ".join([pipeline.name for pipeline in pipelines])))
 
         time_start = Timestamp().time
         dict_observations = self.data_storage.observations
         tag_to_collection_ids = self.data_storage.observations_tag_to_collection_ids
-        observations = filter_observations(dict_observations, tag_to_collection_ids, in_data_filter)
+        observations = filter_observations(dict_observations, tag_to_collection_ids, data_filter)
         # observations = await loop.run_in_executor(in_executor, filter_observations, dict_observations, 
-        #                                           tag_to_collection_ids, in_data_filter)
+        #                                           tag_to_collection_ids, data_filter)
         time_end = Timestamp().time
         duration = time_end - time_start
         
@@ -278,10 +270,10 @@ class ProblemSolver:
         time_start = Timestamp().time
         frac_validation = self.strategy.frac_validation
         folds_validation = self.strategy.folds_validation
-        observations, sets_training, sets_validation = prepare_data(observations, in_info_process, 
+        observations, sets_training, sets_validation = prepare_data(observations, info_process, 
                                                                     frac_validation, folds_validation)
         # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_data, 
-        #                                                                           observations, in_info_process,
+        #                                                                           observations, info_process,
         #                                                                           frac_validation)
         time_end = Timestamp().time
         duration = time_end - time_start
@@ -291,7 +283,7 @@ class ProblemSolver:
 
         # Create a manager object that stores and loads data, possibly writing it efficiently to disk.
         time_start = Timestamp().time
-        data_sharer = SharedMemoryManager(in_uses = len(in_pipelines), do_mp = self.do_mp)
+        data_sharer = SharedMemoryManager(in_uses = len(pipelines), do_mp = self.do_mp)
         data_sharer.save_observations(in_observations = observations, 
                                         in_sets_training = sets_training, 
                                         in_sets_validation = sets_validation)
@@ -302,27 +294,30 @@ class ProblemSolver:
                     % (Timestamp(None), duration))
 
         # Develop the pipelines.
-        for pipeline in in_pipelines:
-            # future_pipeline = develop_pipeline(pipeline, observations, sets_training, sets_validation, in_info_process)
-            future_pipeline = loop.run_in_executor(in_executor, develop_pipeline, pipeline, data_sharer, in_info_process)
+        for pipeline in pipelines:
+            # future_pipeline = develop_pipeline(pipeline, observations, sets_training, sets_validation, info_process)
+            future_pipeline = loop.run_in_executor(in_executor, develop_pipeline, pipeline, data_sharer, info_process)
             self.pipelines_in_dev[pipeline.name] = True
                 
             create_async_task(self.push_to_production, future_pipeline, 
-                              in_key_group = in_key_group, in_name_pipeline = pipeline.name, 
+                              in_dev_package = ([pipeline],) + in_dev_package[1:], 
                               in_data_sharer = data_sharer)
 
 
-    async def process_hpo(self, in_executor, in_hpo_instructions: HPOInstructions, in_info_process,
-                          in_data_filter, in_key_group: str):
+    async def process_hpo(self, in_executor, in_dev_package):
         
         async with self.semaphore_hpo:
+
+            hpo_instructions = in_dev_package[0]
+            data_filter = in_dev_package[2]
+            info_process = in_dev_package[3]
 
             # Leave one processor free when running HPO for training specified pipelines.
             # TODO: Consider whether to block subsequent HPO requests if one is already running.
             n_procs_hpo = self.n_procs - 1
 
             loop = asyncio.get_event_loop()
-            name_hpo = in_hpo_instructions.name
+            name_hpo = hpo_instructions.name
 
             # Ensure that active HPO runs have unique names.
             if name_hpo in self.hpo_runs_in_dev:
@@ -336,9 +331,9 @@ class ProblemSolver:
             time_start = Timestamp().time
             dict_observations = self.data_storage.observations
             tag_to_collection_ids = self.data_storage.observations_tag_to_collection_ids
-            observations = filter_observations(dict_observations, tag_to_collection_ids, in_data_filter)
+            observations = filter_observations(dict_observations, tag_to_collection_ids, data_filter)
             # observations = await loop.run_in_executor(in_executor, filter_observations, dict_observations,
-            #                                           tag_to_collection_ids, in_data_filter)
+            #                                           tag_to_collection_ids, data_filter)
             time_end = Timestamp().time
             duration = time_end - time_start
             
@@ -350,12 +345,12 @@ class ProblemSolver:
 
             time_start = Timestamp().time
                 
-            frac_validation = in_hpo_instructions.frac_validation
-            folds_validation = in_hpo_instructions.folds_validation
-            observations, sets_training, sets_validation = prepare_data(observations, in_info_process, 
+            frac_validation = hpo_instructions.frac_validation
+            folds_validation = hpo_instructions.folds_validation
+            observations, sets_training, sets_validation = prepare_data(observations, info_process, 
                                                                         frac_validation, folds_validation)
             # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_data,
-            #                                                                           observations, in_info_process,
+            #                                                                           observations, info_process,
             #                                                                           frac_validation)
 
             time_end = Timestamp().time
@@ -378,22 +373,22 @@ class ProblemSolver:
 
             # Activate the HPO run.
             log.info("%s   Launching %i-worker HPO run '%s'." % (Timestamp(), n_procs_hpo, name_hpo))
-            future_pipeline = loop.run_in_executor(in_executor, run_hpo, in_hpo_instructions, data_sharer, in_info_process)
+            future_pipeline = loop.run_in_executor(in_executor, run_hpo, hpo_instructions, data_sharer, info_process)
             self.hpo_runs_in_dev[name_hpo] = True
 
             # Add HPO workers to the run.
             for idx_worker in range(1, n_procs_hpo):
                 if name_hpo in self.hpo_runs_in_dev:
-                    create_async_task(self.support_hpo, in_executor, idx_worker, in_hpo_instructions, data_sharer, in_info_process)
+                    create_async_task(self.support_hpo, in_executor, idx_worker, hpo_instructions, data_sharer, info_process)
                 
             # The await prevents the semaphore being released until an HPO ends in production.
             await create_async_task(self.push_to_production, future_pipeline,
-                                    in_key_group = in_key_group, in_name_hpo = name_hpo, 
+                                    in_dev_package = in_dev_package, 
                                     in_data_sharer = data_sharer)
         
         
     async def support_hpo(self, in_executor, in_idx_worker: int, in_hpo_instructions: HPOInstructions, 
-                          in_data_sharer: SharedMemoryManager, in_info_process):
+                          in_data_sharer: SharedMemoryManager, in_info_process: ProcessInformation):
         
         loop = asyncio.get_event_loop()
         name_hpo = in_hpo_instructions.name
@@ -423,21 +418,25 @@ class ProblemSolver:
 
 
 
-    async def push_to_production(self, in_future_pipeline, in_key_group: str, 
-                                 in_name_pipeline: set = None, in_name_hpo: str = None,
+    async def push_to_production(self, in_future_pipeline, in_dev_package,
                                  in_data_sharer: SharedMemoryManager = None):
+        
+        object_dev = in_dev_package[0]
+        key_group = in_dev_package[1]
+        data_filter = in_dev_package[2]
+        info_process_old = in_dev_package[3]
+        attempt = in_dev_package[4]
+
         try:
             pipeline, info_process = await in_future_pipeline
 
-            if "text_hpo" in info_process:
-                log.info(info_process["text_hpo"])
+            if not info_process.text is None:
+                log.info(info_process.text)
 
-            # idx_start = info_process["idx_start"]
-            # idx_stop = info_process["idx_stop"]
-            duration_prep = info_process["duration_prep"]
-            duration_proc = info_process["duration_proc"]
-            n_instances = info_process["n_instances"]
-            n_available = info_process["n_available"]
+            duration_prep = info_process.duration_prep
+            duration_proc = info_process.duration_proc
+            n_instances = info_process.n_instances
+            n_available = info_process.n_available
             y_last = pipeline.training_y_true[-1]
             y_pred_last = pipeline.training_y_response[-1]
 
@@ -457,22 +456,44 @@ class ProblemSolver:
                         Timestamp(None), y_pred_last, y_last))
             
             log.info("%s   Pipeline '%s' is pushed to production." % (Timestamp(None), pipeline.name))
-            self.solution.insert_learner(in_pipeline = pipeline, in_key_group = in_key_group)
+            self.solution.insert_learner(in_pipeline = pipeline, in_key_group = key_group)
+
         except Exception as e:
-            text_alert = "%s - ProblemSolver '%s' failed to process an MLPipeline." % (Timestamp(), self.name)
+            # Create an alert for the exception.
+            if isinstance(object_dev, HPOInstructions):
+                text_object = "HPO run '%s'" % object_dev.name
+            elif isinstance(object_dev, list) and all(isinstance(item, MLPipeline) for item in object_dev):
+                text_object = "MLPipeline '%s'" % object_dev[0].name
+            text_alert = "%s - ProblemSolver '%s' failed to process %s." % (Timestamp(), self.name, text_object)
             identify_exception(e, text_alert)
+
+            # Retry development if appropriate.
+            if attempt < SS.MAX_ATTEMPTS_DEVELOPMENT:
+                time_to_wait = SS.BASE_DELAY_BEFORE_RETRY * (2**attempt)
+                log.info("%s   Delay before reinsertion into the development queue: %s s" 
+                         % (Timestamp(None), time_to_wait))
+                await asyncio.sleep(time_to_wait)
+
+                # Update the data range in case that was the problem.
+                info_process_old.id_data_last = self.data_storage.id_data_last
+                info_process_old.set_n_available(self.data_storage.get_amount())
+                dev_package = (object_dev, key_group, data_filter, info_process_old, attempt + 1)
+                await self.queue_dev.put(dev_package)
+            else:
+                log.warning("%s   Abandoning any further attempt on %s." % (Timestamp(None), text_object))
+
         finally:
             # Mark the HPO run or pipeline as no longer in development.
-            if not in_name_hpo is None:
-                del self.hpo_runs_in_dev[in_name_hpo]
+            if isinstance(object_dev, HPOInstructions):
+                del self.hpo_runs_in_dev[object_dev.name]
                 log.info("%s   HPO runs still in development: %i" 
                          % (Timestamp(None), len(self.hpo_runs_in_dev)))
-            elif not in_name_pipeline is None:
-                if in_name_pipeline in self.pipelines_in_dev:
-                    del self.pipelines_in_dev[in_name_pipeline]
+            elif isinstance(object_dev, list) and all(isinstance(item, MLPipeline) for item in object_dev):
+                if object_dev[0].name in self.pipelines_in_dev:
+                    del self.pipelines_in_dev[object_dev[0].name]
                 else:
                     log.warning("%s   Noted multiple attempts to clear pipeline '%s' from development. "
-                                "Possibly a non-unique name." % (Timestamp(), in_name_pipeline))
+                                "Possibly a non-unique name." % (Timestamp(), object_dev[0].name))
                 log.info("%s   Pipelines still in development: %i" 
                          % (Timestamp(None), len(self.pipelines_in_dev)))
 
@@ -496,10 +517,10 @@ class ProblemSolver:
             # Fix how many observations to process based on what is available at the time.
             id_stop = self.data_storage.id_data_last
 
-            info_process = {"keys_features": self.keys_features,
-                            "key_target": self.key_target,
-                            "id_start": self.id_observations_last,
-                            "id_stop": id_stop}
+            info_process = ProcessInformation(in_keys_features = self.keys_features,
+                                              in_key_target = self.key_target,
+                                              in_id_last_old = self.id_observations_last,
+                                              in_id_last_new = id_stop)
             
             # Go through each learner group and grab the data the learners would be interested in.
             # This involves filtering out irrelevant data according to tags and grabbing the right range.
@@ -511,22 +532,21 @@ class ProblemSolver:
                 dict_observations = self.data_storage.observations
                 tag_to_collection_ids = self.data_storage.observations_tag_to_collection_ids
                 observations = filter_observations(dict_observations, tag_to_collection_ids, data_filter,
-                                                   in_id_start_exclusive = self.id_observations_last,
-                                                   in_id_stop_inclusive = id_stop)
-                print(observations.data)
+                                                   in_info_process = info_process)
+                # print(observations.data)
                 observations, _, _ = prepare_data(in_collection = observations,
                                                   in_info_process = info_process,
                                                   in_n_sets = 0)
-                print(observations.x)
+                # print(observations.x)
                 time_end = Timestamp().time
                 duration = time_end - time_start
                 
-                print(data_filter)
-                print(duration)
-                print(observations.get_amount())
-                print(observations.x.num_rows)
-                print(len(observations.ids))
-                print(len(observations.timestamps))
+                # print(data_filter)
+                # print(duration)
+                # print(observations.get_amount())
+                # print(observations.x.num_rows)
+                # print(len(observations.ids))
+                # print(len(observations.timestamps))
 
                 # No point adapting if the new data has not landed in a particular allocation.
                 if observations.get_amount() > 0:
@@ -547,6 +567,7 @@ class ProblemSolver:
 
                         list_adapted.append(pipeline)
 
+                        # TODO: Overall loss calculations are done over a growing list. Upgrade for efficiency.
                         results_dict[rank_pipeline]["responses"] = responses
                         record_loss = [None]*observations.get_amount()
                         record_loss[-1] = pipeline.get_loss()
@@ -588,10 +609,10 @@ class ProblemSolver:
             # Fix how many queries to process based on what is available at the time.
             id_stop = self.data_storage.id_data_last
 
-            info_process = {"keys_features": self.keys_features,
-                            "key_target": self.key_target,
-                            "id_start": self.id_queries_last,
-                            "id_stop": id_stop}
+            info_process = ProcessInformation(in_keys_features = self.keys_features,
+                                              in_key_target = self.key_target,
+                                              in_id_last_old = self.id_queries_last,
+                                              in_id_last_new = id_stop)
 
             for collection_id, queries in self.data_storage.queries.items():
                 queries, _ = queries.split_by_special_range(in_id_start_exclusive = self.id_queries_last,

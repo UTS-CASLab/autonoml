@@ -12,6 +12,7 @@ from .pipeline import MLPipeline, train_pipeline, test_pipeline
 from .hyperparameter import HPInt, HPFloat
 from .strategy import catalogue, Strategy, SearchSpace
 from .data_storage import DataCollectionXY, SharedMemoryManager
+from .instructions import ProcessInformation
 
 import ConfigSpace as CS
 from copy import deepcopy
@@ -75,7 +76,7 @@ def config_to_pipeline_structure(in_config):
 class HPOWorker(Worker):
 
     def __init__(self, in_data_sharer: SharedMemoryManager,
-                 in_info_process, *args, **kwargs):
+                 in_info_process: ProcessInformation, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # # TODO: Make these only once. Do it at the solver level.
@@ -104,8 +105,8 @@ class HPOWorker(Worker):
     # TODO: Consider if stopping process is possible if takes too long.
     def compute(self, config, budget, **kwargs):
 
-        keys_features = self.info_process["keys_features"]
-        key_target = self.info_process["key_target"]
+        keys_features = self.info_process.keys_features
+        key_target = self.info_process.key_target
         
         losses = list()
 
@@ -127,16 +128,16 @@ class HPOWorker(Worker):
                                             in_info_process = self.info_process,
                                             in_frac_data = budget)
             
-            # info = "\ntrain_prep %s" % self.info_process["duration_prep"]
-            # info += "\ntrain_proc %s" % self.info_process["duration_proc"]
+            # info = "\ntrain_prep %s" % self.info_process.duration_prep
+            # info += "\ntrain_proc %s" % self.info_process.duration_proc
             
             # print("Validation Size: %i" % set_validation.get_amount())
             pipeline, _, _ = test_pipeline(in_pipeline = pipeline,
                                            in_data_collection = set_validation,
                                            in_info_process = self.info_process)
 
-            # info += "\nvalid_prep %s" % self.info_process["duration_prep"]
-            # info += "\nvalid_proc %s" % self.info_process["duration_proc"]
+            # info += "\nvalid_prep %s" % self.info_process.duration_prep
+            # info += "\nvalid_proc %s" % self.info_process.duration_proc
             
             losses.append(pipeline.get_loss())
 
@@ -229,7 +230,7 @@ def create_pipeline_random(in_keys_features, in_key_target, in_strategy):
 
 def add_hpo_worker(in_hpo_instructions: HPOInstructions,
                    in_data_sharer: SharedMemoryManager,
-                   in_info_process, in_idx: int, do_background: bool = False):
+                   in_info_process: ProcessInformation, in_idx: int, do_background: bool = False):
     """
     Supplements a current HPO run with an additional worker.
     The worker should terminate when the name server is done with the run.
@@ -255,7 +256,7 @@ def add_hpo_worker(in_hpo_instructions: HPOInstructions,
 
 def run_hpo(in_hpo_instructions: HPOInstructions,
             in_data_sharer: SharedMemoryManager,
-            in_info_process):
+            in_info_process: ProcessInformation):
     """
     Runs a hyperparameter optimisation according to specified instructions.
     During this run, configured pipelines are trained on a set of provided observations.
@@ -334,8 +335,8 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     in_observations, _, _ = in_data_sharer.load_observations()
 
     # Based on the best configuration, create a new pipeline.
-    keys_features = in_info_process["keys_features"]
-    key_target = in_info_process["key_target"]
+    keys_features = in_info_process.keys_features
+    key_target = in_info_process.key_target
     pipeline = MLPipeline(in_name = "Pipe_" + run_id,
                           in_keys_features = keys_features, in_key_target = key_target,
                           in_components = config_to_pipeline_structure(in_config = config_best))
@@ -346,6 +347,6 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     # Short of further testing, its starting loss is the validation score it received during HPO.
     pipeline.set_loss(loss_best)
     
-    info_process["text_hpo"] = text_hpo
+    info_process.set_text(text_hpo)
 
     return pipeline, info_process

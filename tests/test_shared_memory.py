@@ -9,6 +9,7 @@ Created on Fri Oct 27 17:06:45 2023
 
 from autonoml.data_storage import DataCollection, SharedMemoryManager
 from autonoml.solution import prepare_data
+from autonoml.solver_ops import ProcessInformation
 
 import numpy as np
 import pyarrow as pa
@@ -34,7 +35,7 @@ if __name__ == '__main__':
     collection = DataCollection(in_data = data)
 
     # Break up into sets.
-    info_process = {"keys_features": keys_features, "key_target": key_target}
+    info_process = ProcessInformation(in_keys_features = keys_features, in_key_target = key_target)
     output = prepare_data(in_observations = collection, in_info_process = info_process,
                           in_frac_validation = 0.25, in_n_sets = 3)
     observations, sets_training, sets_validation = output

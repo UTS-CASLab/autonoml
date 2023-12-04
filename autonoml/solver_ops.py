@@ -11,6 +11,7 @@ Created on Thu Nov  9 11:02:45 2023
 from .data_storage import DataCollection, DataCollectionXY, SharedMemoryManager
 from .solution import AllocationMethod, ProblemSolution
 from .pipeline import MLPipeline, train_pipeline, test_pipeline, adapt_pipeline
+from .instructions import ProcessInformation
 
 from typing import List, Dict
 
@@ -27,7 +28,7 @@ import numpy as np
 
 def get_collection(in_dict_observations, in_tag_to_collection_ids, 
                    in_tags_inclusive = None, in_tags_exclusive = None,
-                   in_id_start_exclusive: int = None, in_id_stop_inclusive: int = None,
+                   in_info_process: ProcessInformation = None,
                    do_compression: bool = False):
     """ 
     Returns a concatenation of data collections linked/unlinked to 'inclusive/exclusive' tags.
@@ -56,21 +57,17 @@ def get_collection(in_dict_observations, in_tag_to_collection_ids,
     timestamps = list()
 
     # Permissively extend the contents per collection that is selected.
+    id_last_old = None if in_info_process is None else in_info_process.id_last_old
+    id_last_new = None if in_info_process is None else in_info_process.id_last_new
+
     for collection_id in list(set_collection_ids):
-        collection, _ = in_dict_observations[collection_id].split_by_special_range(in_id_start_exclusive = in_id_start_exclusive,
-                                                                                   in_id_stop_inclusive = in_id_stop_inclusive)
+        collection, _ = in_dict_observations[collection_id].split_by_special_range(in_id_start_exclusive = id_last_old,
+                                                                                   in_id_stop_inclusive = id_last_new)
         data = pa.concat_tables([data, collection.data],
                                 promote_options = "permissive")
         ids.extend(collection.ids)
         timestamps.extend(collection.timestamps)
         
-    # data = pa.concat_tables([in_dict_observations[collection_id].data 
-    #                          for collection_id in list(set_collection_ids)], 
-    #                         promote_options = "permissive")
-    # ids = list(chain(*(in_dict_observations[collection_id].ids 
-    #                    for collection_id in list(set_collection_ids))))
-    # timestamps = list(chain(*(in_dict_observations[collection_id].timestamps
-    #                           for collection_id in list(set_collection_ids))))
     collection = DataCollection(in_data = data, in_ids = ids, in_timestamps = timestamps)
 
     if do_compression:
@@ -82,7 +79,7 @@ def get_collection(in_dict_observations, in_tag_to_collection_ids,
 
 def filter_observations(in_dict_observations: Dict[int, DataCollection], 
                         in_tag_to_collection_ids, in_filter = None,
-                        in_id_start_exclusive: int = None, in_id_stop_inclusive: int = None):
+                        in_info_process: ProcessInformation = None):
     """
     Based on allocation-specific filtering requirements, collate training data.
     """
@@ -100,18 +97,17 @@ def filter_observations(in_dict_observations: Dict[int, DataCollection],
     observations = get_collection(in_dict_observations = in_dict_observations, 
                                   in_tag_to_collection_ids = in_tag_to_collection_ids,
                                   in_tags_inclusive = tags_inclusive, in_tags_exclusive = tags_exclusive,
-                                  in_id_start_exclusive = in_id_start_exclusive, 
-                                  in_id_stop_inclusive = in_id_stop_inclusive,
+                                  in_info_process = in_info_process,
                                   do_compression = True)
 
     return observations
 
-def prepare_data(in_collection: DataCollection, in_info_process, 
+def prepare_data(in_collection: DataCollection, in_info_process: ProcessInformation, 
                  in_frac_validation: float = 0.25, in_n_sets: int = 1):
 
     # Prepare x and y at this stage to minimise data manipulation during training/testing.
-    keys_features = in_info_process["keys_features"]
-    key_target = in_info_process["key_target"]
+    keys_features = in_info_process.keys_features
+    key_target = in_info_process.key_target
     collection = in_collection.prepare_xy(in_keys_features = keys_features, in_key_target = key_target)
 
     sets_training = list()
@@ -129,7 +125,7 @@ def prepare_data(in_collection: DataCollection, in_info_process,
 
 def develop_pipeline(in_pipeline: MLPipeline,
                      in_data_sharer: SharedMemoryManager,
-                     in_info_process):
+                     in_info_process: ProcessInformation):
 
     in_observations, in_sets_training, in_sets_validation = in_data_sharer.load_observations()
     
@@ -155,29 +151,25 @@ def develop_pipeline(in_pipeline: MLPipeline,
     loss = sum(losses)/len(losses)
 
     # print("Final Training Size: %i" % in_observations.get_amount())
-    pipeline, _, _ = train_pipeline(in_pipeline = in_pipeline,
-                                    in_data_collection = in_observations,
-                                    in_info_process = in_info_process)
+    pipeline, _, info_process = train_pipeline(in_pipeline = in_pipeline,
+                                               in_data_collection = in_observations,
+                                               in_info_process = in_info_process)
     
     # Short of further testing, its starting loss is the validation score it received here.
     pipeline.set_loss(loss)
     
-    return pipeline, in_info_process
+    return pipeline, info_process
 
 
 
 # TODO: Make destination for response outputs more modular, script-based, and user-controlled.
 # TODO: Consider moving 'magic values' to settings.
 
-# def anticipate_results():
-#     prefix = "./results/"
-#     os.makedirs(prefix, exist_ok = True)
-
 #%% Functions for processing new observations, i.e. adaptation.
 
 def adapt_to_data(in_pipeline: MLPipeline,
                   in_observations: DataCollectionXY,
-                  in_info_process):
+                  in_info_process: ProcessInformation):
     
     pipeline, responses, info_process = adapt_pipeline(in_pipeline = in_pipeline,
                                                        in_data_collection = in_observations,
@@ -189,7 +181,7 @@ def track_dynamics(in_observations: DataCollectionXY,
                      in_results_dict,
                      in_key_group: str,
                      in_solution: ProblemSolution,
-                     in_info_process):
+                     in_info_process: ProcessInformation):
     """
     Track the dynamics of a group of learners as they adapt to data.
     """
@@ -199,7 +191,7 @@ def track_dynamics(in_observations: DataCollectionXY,
         group_string = "_" + group_string
     filepath = filepath_prefix + "dynamics" + group_string + ".csv"
 
-    key_target = in_info_process["key_target"]
+    key_target = in_info_process.key_target
             
     # Construct a table from all the exportable information.
     table_export = in_observations.x.rename_columns(['F_' + col for col in in_observations.x.schema.names])
@@ -240,7 +232,7 @@ def track_dynamics(in_observations: DataCollectionXY,
 
 def get_responses(in_pipeline: MLPipeline,
                   in_queries: DataCollectionXY,
-                  in_info_process):
+                  in_info_process: ProcessInformation):
     
     pipeline, responses, info_process = test_pipeline(in_pipeline = in_pipeline,
                                                       in_data_collection = in_queries,
@@ -264,7 +256,7 @@ def action_responses(in_queries: DataCollectionXY,
                      in_results_dict,
                      in_collection_tag_string: str,
                      in_solution: ProblemSolution,
-                     in_info_process):
+                     in_info_process: ProcessInformation):
     """
     Do something with the responses returned by the solution.
     Currently exports to a file defined by how the query collection was tagged by the user.
@@ -275,7 +267,7 @@ def action_responses(in_queries: DataCollectionXY,
         tag_string = "_" + tag_string
     filepath = filepath_prefix + "responses" + tag_string + ".csv"
 
-    key_target = in_info_process["key_target"]
+    key_target = in_info_process.key_target
             
     # Construct a table from all the exportable information.
     table_export = in_queries.x.rename_columns(['F_' + col for col in in_queries.x.schema.names])

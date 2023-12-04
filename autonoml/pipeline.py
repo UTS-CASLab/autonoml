@@ -11,6 +11,7 @@ from .data import DataFormatX, DataFormatY, reformat_y
 from .component import MLComponent, MLPredictor, MLPreprocessor
 from .components.sklearn import DummyRegressor      # TODO: Revisit this import.
 from .metrics import LossFunction, calculate_loss
+from .instructions import ProcessInformation
 
 from .data_storage import DataCollection, DataCollectionXY
 
@@ -261,7 +262,7 @@ class MLPipeline:
 
 def process_pipeline(in_pipeline: MLPipeline,
                      in_data_collection:  DataCollectionXY,
-                     in_info_process,
+                     in_info_process: ProcessInformation,
                      in_frac_data: float = 1.0,
                      do_query: bool = False,
                      do_learn: bool = False):
@@ -269,6 +270,7 @@ def process_pipeline(in_pipeline: MLPipeline,
     A wrapper for pipeline training to be called from a ProblemSolver or elsewhere.
     This is designed for multiprocessing.
     """
+    info_process = deepcopy(in_info_process)
 
     time_start = Timestamp().time
     if isinstance(in_data_collection, DataCollectionXY):
@@ -285,23 +287,23 @@ def process_pipeline(in_pipeline: MLPipeline,
     duration_proc = time_end - time_start
     # print(duration_proc)
 
-    in_info_process["duration_prep"] = duration_prep
-    in_info_process["duration_proc"] = duration_proc
-    in_info_process["n_instances"] = len(y)
+    info_process.set_n_instances(len(y))
+    info_process.set_duration_prep(duration_prep)
+    info_process.set_duration_proc(duration_proc)
 
-    return in_pipeline, responses, in_info_process
+    return in_pipeline, responses, info_process
 
 def train_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY,
-                   in_info_process, in_frac_data: float = 1.0):
+                   in_info_process: ProcessInformation, in_frac_data: float = 1.0):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
                             do_learn = True)
 
 def test_pipeline(in_pipeline: MLPipeline, in_data_collection:  DataCollectionXY,
-                  in_info_process):
+                  in_info_process: ProcessInformation):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process,
                             do_query = True)
 
 def adapt_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY,
-                   in_info_process, in_frac_data: float = 1.0):
+                   in_info_process: ProcessInformation, in_frac_data: float = 1.0):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
                             do_query = True, do_learn = True)

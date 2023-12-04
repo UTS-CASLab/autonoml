@@ -50,6 +50,9 @@ class ProblemSolution:
 
         self.prepare_results()
 
+        # Track pipelines that have been previously been successfully inserted into this solution.
+        self.inserted_pipelines = dict()
+
         # Define a group as a champion and multiple challengers learning on a particular subset of data.
         # Define a filter as the rules for generating that subset of data.
         # Both dicts have the same keys.
@@ -119,18 +122,27 @@ class ProblemSolution:
         Insert a new learner into a group of learners.
         If there are too many challengers, remove the worst performer according to testing loss.
         """
-
-        self.append_info_file(in_pipeline)
-
         list_pipelines = self.groups[in_key_group]
         list_pipelines.append(in_pipeline)
         self.groups[in_key_group] = sorted(list_pipelines, key=lambda p: p.get_loss())
-        log.info("%s - %s -> %s" % (Timestamp(), in_key_group, ["%s: %0.2f" % (pipeline.name, pipeline.get_loss())
-                                                                for pipeline in self.groups[in_key_group]]))
+        text_key_group = "" if in_key_group == self.id_no_filter else ": %s" % in_key_group
+        log.info("%s - Learner Group%s -> %s" % (Timestamp(), text_key_group, 
+                                                 ["%s: %0.2f" % (pipeline.name, pipeline.get_loss()) 
+                                                  for pipeline in self.groups[in_key_group]]))
+        
+        pipeline_removed = None
         if len(self.groups[in_key_group]) > self.n_challengers + 1:
             pipeline_removed = self.groups[in_key_group].pop()
             log.info("%s   Removing uncompetitive challenger pipeline '%s' with loss: %0.2f"
                      % (Timestamp(None), pipeline_removed.name, pipeline_removed.get_loss()))
+            
+        # Record the pipeline if it was not immediately removed.
+        if pipeline_removed is None or not pipeline_removed.name == in_pipeline.name:
+            if not in_pipeline.name in self.inserted_pipelines:
+                self.append_info_file(in_pipeline)
+            self.inserted_pipelines[in_pipeline.name] = True
+            
+        
             
     # TODO: Reconsider which objects should be responsible for preparing results.
     def prepare_results(self):

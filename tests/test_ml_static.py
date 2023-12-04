@@ -36,7 +36,7 @@ if __name__ == '__main__':
     proj.learn(in_key_target = "best",
                in_keys_features = ["estimate"], do_exclude = True,
                in_strategy = strategy,
-               in_keys_allocation = [("context", aml.AllocationMethod.LEAVE_ONE_OUT)])
+               in_tags_allocation = [("context", aml.AllocationMethod.LEAVE_ONE_OUT)])
     
     for experimental_context in experimental_contexts:
         if not experimental_context is None:

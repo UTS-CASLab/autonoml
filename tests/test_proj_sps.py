@@ -118,4 +118,4 @@ if __name__ == '__main__':
     proj.learn(in_key_target = "estimate",
                in_keys_features = ["best"], do_exclude = True,
                in_strategy = strategy,
-               in_keys_allocation = ["mode"])
+               in_tags_allocation = ["mode"])

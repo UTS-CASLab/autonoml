@@ -10,18 +10,17 @@ from .concurrency import create_async_task_from_sync, create_async_task
 from .pipeline import MLPipeline
 from .hpo import HPOInstructions, run_hpo, add_hpo_worker, create_pipelines_default, create_pipeline_random
 from .solution import ProblemSolverInstructions, ProblemSolution
+from .strategy import Strategy
 from .solver_ops import (filter_observations, prepare_data, develop_pipeline,
                          adapt_to_data, track_dynamics,
                          get_responses, ensemble_responses, action_responses)
 
-from .data_storage import DataStorage, DataCollection, SharedMemoryManager
+from .data_storage import DataStorage, SharedMemoryManager
 
 from typing import List
 
 import asyncio
 import concurrent.futures
-import os
-import numpy as np
 
 
 
@@ -33,8 +32,9 @@ class ProblemSolver:
     count = 0
     
     def __init__(self, in_data_storage: DataStorage, 
-                 in_instructions: ProblemSolverInstructions, 
-                 in_n_procs: int, do_mp: bool):
+                 in_instructions: ProblemSolverInstructions,
+                 in_strategy: Strategy = None,
+                 in_n_procs: int = 1, do_mp: bool = False):
         
         self.name = "Sol_" + str(ProblemSolver.count)
         ProblemSolver.count += 1
@@ -43,10 +43,14 @@ class ProblemSolver:
         # Store a reference to the DataStorage in the AutonoMachine.
         self.data_storage = in_data_storage
 
-        # Keep a copy of the instructions that drive this ProblemSolver.
+        # Keep a reference to the instructions that drive this ProblemSolver.
+        # Include the feature/target keys that will be inferred later from the instructions.
         self.instructions = in_instructions
         self.key_target = None
         self.keys_features = None
+
+        # Create a default strategy if user did not provide one.
+        self.strategy = Strategy() if in_strategy is None else in_strategy
 
         # Note whether to use multiprocessing and how many processors are available.
         self.do_mp = do_mp
@@ -93,25 +97,24 @@ class ProblemSolver:
         self.keys_features = o2
 
         # Instantiate the solution as part of an event loop so that prerequisite data is ingested.
-        self.solution = ProblemSolution(in_instructions = self.instructions, in_data_storage = self.data_storage)
+        self.solution = ProblemSolution(in_instructions = self.instructions, in_strategy = self.strategy, 
+                                        in_data_storage = self.data_storage)
 
         # Instantiate the development queue now that this code is running internally within an event loop.
         self.queue_dev = asyncio.Queue()
 
-        strategy = self.instructions.strategy
-
         # Set up a semaphore to stop too many HPO runs operating concurrently.
-        if strategy.max_hpo_concurrency is None:
+        if self.strategy.max_hpo_concurrency is None:
             self.semaphore_hpo = asyncio.Semaphore(self.n_procs)
         else:
-            self.semaphore_hpo = asyncio.Semaphore(strategy.max_hpo_concurrency)
+            self.semaphore_hpo = asyncio.Semaphore(self.strategy.max_hpo_concurrency)
 
-        if strategy.do_defaults:
+        if self.strategy.do_defaults:
             for key_group in self.solution.groups:
                 data_filter = self.solution.filters[key_group]
                 pipelines = create_pipelines_default(in_keys_features = self.keys_features,
                                                      in_key_target = self.key_target,
-                                                     in_strategy = strategy)
+                                                     in_strategy = self.strategy)
                 dev_package = (pipelines, key_group, data_filter)
                 await self.queue_dev.put(dev_package)
 
@@ -124,13 +127,13 @@ class ProblemSolver:
                          "running default pipelines.") % self.name
             log.info("%s - %s" % (Timestamp(), text_info))
 
-        if strategy.do_random:
-            for _ in range(strategy.n_samples):
+        if self.strategy.do_random:
+            for _ in range(self.strategy.n_samples):
                 for key_group in self.solution.groups:
                     data_filter = self.solution.filters[key_group]
                     pipeline = create_pipeline_random(in_keys_features = self.keys_features,
                                                       in_key_target = self.key_target,
-                                                      in_strategy = strategy)
+                                                      in_strategy = self.strategy)
                     dev_package = (pipeline, key_group, data_filter)
                     await self.queue_dev.put(dev_package)
         else:
@@ -138,11 +141,11 @@ class ProblemSolver:
                          "running random pipelines.") % self.name
             log.info("%s - %s" % (Timestamp(), text_info))
 
-        if strategy.do_hpo:
-            if len(strategy.search_space.list_predictors()) > 0:
+        if self.strategy.do_hpo:
+            if len(self.strategy.search_space.list_predictors()) > 0:
                 for key_group in self.solution.groups:
                     data_filter = self.solution.filters[key_group]
-                    dev_package = (HPOInstructions(in_strategy = strategy), key_group, data_filter)
+                    dev_package = (HPOInstructions(in_strategy = self.strategy), key_group, data_filter)
                     await self.queue_dev.put(dev_package)
             else:
                 text_warning = ("The Strategy for ProblemSolver '%s' does not suggest "
@@ -178,8 +181,6 @@ class ProblemSolver:
         self.ops.append(create_async_task(self.process_development))
         self.ops.append(create_async_task(self.process_observations))
         self.ops.append(create_async_task(self.process_queries))
-        # self.ops.extend([create_async_task(self.process_strategy),
-        #                  create_async_task(self.process_queries)])
         group = asyncio.gather(*self.ops)
         try:
             await group
@@ -275,8 +276,8 @@ class ProblemSolver:
                 % (Timestamp(None), duration))
 
         time_start = Timestamp().time
-        frac_validation = self.instructions.strategy.frac_validation
-        folds_validation = self.instructions.strategy.folds_validation
+        frac_validation = self.strategy.frac_validation
+        folds_validation = self.strategy.folds_validation
         observations, sets_training, sets_validation = prepare_data(observations, in_info_process, 
                                                                     frac_validation, folds_validation)
         # observations, sets_training, sets_validation = await loop.run_in_executor(in_executor, prepare_data, 
@@ -482,18 +483,6 @@ class ProblemSolver:
             # This may clean temporary files if no more pipelines are using the written data.
             if not in_data_sharer is None:
                 in_data_sharer.decrement_uses()
-
-
-    # async def process_strategy(self):
-    #     while True:
-
-    #         # Check for new data and learn from it.
-    #         if self.id_observations_last < self.data_storage.observations.get_amount():
-    #             self.id_observations_last = self.data_storage.observations.get_amount()
-                
-    #         # TODO: Add things to the development queue as required.
-                
-    #         await self.data_storage.has_new_observations
 
     async def process_observations(self):
         

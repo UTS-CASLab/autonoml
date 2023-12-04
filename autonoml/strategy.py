@@ -117,6 +117,8 @@ class Strategy:
         self.n_iterations = in_n_iterations
         self.n_partitions = in_n_partitions
 
+        self.n_challengers = 2
+
 class CustomDumper(yaml.Dumper): pass
 def custom_bool_representer(dumper, data):
     return dumper.represent_scalar("tag:yaml.org,2002:str", repr(data))
@@ -162,6 +164,8 @@ def template_strategy(in_filepath: str = "./template.strat",
                      "Also decide whether inclusions or exclusions are higher priority, "
                      "in the case that a component exists in multiple categories.")
     
+    # Go through the component catalogue and create dictionaries to export into the template file.
+    # The dictionaries should list modules and components/hyperparameters for inclusion/exclusion.
     config_space = dict()
     module_overrides = dict()
 
@@ -180,11 +184,13 @@ def template_strategy(in_filepath: str = "./template.strat",
             hpar_space["Hpars"] = hpars
         config_space[id_component] = hpar_space
 
+    # Also add categories to inclusions/exclusions.
     overrides = {"Info": info_override,
                  "Prioritise Inclusions": CustomBool(True),
                  "Modules": module_overrides,
                  "Categories": {category.__name__: "" for category in catalogue.categories}}
 
+    # Export a file that represents a default strategy.
     strategy = Strategy()
 
     dict_strategy = {"Overview": overview,

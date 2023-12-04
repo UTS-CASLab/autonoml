@@ -23,32 +23,30 @@ class AllocationMethod(Enum):
     ONE_EACH = 0
     LEAVE_ONE_OUT = 1
 
+# TODO: Let a user specify more details about a problem to constrict the strategy automatically.
 class ProblemSolverInstructions:
-    def __init__(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False, 
-                 in_strategy: Strategy = None, in_keys_allocation = None):
+    """
+    Intended as a description of an ML problem to solve.
+    Contrasts with a Strategy, which describes how to approach the problem.
+    """
+    def __init__(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False,
+                 in_tags_allocation = None):
         
         self.key_target = in_key_target
         self.keys_features = in_keys_features
         self.do_exclude = do_exclude
 
+        self.tags_allocation = in_tags_allocation
+
         self.do_query_after_complete = True
-
-        # Create a default strategy if user did not provide one.
-        if in_strategy is None:
-            self.strategy = Strategy()
-        else:
-            self.strategy = in_strategy
-
-        # Defines how the solution should look.
-        self.keys_allocation = in_keys_allocation
-        self.n_challengers = 2
 
 # TODO: Clean-up labels around tags and keys.
 class ProblemSolution:
     """
     A container for all learners currently in production.
     """
-    def __init__(self, in_instructions: ProblemSolverInstructions, in_data_storage: DataStorage):
+    def __init__(self, in_instructions: ProblemSolverInstructions, in_strategy: Strategy, 
+                 in_data_storage: DataStorage):
 
         self.prepare_results()
 
@@ -65,9 +63,9 @@ class ProblemSolution:
         self.filters[self.id_no_filter] = None
 
         # Examine how the user specifies data should be allocated between groups.
-        keys_allocation = in_instructions.keys_allocation
-        if not keys_allocation is None:
-            for key_allocation in keys_allocation:
+        tags_allocation = in_instructions.tags_allocation
+        if not tags_allocation is None:
+            for key_allocation in tags_allocation:
                 if not isinstance(key_allocation, tuple):
                     key_allocation = (key_allocation, AllocationMethod.ONE_EACH)
                 key_data = key_allocation[0]
@@ -109,7 +107,7 @@ class ProblemSolution:
                     del self.groups[key_group]
                     del self.filters[key_group]
 
-        self.n_challengers = in_instructions.n_challengers
+        self.n_challengers = in_strategy.n_challengers
 
         log.info("%s - Prepared a ProblemSolution. Number of learner-groups: %i\n"
                  "%s   Each group champion can have up to %i challengers."

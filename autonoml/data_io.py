@@ -35,7 +35,7 @@ class DataPort:
     count = 0
 
     def __init__(self, in_data_storage: DataStorage, in_name: str = None, 
-                 in_tags: Dict[str, str] = None):
+                 in_tags: Dict[str, str] = None, is_for_queries: bool = False):
         self.name = "Port_" + str(DataPort.count)
         DataPort.count += 1
         if not in_name is None:
@@ -51,13 +51,10 @@ class DataPort:
             for key in in_tags:
                 self.tags[str(key)] = str(in_tags[key])
         
-        # # An ordered list of keys associated with elements of inflow data.
-        # self.keys = None
-        # self.data_types = None
+        self.is_for_queries = is_for_queries
         
     # TODO: Update logs for queries.
-    async def ingest_file(self, in_filepath: str,
-                          in_file_has_headers: bool = True, as_query: bool = False):
+    async def ingest_file(self, in_filepath: str, in_file_has_headers: bool = True):
 
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
                  % (Timestamp(), self.name, in_filepath))
@@ -71,7 +68,7 @@ class DataPort:
 
         self.data_storage.store_data(in_data = data,
                                      in_tags = self.tags,
-                                     as_query = as_query)
+                                     as_query = self.is_for_queries)
 
         time_end = Timestamp().time
                 
@@ -94,9 +91,10 @@ class DataPortStream(DataPort):
     def __init__(self, in_data_storage, 
                  in_hostname = SS.DEFAULT_HOSTNAME, in_port = SS.DEFAULT_PORT_OBSERVATIONS,
                  in_field_names: List[str] = None,
-                 in_id_stream: str = None, in_tags: Dict[str, str] = None):
+                 in_id_stream: str = None, in_tags: Dict[str, str] = None,
+                 is_for_queries: bool = False):
         super().__init__(in_data_storage = in_data_storage, in_name = in_id_stream,
-                         in_tags = in_tags)
+                         in_tags = in_tags, is_for_queries = is_for_queries)
         log.info("%s   This DataPort is designed for streams." % Timestamp(None))
         
         # Server details that this data port is targeting.
@@ -211,5 +209,6 @@ class DataPortStream(DataPort):
                 
             if self.is_storing:
                 self.data_storage.store_data(in_data = data, 
-                                            in_tags = self.tags)
+                                            in_tags = self.tags,
+                                            as_query = self.is_for_queries)
             # log.debug("%s - DataPort '%s' received data: %s" % (Timestamp(), self.name, data))

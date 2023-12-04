@@ -13,12 +13,12 @@ from .concurrency import (create_async_task_from_sync, create_async_task,
 from .data_storage import DataStorage
 from .data_io import DataPort, DataPortStream
 from .solver import ProblemSolver
-from .solution import ProblemSolverInstructions
+from .solution import AllocationMethod, ProblemSolverInstructions
 from .plot import plot_figures
 
 from .strategy import Strategy
 
-from typing import Dict, List
+from typing import Dict, List, Tuple, Union
 
 import asyncio
 import multiprocess as mp
@@ -86,7 +86,8 @@ class AutonoMachine:
             
     def ingest_file(self, in_filepath, in_tags: Dict[str, str] = None):
         """
-        Take in a .csv file and convert its contents into data to learn from.
+        Take in a .csv file and convert its contents into data to learn from, i.e. observations.
+
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
         The tags partition data within storage.
         They can be included/excluded from learning and allocated to different learners.
@@ -100,27 +101,60 @@ class AutonoMachine:
         
     def query_with_file(self, in_filepath, in_tags: Dict[str, str] = None):
         """
-        Take in a .csv file and convert its contents into data to respond to.
+        Take in a .csv file and convert its contents into data to respond to, i.e. queries.
+
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
         The tags partition data within storage.
         """
 
         log.info("%s - Scheduling request to query AutonoMachine '%s' with file: %s" 
                  % (Timestamp(), self.name, in_filepath))
-        ref = DataPort(in_data_storage = self.data_storage, in_tags = in_tags)
+        ref = DataPort(in_data_storage = self.data_storage, in_tags = in_tags,
+                       is_for_queries = True)
         self.data_ports[ref.name] = ref
-        create_async_task_from_sync(ref.ingest_file, in_filepath, 
-                                    as_query = True)
+        create_async_task_from_sync(ref.ingest_file, in_filepath)
         
     def ingest_stream(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port: int = SS.DEFAULT_PORT_OBSERVATIONS,
                       in_field_names: List[str] = None,
                       in_id_stream: str = None, in_tags: Dict[str, str] = None):
+        """
+        Take in a hostname and port number at which streamed data is being broadcasted.
+        Treat these as observations to learn from.
+        Provide names for each field and begin storing immediately or set them later and toggle storage then.
+
+        The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
+        The tags partition data within storage.
+        They can be included/excluded from learning and allocated to different learners.
+        """
         ref = DataPortStream(in_data_storage = self.data_storage,
                              in_hostname = in_hostname,
                              in_port = in_port,
                              in_field_names = in_field_names,
                              in_id_stream = in_id_stream,
                              in_tags = in_tags)
+        self.data_ports[ref.name] = ref
+        create_async_task_from_sync(ref.run_connection)
+
+        return ref
+    
+    def query_with_stream(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port: int = SS.DEFAULT_PORT_OBSERVATIONS,
+                          in_field_names: List[str] = None,
+                          in_id_stream: str = None, in_tags: Dict[str, str] = None):
+        """
+        Take in a hostname and port number at which streamed data is being broadcasted.
+        Treat these as queries to respond to.
+        Provide names for each field and begin storing immediately or set them later and toggle storage then.
+
+        The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
+        The tags partition data within storage.
+        """
+        ref = DataPortStream(in_data_storage = self.data_storage,
+                             in_hostname = in_hostname,
+                             in_port = in_port,
+                             in_field_names = in_field_names,
+                             in_id_stream = in_id_stream,
+                             in_tags = in_tags,
+                             is_for_queries = True)
         self.data_ports[ref.name] = ref
         create_async_task_from_sync(ref.run_connection)
 
@@ -162,15 +196,24 @@ class AutonoMachine:
     #         log.error("%s - DataStorage cannot be updated while a ProblemSolver exists." % Timestamp())
         
     def learn(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False, 
-              in_strategy: Strategy = None, in_keys_allocation = None):
+              in_tags_allocation: List[Union[str, Tuple[str, AllocationMethod]]] = None,
+              in_strategy: Strategy = None):
+        """
+        Create a solver that will attempt to learn a relation between data features and a target.
+        If feature keys are not provided, the relation will include every feature currently present in data storage.
+        Likewise, if provided feature keys are excluded, only currently stored features will be included.
 
+        If partitions of data have been assigned tags, they can be marked here for allocation.
+        For example: ["source", ("context", AllocationMethod.LEAVE_ONE_OUT)]
+        This allows solution learner groups to train on differently tagged subsets of data.
+        """
         instructions = ProblemSolverInstructions(in_key_target = in_key_target,
                                                  in_keys_features = in_keys_features,
                                                  do_exclude = do_exclude,
-                                                 in_strategy = in_strategy,
-                                                 in_keys_allocation = in_keys_allocation)
+                                                 in_tags_allocation = in_tags_allocation)
         self.solver = ProblemSolver(in_data_storage = self.data_storage,
                                     in_instructions = instructions,
+                                    in_strategy = in_strategy,
                                     in_n_procs = self.n_procs,
                                     do_mp = self.do_mp)
 

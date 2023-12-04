@@ -28,6 +28,9 @@ class StandardScaler(SKLearnPreprocessor):
     def learn(self, x, y):
         self.model.fit(X=x, y=y)
 
+    def adapt(self, x, y):
+        self.model.partial_fit(X=x, y=y)
+
     def transform(self, x):
         return self.model.transform(X=x)
 
@@ -57,6 +60,18 @@ class LinearRegressor(SKLearnPredictor):
         super().__init__(*args, **kwargs)
         self.model = linear_model.LinearRegression()
         self.name += "_LinearRegressor"
+
+    def get_feature_importance(self):
+        return self.model.coef_
+    
+class SGDRegressor(SKLearnPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = linear_model.SGDRegressor()
+        self.name += "_SGDRegressor"
+    
+    def adapt(self, x, y):
+        self.model.partial_fit(X=x, y=y)
 
     def get_feature_importance(self):
         return self.model.coef_

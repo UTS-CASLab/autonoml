@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """
+TODO: Expand into a way to test that all components function without breaking.
+
 Created on Fri Nov 24 23:32:14 2023
 
 @author: David J. Kedziora

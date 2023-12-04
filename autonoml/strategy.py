@@ -9,7 +9,7 @@ from . import components
 from .hyperparameter import HPInt, HPFloat
 from .component import MLComponent, MLPredictor, MLPreprocessor
 from .pipeline import MLPipeline
-from .utils import log, Timestamp, CustomBool
+from .utils import log, Timestamp, CustomBool, flatten_dict
 
 import pkgutil
 import importlib
@@ -93,6 +93,7 @@ class SearchSpace(dict):
 
 class Strategy:
     def __init__(self, in_search_space: SearchSpace = None,
+                 in_n_challengers: int = 2,
                  do_defaults: bool = False, do_random: bool = False, do_hpo: bool = False,
                  in_n_samples: int = 10,
                  in_max_hpo_concurrency: int = 2,
@@ -105,6 +106,8 @@ class Strategy:
         else:
             self.search_space = in_search_space
 
+        self.n_challengers = in_n_challengers
+
         self.do_defaults = do_defaults
         self.do_random = do_random
         self.n_samples = in_n_samples
@@ -116,8 +119,6 @@ class Strategy:
 
         self.n_iterations = in_n_iterations
         self.n_partitions = in_n_partitions
-
-        self.n_challengers = 2
 
 class CustomDumper(yaml.Dumper): pass
 def custom_bool_representer(dumper, data):
@@ -139,18 +140,28 @@ def template_strategy(in_filepath: str = "./template.strat",
                 "to learn the solution to an ML problem. "
                 "Edit it as desired and import it when starting a learning process.")
     
-    info_strategy = ("The defaults strategy starts the learning process with one ML pipeline "
-                     "per predictor that has been enabled in the search space below, "
-                     "where all hyperparameters are set to default values. "
-                     "The random strategy starts with a number of pipelines and hyperparameters "
-                     "randomly sampled from the enabled search space. "
-                     "The HPO strategy runs a thread/process intensive hyperparameter optimisation "
-                     "to find one optimal pipeline from the enabled search space. "
-                     "It is recommended not to run too many HPOs concurrently. "
-                     "Note that these strategies are applied once per learner group, in the case "
-                     "where problem-solving involves allocations. "
-                     "In all cases, a pipeline is initially scored on a validation fraction of "
-                     "training data, averaged over a number of folds.")
+    info_structure = ("An AutonoML solution consists of learner groups "
+                      "allocated to different partitions of data. "
+                      "In the base case, there is one group and it learns/adapts on all observations. "
+                      "Each learner group has one champion and a number of challengers. "
+                      "Newly developed pipelines exceeding this number will either kick out "
+                      "an existing pipeline or fail to enter the ranks.")
+    
+    info_development = ("The defaults strategy starts the learning process with one ML pipeline "
+                        "per predictor that has been enabled in the search space below, "
+                        "where all hyperparameters are set to default values. "
+                        "The random strategy starts with a number of pipelines and hyperparameters "
+                        "randomly sampled from the enabled search space. "
+                        "The HPO strategy runs a thread/process intensive hyperparameter optimisation "
+                        "to find one optimal pipeline from the enabled search space. "
+                        "It is recommended not to run too many HPOs concurrently. "
+                        "Note that these strategies are applied once per learner group, in the case "
+                        "where problem-solving involves allocations of data-subsets.")
+    
+    info_validation = ("A pipeline is initially scored on a validation fraction of "
+                       "training data, averaged over a number of folds.")
+    
+    info_adaptation = ("By default, all pipeline components will adapt to new observations.")
 
     info_bohb = ("Prior to HPO, the dataset is randomly split into "
                  "a training fraction and a validation fraction. "
@@ -194,14 +205,18 @@ def template_strategy(in_filepath: str = "./template.strat",
     strategy = Strategy()
 
     dict_strategy = {"Overview": overview,
-                     "Strategy": {"Info": info_strategy,
-                                  "Do Defaults": CustomBool(strategy.do_defaults),
-                                  "Do Random": CustomBool(strategy.do_random),
-                                  "Number of Samples": strategy.n_samples,
-                                  "Do HPO": CustomBool(strategy.do_hpo),
-                                  "Max HPO Concurrency": strategy.max_hpo_concurrency,
-                                  "Validation Fraction": strategy.frac_validation,
-                                  "Validation Folds": strategy.folds_validation},
+                     "Strategy": {"Structure": {"Info": info_structure,
+                                                "Number of Challengers": strategy.n_challengers},
+                                  "Development": {"Info": info_development,
+                                                  "Do Defaults": CustomBool(strategy.do_defaults),
+                                                  "Do Random": CustomBool(strategy.do_random),
+                                                  "Number of Samples": strategy.n_samples,
+                                                  "Do HPO": CustomBool(strategy.do_hpo),
+                                                  "Max HPO Concurrency": strategy.max_hpo_concurrency},
+                                  "Validation": {"Info": info_validation,
+                                                 "Validation Fraction": strategy.frac_validation,
+                                                 "Validation Folds": strategy.folds_validation},
+                                  "Adaptation": {"Info": info_adaptation}},
                      "Optimiser": {"BOHB": {"Info": info_bohb,
                                             "Iterations": strategy.n_iterations, 
                                             "Partitions": strategy.n_partitions}}, 
@@ -255,6 +270,7 @@ def import_strategy(in_filepath: str):
                 except:
                     continue
 
+    # Print out what components are available in the imported search space.
     log.info("%s   Search space..." % Timestamp(None))
     text_list = []
     for id_component in search_space:
@@ -266,14 +282,19 @@ def import_strategy(in_filepath: str):
         for text in text_list:
             log.info(text)
 
+    # Remove organising keys from portions of the imported dictionary.
+    # This is an initial step towards future-proofing file structure updates.
+    dict_strategy = flatten_dict(specs["Strategy"])
+
     strategy = Strategy(in_search_space = search_space,
-                        do_defaults = bool(CustomBool(specs["Strategy"]["Do Defaults"])),
-                        do_random = bool(CustomBool(specs["Strategy"]["Do Random"])),
-                        do_hpo = bool(CustomBool(specs["Strategy"]["Do HPO"])),
-                        in_n_samples = int(specs["Strategy"]["Number of Samples"]),
-                        in_max_hpo_concurrency = int(specs["Strategy"]["Max HPO Concurrency"]),
-                        in_frac_validation = float(specs["Strategy"]["Validation Fraction"]),
-                        in_folds_validation = int(specs["Strategy"]["Validation Folds"]),
+                        in_n_challengers = int(dict_strategy["Number of Challengers"]),
+                        do_defaults = bool(CustomBool(dict_strategy["Do Defaults"])),
+                        do_random = bool(CustomBool(dict_strategy["Do Random"])),
+                        do_hpo = bool(CustomBool(dict_strategy["Do HPO"])),
+                        in_n_samples = int(dict_strategy["Number of Samples"]),
+                        in_max_hpo_concurrency = int(dict_strategy["Max HPO Concurrency"]),
+                        in_frac_validation = float(dict_strategy["Validation Fraction"]),
+                        in_folds_validation = int(dict_strategy["Validation Folds"]),
                         in_n_iterations = int(specs["Optimiser"]["BOHB"]["Iterations"]),
                         in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]))
 

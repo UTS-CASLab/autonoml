@@ -12,7 +12,7 @@ import os
 import time
 import traceback
 
-from typing import Type
+from typing import Type, Dict
 
 # Explicitly grab a logging handle for the AutonoML codebase.
 # Setup is done during package initialisation.
@@ -113,6 +113,18 @@ class CustomBool:
 
     def __repr__(self):
         return "y" if self.value else "n"
+    
+def flatten_dict(in_dict: Dict):
+    """
+    Returns a flat dictionary with intermediate keys removed.
+    """
+    items = []
+    for key, value in in_dict.items():
+        if isinstance(value, dict):
+            items.extend(flatten_dict(value).items())
+        else:
+            items.append((key, value))
+    return dict(items)
     
 def identify_exception(in_exception: Exception, in_text_alert: str):
     log.error(in_text_alert)

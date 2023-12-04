@@ -7,7 +7,7 @@ Strategy:
       Each learner group has one champion and a number of challengers. Newly developed
       pipelines exceeding this number will either kick out an existing pipeline or
       fail to enter the ranks.
-    Number of Challengers: 0
+    Number of Challengers: 2
   Development:
     Info: The defaults strategy starts the learning process with one ML pipeline per
       predictor that has been enabled in the search space below, where all hyperparameters
@@ -18,7 +18,7 @@ Strategy:
       run too many HPOs concurrently. Note that these strategies are applied once
       per learner group, in the case where problem-solving involves allocations of
       data-subsets.
-    Do Defaults: y
+    Do Defaults: n
     Do Random: n
     Number of Samples: 10
     Do HPO: n
@@ -109,7 +109,7 @@ Search Space:
     Include: n
   autonoml.components.sklearn.LinearRegressor:
     Info: MLPredictor
-    Include: y
+    Include: n
   autonoml.components.sklearn.SGDRegressor:
     Info: MLPredictor
     Include: n

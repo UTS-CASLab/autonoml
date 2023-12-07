@@ -8,8 +8,8 @@ Created on Mon Aug 21 19:30:58 2023
 from . import components
 from .hyperparameter import HPInt, HPFloat
 from .component import MLComponent, MLPredictor, MLPreprocessor
-from .pipeline import MLPipeline
 from .utils import log, Timestamp, CustomBool, flatten_dict
+from .metrics import LossFunction
 
 import pkgutil
 import importlib
@@ -34,7 +34,13 @@ class ComponentCatalogue():
 
         # Set up a mapping between IDs of components and their categories.
         # For example, this will identify if a component is a preprocessor.
-        self.categories = [MLPreprocessor, MLPredictor]
+        # Determine the categories dynamically as MLComponent subclasses in the component module.
+        self.categories = list()
+        loaded_module = importlib.import_module(".component", package = "autonoml")
+        for _, obj in vars(loaded_module).items():
+            if isinstance(obj, type) and issubclass(obj, MLComponent) and obj != MLComponent:
+                self.categories.append(obj)
+        # self.categories = [MLPreprocessor, MLPredictor]
         self.cid_to_categories = dict()
         self.category_to_cids = {category: dict() for category in self.categories}
 
@@ -92,6 +98,9 @@ class SearchSpace(dict):
         return categories
 
 class Strategy:
+    """
+    The data structure that contains strategic choices for how to tackle an ML problem.
+    """
     def __init__(self, in_search_space: SearchSpace = None,
                  in_n_challengers: int = 2,
                  do_defaults: bool = False, do_random: bool = False, do_hpo: bool = False,
@@ -99,7 +108,8 @@ class Strategy:
                  in_max_hpo_concurrency: int = 2,
                  in_n_iterations: int = 4, in_n_partitions: int = 3,
                  in_frac_validation: float = 0.25,
-                 in_folds_validation: int = 1):
+                 in_folds_validation: int = 1,
+                 in_loss_function: LossFunction = None):
         
         if in_search_space is None:
             self.search_space = SearchSpace()
@@ -119,6 +129,12 @@ class Strategy:
 
         self.n_iterations = in_n_iterations
         self.n_partitions = in_n_partitions
+
+        self.loss_function = LossFunction.default()
+        if not in_loss_function is None:
+            self.loss_function = in_loss_function
+
+#%% Functions for exporting/importing strategy files.
 
 class CustomDumper(yaml.Dumper): pass
 def custom_bool_representer(dumper, data):
@@ -161,7 +177,8 @@ def template_strategy(in_filepath: str = "./template.strat",
     info_validation = ("A pipeline is initially scored on a validation fraction of "
                        "training data, averaged over a number of folds.")
     
-    info_adaptation = ("By default, all pipeline components will adapt to new observations.")
+    info_adaptation = ("By default, all pipeline components will attempt to adapt to new observations, "
+                       "even if the adapt method for the component is to just do nothing.")
 
     info_bohb = ("Prior to HPO, the dataset is randomly split into "
                  "a training fraction and a validation fraction. "
@@ -169,11 +186,18 @@ def template_strategy(in_filepath: str = "./template.strat",
                  "sample p^i models on 1/p^i of training data at the 1st iteration, "
                  "then propagate the best 1/p models to the next iteration.")
     
+    info_loss = ("Only one of these options for comparing models can be selected. "
+                 "If more than one are marked 'y', the first of those will be chosen. "
+                 "If all are marked 'n', this setting will not override defaults/choices made elsewhere.")
+    
     info_override = ("These options are quick ways to include/exclude categories of components. "
                      "Mark them y/n if desired, but leave them unmarked otherwise. "
                      "Otherwise, they will override any specific choices in the search space. "
                      "Also decide whether inclusions or exclusions are higher priority, "
                      "in the case that a component exists in multiple categories.")
+    
+    # Go through the available loss function metrics and create a dictionary of them.
+    loss_functions = {loss_function.value: CustomBool(False) for loss_function in LossFunction}
     
     # Go through the component catalogue and create dictionaries to export into the template file.
     # The dictionaries should list modules and components/hyperparameters for inclusion/exclusion.
@@ -217,6 +241,8 @@ def template_strategy(in_filepath: str = "./template.strat",
                                                  "Validation Fraction": strategy.frac_validation,
                                                  "Validation Folds": strategy.folds_validation},
                                   "Adaptation": {"Info": info_adaptation}},
+                     "Loss Function": {"Info": info_loss,
+                                       "Options": loss_functions},
                      "Optimiser": {"BOHB": {"Info": info_bohb,
                                             "Iterations": strategy.n_iterations, 
                                             "Partitions": strategy.n_partitions}}, 
@@ -238,6 +264,12 @@ def import_strategy(in_filepath: str):
 
     with open(in_filepath, "r") as file:
         specs = yaml.safe_load(file)
+
+    # Import the loss function specified in the file.
+    loss_function = None
+    for loss_string, user_choice in reversed(specs["Loss Function"]["Options"].items()):
+        if bool(CustomBool(user_choice)):
+            loss_function = LossFunction.from_string(loss_string)
 
     # Deal with user-specified search-space overrides.
     # Note: Whatever override is prioritised must be applied last.
@@ -296,6 +328,7 @@ def import_strategy(in_filepath: str):
                         in_frac_validation = float(dict_strategy["Validation Fraction"]),
                         in_folds_validation = int(dict_strategy["Validation Folds"]),
                         in_n_iterations = int(specs["Optimiser"]["BOHB"]["Iterations"]),
-                        in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]))
+                        in_n_partitions = int(specs["Optimiser"]["BOHB"]["Partitions"]),
+                        in_loss_function = loss_function)
 
     return strategy

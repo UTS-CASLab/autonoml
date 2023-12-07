@@ -229,6 +229,7 @@ class ProblemSolver:
                 # Put solitary pipelines into a list.
                 if isinstance(object_dev, MLPipeline):
                     object_dev = [object_dev]
+                    dev_package = (object_dev,) + dev_package[1:]
 
                 if isinstance(object_dev, list) and all(isinstance(item, MLPipeline) for item in object_dev):
 
@@ -300,7 +301,7 @@ class ProblemSolver:
             self.pipelines_in_dev[pipeline.name] = True
                 
             create_async_task(self.push_to_production, future_pipeline, 
-                              in_dev_package = ([pipeline],) + in_dev_package[1:], 
+                              in_dev_package = (pipeline,) + in_dev_package[1:], 
                               in_data_sharer = data_sharer)
 
 
@@ -505,6 +506,7 @@ class ProblemSolver:
             if not in_data_sharer is None:
                 in_data_sharer.decrement_uses()
 
+    # TODO: This slows over time, possibly due to data filtering. Investigate/upgrade for efficiency.
     async def process_observations(self):
         
         while True:
@@ -567,7 +569,6 @@ class ProblemSolver:
 
                         list_adapted.append(pipeline)
 
-                        # TODO: Overall loss calculations are done over a growing list. Upgrade for efficiency.
                         results_dict[rank_pipeline]["responses"] = responses
                         record_loss = [None]*observations.get_amount()
                         record_loss[-1] = pipeline.get_loss()
@@ -647,6 +648,7 @@ class ProblemSolver:
                 tag_queries = self.data_storage.get_tag_combo_from_collection_id(collection_id,
                                                                                  as_string = True,
                                                                                  as_query = True)
+
                 action_responses(in_queries = queries,
                                  in_responses_best = responses_best,
                                  in_results_dict = results_dict,

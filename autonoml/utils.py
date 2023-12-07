@@ -13,6 +13,7 @@ import time
 import traceback
 
 from typing import Type, Dict
+import numpy as np
 
 # Explicitly grab a logging handle for the AutonoML codebase.
 # Setup is done during package initialisation.

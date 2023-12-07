@@ -6,7 +6,7 @@ Created on Mon Aug 21 19:49:12 2023
 """
 
 from ..hyperparameter import Hyperparameter, HPInt, HPFloat
-from ..component import MLPreprocessor, MLPredictor
+from ..component import MLPreprocessor, MLPredictor, MLOnlineLearner, MLScaler, MLRegressor
 from ..data import DataFormatX, DataFormatY
 
 import numpy as np
@@ -15,12 +15,12 @@ from river import preprocessing, linear_model, metrics
 
 
 
-class RiverPreprocessor(MLPreprocessor):
+class RiverPreprocessor(MLOnlineLearner, MLPreprocessor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.name += "_RiverPrep"
+        self.name += "_River"
 
-class OnlineStandardScaler(RiverPreprocessor):
+class OnlineStandardScaler(MLScaler, RiverPreprocessor):
     def __new__(cls, in_hpars = None, *args, **kwargs):
 
         cls_this = OnlineStandardScaler
@@ -51,17 +51,17 @@ class OnlineStandardScaler(RiverPreprocessor):
         else:
             return super(cls_this, cls).__new__(cls)
         
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = preprocessing.StandardScaler()
+        self.name += "_Standard"
+
     @staticmethod
     def new_hpars():
         hpars = dict()
         hpars["batch_size"] = HPInt(in_default = 1, in_min = 1, in_max = 1000,
                                     is_log_scale = True)
         return hpars
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.model = preprocessing.StandardScaler()
-        self.name += "_StandardScaler"
     
 class OnlineStandardScalerBatch(OnlineStandardScaler):
 
@@ -106,12 +106,12 @@ class OnlineStandardScalerIncremental(OnlineStandardScaler):
 
 
 
-class RiverPredictor(MLPredictor):
+class RiverPredictor(MLOnlineLearner, MLPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.name += "_RiverPred"
+        self.name += "_River"
 
-class OnlineLinearRegressor(RiverPredictor):
+class OnlineLinearRegressor(MLRegressor, RiverPredictor):
     def __new__(cls, in_hpars = None, *args, **kwargs):
 
         cls_this = OnlineLinearRegressor

@@ -549,12 +549,12 @@ class OnlineSVR:
 #%% The MLComponents.
 
 from ..hyperparameter import HPFloat
-from ..component import MLPredictor
+from ..component import MLOnlineLearner, MLRegressor
 from ..data import DataFormatX, DataFormatY
 
 from typing import List
 
-class OnlineSupportVectorRegressor(MLPredictor):
+class OnlineSupportVectorRegressor(MLRegressor, MLOnlineLearner):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Warning: Components are typically initialised without knowing data ahead of time.

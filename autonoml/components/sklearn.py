@@ -5,7 +5,9 @@ Created on Mon Aug 21 19:49:01 2023
 @author: David J. Kedziora
 """
 
-from ..component import MLPreprocessor, MLPredictor
+from ..component import (MLPreprocessor, MLPredictor, 
+                         MLOnlineLearner, MLScaler, 
+                         MLClassifier, MLRegressor)
 from ..data import DataFormatX, DataFormatY
 
 from sklearn import (preprocessing, linear_model, cross_decomposition,
@@ -16,14 +18,14 @@ from sklearn import (preprocessing, linear_model, cross_decomposition,
 class SKLearnPreprocessor(MLPreprocessor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.name += "_SKLearnPrep"
+        self.name += "_SKLearn"
         self.format_x = DataFormatX.NUMPY_ARRAY
 
-class StandardScaler(SKLearnPreprocessor):
+class StandardScaler(MLScaler, SKLearnPreprocessor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = preprocessing.StandardScaler()
-        self.name += "_StandardScaler"
+        self.name += "_Standard"
 
     def learn(self, x, y):
         self.model.fit(X=x, y=y)
@@ -39,7 +41,7 @@ class StandardScaler(SKLearnPreprocessor):
 class SKLearnPredictor(MLPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.name += "_SKLearnPred"
+        self.name += "_SKLearn"
         self.format_x = DataFormatX.NUMPY_ARRAY
         self.format_y = DataFormatY.NUMPY_ARRAY
 
@@ -49,34 +51,66 @@ class SKLearnPredictor(MLPredictor):
     def query(self, x):
         return self.model.predict(X=x)
     
-class DummyRegressor(SKLearnPredictor):
+
+    
+class DummyClassifier(MLClassifier, SKLearnPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = dummy.DummyClassifier()
+        self.name += "_Dummy"
+
+class LogisticRegressor(MLClassifier, SKLearnPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = linear_model.LogisticRegression()
+        self.name += "_Logistic"
+    
+class LinearSVC(MLClassifier, SKLearnPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = svm.LinearSVC()
+        self.name += "_LinearSVC"
+
+        
+
+class Perceptron(MLClassifier, MLOnlineLearner, SKLearnPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = linear_model.Perceptron()
+        self.name += "_Perceptron"
+
+    def adapt(self, x, y):
+        self.model.partial_fit(X=x, y=y)
+
+class SGDClassifier(MLClassifier, MLOnlineLearner, SKLearnPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = linear_model.SGDClassifier()
+        self.name += "_SGD"
+    
+    def adapt(self, x, y):
+        self.model.partial_fit(X=x, y=y)
+
+
+    
+
+    
+class DummyRegressor(MLRegressor, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = dummy.DummyRegressor()
         self.name += "_Dummy"
 
-class LinearRegressor(SKLearnPredictor):
+class LinearRegressor(MLRegressor, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = linear_model.LinearRegression()
-        self.name += "_LinearRegressor"
+        self.name += "_Linear"
 
     def get_feature_importance(self):
         return self.model.coef_
     
-class SGDRegressor(SKLearnPredictor):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.model = linear_model.SGDRegressor()
-        self.name += "_SGDRegressor"
-    
-    def adapt(self, x, y):
-        self.model.partial_fit(X=x, y=y)
-
-    def get_feature_importance(self):
-        return self.model.coef_
-    
-class LinearSupportVectorRegressor(SKLearnPredictor):
+class LinearSVR(MLRegressor, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = svm.LinearSVR()
@@ -85,7 +119,7 @@ class LinearSupportVectorRegressor(SKLearnPredictor):
     def get_feature_importance(self):
         return self.model.coef_
 
-class PartialLeastSquaresRegressor(SKLearnPredictor):
+class PLSRegressor(MLRegressor, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = cross_decomposition.PLSRegression(n_components=1)
@@ -97,3 +131,17 @@ class PartialLeastSquaresRegressor(SKLearnPredictor):
 
     def get_feature_importance(self):
         return self.model.coef_.T[0]
+    
+
+    
+class SGDRegressor(MLRegressor, MLOnlineLearner, SKLearnPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = linear_model.SGDRegressor()
+        self.name += "_SGD"
+    
+    def adapt(self, x, y):
+        self.model.partial_fit(X=x, y=y)
+
+    def get_feature_importance(self):
+        return self.model.coef_

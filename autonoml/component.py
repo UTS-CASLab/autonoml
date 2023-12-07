@@ -145,3 +145,35 @@ class MLPredictor(MLComponent):
     
     def set_key_target(self, in_key_target: str):
         self.key_target = in_key_target
+
+
+
+#%% Other categories.
+
+class MLOnlineLearner(MLComponent):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name += "_Online"
+
+    def adapt(self, x, y):
+        self.learn(x, y)
+
+class MLImputer(MLPreprocessor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name += "_Imputer"
+
+class MLScaler(MLPreprocessor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name += "_Scaler"
+
+class MLClassifier(MLPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name += "_Classifier"
+
+class MLRegressor(MLPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name += "_Regressor"

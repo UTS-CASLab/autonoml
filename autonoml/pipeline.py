@@ -37,8 +37,9 @@ class MLPipeline:
     count = 0   # Used only for naming unnamed pipelines.
 
     def __init__(self, in_keys_features: List[str], in_key_target: str, 
-                 in_components: List[MLComponent] = None,
+                 in_components: List[MLComponent] = None, in_loss_function: LossFunction = None,
                  in_name: str = None, do_increment_count: bool = True):
+        
         if in_name is None:
             self.name = "Pipe_" + str(MLPipeline.count)
             if do_increment_count:
@@ -71,6 +72,11 @@ class MLPipeline:
             text_error = "The last component in an MLPipeline must be an MLPredictor."
             log.error("%s - %s" % (Timestamp(), text_error))
             raise Exception(text_error)
+        
+        # Store the loss function that is used to evaluate this pipeline.
+        self.loss_function = LossFunction.default()
+        if not in_loss_function is None:
+            self.loss_function = in_loss_function
 
         # Maintain a history of the target variable as well as loss values.
         self.training_y_true = list()
@@ -126,16 +132,16 @@ class MLPipeline:
                 self.training_y_response.extend(y_response)
                 self.training_loss = calculate_loss(y_response = self.training_y_response, 
                                                     y_true = self.training_y_true,
-                                                    in_loss_function = LossFunction.RMSE)
+                                                    in_loss_function = self.loss_function)
             else:
                 self.testing_y_true.extend(y_true)
                 self.testing_y_response.extend(y_response)
                 self.testing_loss = calculate_loss(y_response = self.testing_y_response,
                                                    y_true = self.testing_y_true,
-                                                   in_loss_function = LossFunction.RMSE)
+                                                   in_loss_function = self.loss_function)
                 
             loss_recent = calculate_loss(y_response = y_response, y_true = y_true,
-                                         in_loss_function = LossFunction.RMSE)
+                                         in_loss_function = self.loss_function)
         
         return loss_recent
 

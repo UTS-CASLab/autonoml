@@ -11,8 +11,9 @@ from .pipeline import MLPipeline, train_pipeline, test_pipeline
 
 from .hyperparameter import HPInt, HPFloat
 from .strategy import catalogue, Strategy, SearchSpace
-from .data_storage import DataCollectionXY, SharedMemoryManager
+from .data_storage import SharedMemoryManager
 from .instructions import ProcessInformation
+from .metrics import LossFunction
 
 import ConfigSpace as CS
 from copy import deepcopy
@@ -54,10 +55,11 @@ class HPOInstructions:
         self.budget_min = 1/(self.n_partitions**self.n_iterations)
         self.budget_max = 1
 
-        if in_strategy is None:
-            self.search_space = SearchSpace()
-        else:
-            self.search_space = in_strategy.search_space
+        self.loss_function = in_strategy.loss_function
+
+        self.search_space = in_strategy.search_space
+
+
 
 def config_to_pipeline_structure(in_config):
 
@@ -76,7 +78,9 @@ def config_to_pipeline_structure(in_config):
 class HPOWorker(Worker):
 
     def __init__(self, in_data_sharer: SharedMemoryManager,
-                 in_info_process: ProcessInformation, *args, **kwargs):
+                 in_info_process: ProcessInformation, 
+                 in_loss_function: LossFunction,
+                 *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # # TODO: Make these only once. Do it at the solver level.
@@ -99,6 +103,7 @@ class HPOWorker(Worker):
         _, sets_training, sets_validation = in_data_sharer.load_observations()
         self.sets_training, self.sets_validation = sets_training, sets_validation
         self.info_process = deepcopy(in_info_process)
+        self.loss_function = in_loss_function
 
     # TODO: Consider the divide by zero runtime warnings generated seemingly when using categoricals.
     # TODO: Consider folding time taken into the metric.
@@ -120,7 +125,8 @@ class HPOWorker(Worker):
             # TODO: Maybe ID the test names according to configuration number.
             pipeline = MLPipeline(in_name = "Test",
                                 in_keys_features = keys_features, in_key_target = key_target, do_increment_count = False,
-                                in_components = config_to_pipeline_structure(in_config = config))
+                                in_components = config_to_pipeline_structure(in_config = config),
+                                in_loss_function = self.loss_function)
 
             # print("Training Size: %i" % int(budget*set_training.get_amount()))
             pipeline, _, _ = train_pipeline(in_pipeline = pipeline,
@@ -198,7 +204,9 @@ class HPOWorker(Worker):
 
         return(cs)
     
-def create_pipelines_default(in_keys_features, in_key_target, in_strategy):
+
+
+def create_pipelines_default(in_keys_features: List[str], in_key_target: str, in_strategy: Strategy):
 
     if in_strategy is None:
         search_space = SearchSpace()
@@ -210,7 +218,8 @@ def create_pipelines_default(in_keys_features, in_key_target, in_strategy):
     pipelines = list()
     for predictor_name in predictor_names:
         pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target,
-                              in_components = [catalogue.components[predictor_name]()])
+                              in_components = [catalogue.components[predictor_name]()],
+                              in_loss_function = in_strategy.loss_function)
         pipelines.append(pipeline)
     
     return pipelines
@@ -224,9 +233,12 @@ def create_pipeline_random(in_keys_features, in_key_target, in_strategy):
 
     config = HPOWorker.get_configspace(search_space).sample_configuration()
     pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target,
-                          in_components = config_to_pipeline_structure(in_config = config))
+                          in_components = config_to_pipeline_structure(in_config = config),
+                          in_loss_function = in_strategy.loss_function)
     
     return pipeline
+
+
 
 def add_hpo_worker(in_hpo_instructions: HPOInstructions,
                    in_data_sharer: SharedMemoryManager,
@@ -247,6 +259,7 @@ def add_hpo_worker(in_hpo_instructions: HPOInstructions,
 
     worker = HPOWorker(in_data_sharer = in_data_sharer,
                        in_info_process = in_info_process,
+                       in_loss_function = in_hpo_instructions.loss_function,
                        nameserver = name_server_host, run_id = run_id, id = in_idx, logger = log_to_use)
     try:
         worker.run(background = do_background)
@@ -339,7 +352,8 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
     key_target = in_info_process.key_target
     pipeline = MLPipeline(in_name = "Pipe_" + run_id,
                           in_keys_features = keys_features, in_key_target = key_target,
-                          in_components = config_to_pipeline_structure(in_config = config_best))
+                          in_components = config_to_pipeline_structure(in_config = config_best),
+                          in_loss_function = in_hpo_instructions.loss_function)
     pipeline, _, info_process = train_pipeline(in_pipeline = pipeline,
                                                in_data_collection = in_observations,
                                                in_info_process = in_info_process)

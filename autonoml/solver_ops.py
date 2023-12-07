@@ -23,6 +23,7 @@ from pyarrow import csv as pacsv
 
 import os
 import numpy as np
+from collections import Counter
 
 
 
@@ -240,6 +241,7 @@ def get_responses(in_pipeline: MLPipeline,
     
     return responses, pipeline, info_process
 
+# TODO: Expand on this.
 def ensemble_responses(in_dict_responses):
 
     # Get the responses from the best-ranked learner of each group, i.e. rank 0.
@@ -249,7 +251,17 @@ def ensemble_responses(in_dict_responses):
             all_responses.append(in_dict_responses[tags][0]["responses"])
 
     # Calculate the average across all best-ranked learner responses.
-    return np.mean(all_responses, axis = 0)
+    try:
+        return np.mean(all_responses, axis = 0)
+    except:
+        pass
+
+    # Failing that, return the modes of responses across all best-ranked learners.
+    # TODO: If this is inefficient, seek other ways to calculate cross-axis modes.
+    transposed_responses = zip(*all_responses)
+    ensembled_responses = [Counter(column).most_common(1)[0][0] for column in transposed_responses]
+
+    return ensembled_responses
 
 def action_responses(in_queries: DataCollectionXY,
                      in_responses_best,

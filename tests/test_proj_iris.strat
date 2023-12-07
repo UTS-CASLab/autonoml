@@ -18,10 +18,10 @@ Strategy:
       run too many HPOs concurrently. Note that these strategies are applied once
       per learner group, in the case where problem-solving involves allocations of
       data-subsets.
-    Do Defaults: n
-    Do Random: n
+    Do Defaults: y
+    Do Random: y
     Number of Samples: 10
-    Do HPO: n
+    Do HPO: y
     Max HPO Concurrency: 2
   Validation:
     Info: A pipeline is initially scored on a validation fraction of training data,
@@ -29,7 +29,15 @@ Strategy:
     Validation Fraction: 0.25
     Validation Folds: 1
   Adaptation:
-    Info: By default, all pipeline components will adapt to new observations.
+    Info: By default, all pipeline components will attempt to adapt to new observations,
+      even if the adapt method for the component is to just do nothing.
+Loss Function:
+  Info: Only one of these options for comparing models can be selected. If more than
+    one are marked 'y', the first of those will be chosen. If all are marked 'n',
+    this setting will not override defaults/choices made elsewhere.
+  Options:
+    RMSE: n
+    Zero-One Classification Loss: y
 Optimiser:
   BOHB:
     Info: Prior to HPO, the dataset is randomly split into a training fraction and
@@ -52,9 +60,14 @@ Inclusions/Exclusions:
   Categories:
     MLPreprocessor: ''
     MLPredictor: ''
+    MLOnlineLearner: ''
+    MLImputer: ''
+    MLScaler: ''
+    MLClassifier: 'y'
+    MLRegressor: ''
 Search Space:
   autonoml.components.custom_ttk.OnlineSupportVectorRegressor:
-    Info: MLPredictor
+    Info: MLPredictor, MLOnlineLearner, MLRegressor
     Include: n
     Hpars:
       C:
@@ -79,7 +92,7 @@ Search Space:
         Min: 0.0001
         Max: 1.0
   autonoml.components.river.OnlineStandardScaler:
-    Info: MLPreprocessor
+    Info: MLPreprocessor, MLOnlineLearner, MLScaler
     Include: n
     Hpars:
       batch_size:
@@ -88,7 +101,7 @@ Search Space:
         Min: 1
         Max: 1000
   autonoml.components.river.OnlineLinearRegressor:
-    Info: MLPredictor
+    Info: MLPredictor, MLOnlineLearner, MLRegressor
     Include: n
     Hpars:
       batch_size:
@@ -102,20 +115,35 @@ Search Space:
         Min: 1.0e-06
         Max: 1.0
   autonoml.components.sklearn.StandardScaler:
-    Info: MLPreprocessor
+    Info: MLPreprocessor, MLScaler
+    Include: n
+  autonoml.components.sklearn.DummyClassifier:
+    Info: MLPredictor, MLClassifier
+    Include: n
+  autonoml.components.sklearn.LogisticRegressor:
+    Info: MLPredictor, MLClassifier
+    Include: n
+  autonoml.components.sklearn.LinearSVC:
+    Info: MLPredictor, MLClassifier
+    Include: n
+  autonoml.components.sklearn.Perceptron:
+    Info: MLPredictor, MLOnlineLearner, MLClassifier
+    Include: n
+  autonoml.components.sklearn.SGDClassifier:
+    Info: MLPredictor, MLOnlineLearner, MLClassifier
     Include: n
   autonoml.components.sklearn.DummyRegressor:
-    Info: MLPredictor
+    Info: MLPredictor, MLRegressor
     Include: n
   autonoml.components.sklearn.LinearRegressor:
-    Info: MLPredictor
+    Info: MLPredictor, MLRegressor
+    Include: n
+  autonoml.components.sklearn.LinearSVR:
+    Info: MLPredictor, MLRegressor
+    Include: n
+  autonoml.components.sklearn.PLSRegressor:
+    Info: MLPredictor, MLRegressor
     Include: n
   autonoml.components.sklearn.SGDRegressor:
-    Info: MLPredictor
-    Include: n
-  autonoml.components.sklearn.LinearSupportVectorRegressor:
-    Info: MLPredictor
-    Include: n
-  autonoml.components.sklearn.PartialLeastSquaresRegressor:
-    Info: MLPredictor
+    Info: MLPredictor, MLOnlineLearner, MLRegressor
     Include: n

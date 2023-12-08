@@ -11,6 +11,8 @@ from .strategy import Strategy
 
 from .data_storage import DataStorage
 
+from typing import List, Tuple, Union
+
 from enum import Enum
 import os
 import shutil
@@ -30,7 +32,8 @@ class ProblemSolverInstructions:
     Contrasts with a Strategy, which describes how to approach the problem.
     """
     def __init__(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False,
-                 in_tags_allocation = None):
+                 do_immediate_responses: bool = True,
+                 in_tags_allocation: List[Union[str, Tuple[str, AllocationMethod]]] = None):
         
         self.key_target = in_key_target
         self.keys_features = in_keys_features
@@ -38,7 +41,7 @@ class ProblemSolverInstructions:
 
         self.tags_allocation = in_tags_allocation
 
-        self.do_query_after_complete = True
+        self.do_immediate_responses = do_immediate_responses
 
 # TODO: Clean-up labels around tags and keys.
 class ProblemSolution:

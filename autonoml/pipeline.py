@@ -173,8 +173,12 @@ class MLPipeline:
                 # Note: No need to memorise the target space unless modifications are allowed.
                 if (state == PipelineProcessState.QUERY and do_learn):
                     x_mem = deepcopy(x)
+                    format_x_mem = format_x
 
                 for idx_component in range(num_components):
+
+                    # print(type(x))
+                    # print(type(y))
 
                     # The data is reformatted for the requirements of each component.
                     component = self.components[idx_component]
@@ -183,9 +187,22 @@ class MLPipeline:
                     y, format_y = component.reformat_y(y = y, in_format_old = format_y)
                     # print("a %s" % (Timestamp().time - time_start))
 
+                    # print(component)
+                    # print(component.name)
+                    # print(component.format_x)
+                    # print(x)
+                    # print(y)
+
+                    # print(type(x))
+                    # print(type(y))
+
+                    # Learn or adapt, depending on whether data was queried first.
                     if state == PipelineProcessState.LEARN:
                         # time_start = Timestamp().time
-                        component.learn(x=x, y=y)
+                        if do_query:
+                            component.adapt(x=x, y=y)
+                        else:
+                            component.learn(x=x, y=y)
                         # print("b %s" % (Timestamp().time - time_start))
 
                     if isinstance(component, MLPreprocessor):
@@ -201,23 +218,26 @@ class MLPipeline:
 
                         if idx_component == num_components - 1:
                             # Reformat the final response to a list format.
+                            # print(y)
+                            # print(predictions)
                             predictions = reformat_y(in_data = predictions,
                                                     in_format_old = format_y,
                                                     in_format_new = DataFormatY.LIST)
-                            y = reformat_y(in_data = y,
-                                        in_format_old = format_y,
-                                        in_format_new = DataFormatY.LIST)
+                            y_list = reformat_y(in_data = y,
+                                                in_format_old = format_y,
+                                                in_format_new = DataFormatY.LIST)
                             
                             if state == PipelineProcessState.QUERY:
                                 responses = predictions
-                                self.update_loss(y_response = predictions, y_true = y)
+                                self.update_loss(y_response = predictions, y_true = y_list)
                             else:
-                                self.update_loss(y_response = predictions, y_true = y, 
+                                self.update_loss(y_response = predictions, y_true = y_list, 
                                                  is_training = True)
 
                 # Recall the original feature space if querying and learning.
                 if (state == PipelineProcessState.QUERY and do_learn):
                     x = x_mem
+                    format_x = format_x_mem
 
         return responses
 

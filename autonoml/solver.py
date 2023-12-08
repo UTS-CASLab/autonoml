@@ -463,8 +463,10 @@ class ProblemSolver:
             # Create an alert for the exception.
             if isinstance(object_dev, HPOInstructions):
                 text_object = "HPO run '%s'" % object_dev.name
-            elif isinstance(object_dev, list) and all(isinstance(item, MLPipeline) for item in object_dev):
-                text_object = "MLPipeline '%s'" % object_dev[0].name
+            # elif isinstance(object_dev, list) and all(isinstance(item, MLPipeline) for item in object_dev):
+            #     text_object = "MLPipeline '%s'" % object_dev[0].name
+            elif isinstance(object_dev, MLPipeline):
+                text_object = "MLPipeline '%s'" % object_dev.name
             text_alert = "%s - ProblemSolver '%s' failed to process %s." % (Timestamp(), self.name, text_object)
             identify_exception(e, text_alert)
 
@@ -489,12 +491,13 @@ class ProblemSolver:
                 del self.hpo_runs_in_dev[object_dev.name]
                 log.info("%s   HPO runs still in development: %i" 
                          % (Timestamp(None), len(self.hpo_runs_in_dev)))
-            elif isinstance(object_dev, list) and all(isinstance(item, MLPipeline) for item in object_dev):
-                if object_dev[0].name in self.pipelines_in_dev:
-                    del self.pipelines_in_dev[object_dev[0].name]
+            # elif isinstance(object_dev, list) and all(isinstance(item, MLPipeline) for item in object_dev):
+            elif isinstance(object_dev, MLPipeline):
+                if object_dev.name in self.pipelines_in_dev:
+                    del self.pipelines_in_dev[object_dev.name]
                 else:
                     log.warning("%s   Noted multiple attempts to clear pipeline '%s' from development. "
-                                "Possibly a non-unique name." % (Timestamp(), object_dev[0].name))
+                                "Possibly a non-unique name." % (Timestamp(), object_dev.name))
                 log.info("%s   Pipelines still in development: %i" 
                          % (Timestamp(None), len(self.pipelines_in_dev)))
 
@@ -599,7 +602,7 @@ class ProblemSolver:
         while True:
 
             # If required, ensure no pipelines are awaiting development before querying.
-            if self.instructions.do_query_after_complete:
+            if not self.instructions.do_immediate_responses:
                 await self.queue_dev.join()
 
             # Check if there are more instances in storage than have been processed.

@@ -35,6 +35,7 @@ if __name__ == '__main__':
 
     proj.learn(in_key_target = "best",
                in_keys_features = ["estimate"], do_exclude = True,
+               do_immediate_responses = False,
                in_strategy = strategy,
                in_tags_allocation = [("context", aml.AllocationMethod.LEAVE_ONE_OUT)])
     

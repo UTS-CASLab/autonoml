@@ -195,13 +195,17 @@ class AutonoMachine:
     #         # TODO: Relax this constraint eventually.
     #         log.error("%s - DataStorage cannot be updated while a ProblemSolver exists." % Timestamp())
         
-    def learn(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False, 
+    def learn(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False,
+              do_immediate_responses: bool = True, 
               in_tags_allocation: List[Union[str, Tuple[str, AllocationMethod]]] = None,
               in_strategy: Strategy = None):
         """
         Create a solver that will attempt to learn a relation between data features and a target.
         If feature keys are not provided, the relation will include every feature currently present in data storage.
-        Likewise, if provided feature keys are excluded, only currently stored features will be included.
+        Similarly, if provided feature keys are excluded, only currently stored features will be included.
+
+        If attempting traditional ML, with training then testing, consider disallowing immediate responses.
+        Otherwise, by default, queries will be responded to ASAP after they arrive in storage, even if no learners exist yet.
 
         If partitions of data have been assigned tags, they can be marked here for allocation.
         For example: ["source", ("context", AllocationMethod.LEAVE_ONE_OUT)]
@@ -210,6 +214,7 @@ class AutonoMachine:
         instructions = ProblemSolverInstructions(in_key_target = in_key_target,
                                                  in_keys_features = in_keys_features,
                                                  do_exclude = do_exclude,
+                                                 do_immediate_responses = do_immediate_responses,
                                                  in_tags_allocation = in_tags_allocation)
         self.solver = ProblemSolver(in_data_storage = self.data_storage,
                                     in_instructions = instructions,

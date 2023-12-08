@@ -18,4 +18,5 @@ if __name__ == '__main__':
 
     proj.info_storage()
 
-    proj.learn("variety", in_strategy = aml.import_strategy("./test_proj_iris.strat"))
+    proj.learn("variety", do_immediate_responses = False, 
+               in_strategy = aml.import_strategy("./test_proj_iris.strat"))

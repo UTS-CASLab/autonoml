@@ -9,13 +9,11 @@ López Lobo, Jesús, 2020, "Synthetic datasets for concept drift detection purpo
 
 
 Datasets...
-sps/*_sps_quality_1000_events_*
+iris/iris.csv
 
 Details...
-Synthetic histograms of ~1000 two-photon events with 0 to 500 ns temporal separation, used to estimate single-photon source quality parameter g2(0).
-Target can either be the individually fitted estimates or the best estimate for the original data (10000+ events) from which the synthetic histograms were bootstrapped.
-Samples are prepared for training/testing.
-https://github.com/UTS-CASLab/sps-quality
+Famous plant classification dataset.
+https://archive.ics.uci.edu/dataset/53/iris
 
 
 
@@ -26,3 +24,14 @@ Details...
 One batch from a large penicillin production dataset, with 202 and 201 removed as headers due to missing data in the last two columns.
 https://data.mendeley.com/datasets/pdnjz7zz5x/1
 Goldrick, Stephen (2019), "Data for: Modern day monitoring and control challenges outlined on an industrial-scale benchmark fermentation process", Mendeley Data, V1, doi: 10.17632/pdnjz7zz5x.1
+
+
+
+Datasets...
+sps/*_sps_quality_1000_events_*
+
+Details...
+Synthetic histograms of ~1000 two-photon events with 0 to 500 ns temporal separation, used to estimate single-photon source quality parameter g2(0).
+Target can either be the individually fitted estimates or the best estimate for the original data (10000+ events) from which the synthetic histograms were bootstrapped.
+Samples are prepared for training/testing.
+https://github.com/UTS-CASLab/sps-quality

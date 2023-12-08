@@ -566,8 +566,8 @@ class OnlineSupportVectorRegressor(MLRegressor, MLOnlineLearner):
                                eps = self.hpars["epsilon"].val, 
                                gamma = self.hpars["gamma"].val)
         self.name += "_CustomTTK_OnlineSVR"
-        self.format_x = DataFormatX.NUMPY_ARRAY
-        self.format_y = DataFormatY.NUMPY_ARRAY
+        self.format_x = DataFormatX.NUMPY_ARRAY_2D
+        self.format_y = DataFormatY.NUMPY_ARRAY_2D
 
     @staticmethod
     def new_hpars():
@@ -578,7 +578,7 @@ class OnlineSupportVectorRegressor(MLRegressor, MLOnlineLearner):
                              is_log_scale = True, in_info = info)
         info = ("The acceptable error, defining the width of what is sometimes "
                 "called the 'SVR tube'.")
-        hpars["epsilon"] = HPFloat(in_default = 1.0, in_min = 0.0, in_max = 2.0,
+        hpars["epsilon"] = HPFloat(in_default = 0.0, in_min = 0.0, in_max = 1.0,
                                    in_info = info)
         info = ("The kernel parameter, which is the scaling factor for comparing feature distance. "
                 "This implementation uses a Radial Basis Function.")
@@ -587,10 +587,15 @@ class OnlineSupportVectorRegressor(MLRegressor, MLOnlineLearner):
         return hpars
 
     def learn(self, x, y):
-        self.model.learn(new_X=x, new_Y=y)
+        # print(type(x))
+        # print(type(y))
+        for x_i, y_i in zip(x, y):
+            self.model.learn(new_X = x_i, new_Y = y_i)
 
     def query(self, x):
-        return self.model.predict(X=x)
+        y = self.model.predict(X=x)
+        # print(y)
+        return np.array(y)
     
     def set_keys_features(self, in_keys_features: List[str]):
         """

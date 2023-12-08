@@ -12,27 +12,6 @@ from enum import Enum
 import pyarrow as pa
 import pandas as pd
 
-# class DataType(Enum):
-
-#     def __new__(cls, *args, **kwds):
-#         value = len(cls.__members__) + 1
-#         obj = object.__new__(cls)
-#         obj._value_ = value
-#         return obj
-    
-#     def __init__(self, in_converter, in_string):
-#         self.converter = in_converter
-#         self.string = in_string
-
-#     FLOAT = float, "float"
-#     INTEGER = int, "int"
-#     CATEGORICAL = str, "categorical"
-
-#     def to_string(self):
-#         return self.string
-
-#     def convert(self, in_val):
-#         return self.converter(in_val)
 
 
 class DataFormatX(Enum):
@@ -56,7 +35,7 @@ class DataFormatX(Enum):
     1   b    2
     2   c    3
 
-    NUMPY_ARRAY...
+    NUMPY_ARRAY_2D...
     [['a' 1]
      ['b' 2]
      ['c' 3]]
@@ -69,7 +48,7 @@ class DataFormatX(Enum):
     """
     ARROW_TABLE = 0
     PANDAS_DATAFRAME = 1
-    NUMPY_ARRAY = 2
+    NUMPY_ARRAY_2D = 2
     LIST_OF_DICTS = 3
     DICT_OF_FEATURE_LISTS = 4
 
@@ -88,7 +67,7 @@ def reformat_x(in_data, in_format_old, in_format_new, in_keys_features):
     elif in_format_old == DataFormatX.PANDAS_DATAFRAME:
         data_standard = pa.Table.from_pandas(in_data)
 
-    elif in_format_old == DataFormatX.NUMPY_ARRAY:
+    elif in_format_old == DataFormatX.NUMPY_ARRAY_2D:
         data_standard = pa.Table.from_pandas(pd.DataFrame(in_data, columns=in_keys_features))
 
     elif in_format_old == DataFormatX.LIST_OF_DICTS:
@@ -108,7 +87,7 @@ def reformat_x(in_data, in_format_old, in_format_new, in_keys_features):
     elif in_format_new == DataFormatX.PANDAS_DATAFRAME:
         data_new = data_standard.to_pandas()
 
-    elif in_format_new == DataFormatX.NUMPY_ARRAY:
+    elif in_format_new == DataFormatX.NUMPY_ARRAY_2D:
         data_new = data_standard.to_pandas().values
 
     elif in_format_new == DataFormatX.LIST_OF_DICTS:
@@ -144,8 +123,13 @@ class DataFormatY(Enum):
     2     True
     dtype: bool
 
-    NUMPY_ARRAY...
+    NUMPY_ARRAY_1D...
     [ True False  True]
+
+    NUMPY_ARRAY_2D...
+    [[ True]
+    [False]
+    [ True]]
 
     LIST...
     [True, False, True]
@@ -155,9 +139,10 @@ class DataFormatY(Enum):
     """
     ARROW_ARRAY = 0
     PANDAS_SERIES = 1
-    NUMPY_ARRAY = 2
-    LIST = 3
-    LIST_OF_LISTS_ACROSS_TARGETS = 4    # Some predictors allow for multiple targets.
+    NUMPY_ARRAY_1D = 2
+    NUMPY_ARRAY_2D = 3
+    LIST = 4
+    LIST_OF_LISTS_ACROSS_TARGETS = 5    # Some predictors allow for multiple targets.
 
 def reformat_y(in_data, in_format_old, in_format_new):
 
@@ -171,8 +156,16 @@ def reformat_y(in_data, in_format_old, in_format_new):
     elif in_format_old == DataFormatY.PANDAS_SERIES:
         data_standard = pa.Array.from_pandas(in_data)
 
-    elif in_format_old == DataFormatY.NUMPY_ARRAY:
+    elif in_format_old == DataFormatY.NUMPY_ARRAY_1D:
         data_standard = pa.array(in_data)
+
+    elif in_format_old == DataFormatY.NUMPY_ARRAY_2D:
+        if not (len(in_data) == 0 or len(in_data[0]) == 1):
+            text_error = "Reformat issue: multiple targets are currently not supported."
+            log.error("%s - %s" % (Timestamp(), text_error))
+            raise Exception(text_error)
+        else:
+            data_standard = pa.array(in_data.flatten())
 
     elif in_format_old == DataFormatY.LIST:
         data_standard = pa.array(in_data)
@@ -196,9 +189,13 @@ def reformat_y(in_data, in_format_old, in_format_new):
     elif in_format_new == DataFormatY.PANDAS_SERIES:
         data_new = data_standard.to_pandas()
 
-    elif in_format_new == DataFormatY.NUMPY_ARRAY:
+    elif in_format_new == DataFormatY.NUMPY_ARRAY_1D:
         # Note: This is a non-writable array unless specified.
         data_new = data_standard.to_numpy(zero_copy_only = False)
+
+    elif in_format_new == DataFormatY.NUMPY_ARRAY_2D:
+        # Note: This is a non-writable array unless specified.
+        data_new = data_standard.to_numpy(zero_copy_only = False).reshape(-1, 1)
 
     elif in_format_new == DataFormatY.LIST:
         data_new = data_standard.to_pylist()

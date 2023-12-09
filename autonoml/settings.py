@@ -32,6 +32,7 @@ class SystemSettings:
     DELAY_FOR_CLIENT_CONFIRM = 10.0     # Seconds until client confirms socket is still connected.
     DELAY_FOR_SERVER_ABANDON = 20.0     # Seconds until server abandons a socket without client confirm.
     SIGNAL_CONFIRM = "1\n"              # An endline-terminated signal used to confirm connection.
+    MAX_ATTEMPTS_RECONNECTION = 1       # How many times a once-connected client will retry a connection.
     
     # #%% IO settings.
     # MAX_ALERTS_IKEY_NEW = 5     # How many newly encountered DataPort inflow keys to individually acknowledge.

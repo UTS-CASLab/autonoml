@@ -153,10 +153,12 @@ class DataPortStream(DataPort):
 
         
     async def run_connection(self):
+        attempts_reconnection = 0
         while True:
             try:
                 reader, writer = await asyncio.open_connection(self.target_hostname, self.target_port)
                 self.connection_state = True    # TODO: Work out where to robustly mark this as false.
+                attempts_reconnection = 0
                 log.info("%s - DataPort '%s' is connected to host %s, port %s."
                          % (Timestamp(), self.name, self.target_hostname, self.target_port))
                 self.ops = [create_async_task(self.send_confirm_to_server, writer),
@@ -174,8 +176,20 @@ class DataPortStream(DataPort):
                 if not self.ops is None:
                     for op in self.ops:
                         op.cancel()
-                log.warning("%s - DataPort '%s' cannot connect to host %s, port %s. Retrying." 
-                            % (Timestamp(), self.name, self.target_hostname, self.target_port))
+
+                # If this was a drop out, give a limited number of reattempts.
+                # TODO: Limit connection attempts to if strongly desired.
+                if self.connection_state:
+                    log.warning("%s - DataPort '%s' has lost connection." % (Timestamp(), self.name))
+                    attempts_reconnection += 1
+                
+                if attempts_reconnection <= SS.MAX_ATTEMPTS_RECONNECTION:
+                    log.warning("%s - DataPort '%s' cannot connect to host %s, port %s. Retrying." 
+                                % (Timestamp(), self.name, self.target_hostname, self.target_port))
+                else:
+                    log.warning("%s - DataPort '%s' is abandoning attempts to reconnect to host %s, port %s."
+                                % (Timestamp(), self.name, self.target_hostname, self.target_port))
+                    break
                 
     async def send_confirm_to_server(self, in_writer):
         while True:
@@ -204,11 +218,9 @@ class DataPortStream(DataPort):
                 self.field_names = data.schema.names
             else:
                 read_options = pacsv.ReadOptions(use_threads = True, column_names = self.field_names)
-                # convert_options = pacsv.ConvertOptions(include_columns = self.field_names, include_missing_columns = True)
-                data = pacsv.read_csv(input_stream, read_options = read_options) #, convert_options = convert_options)
+                data = pacsv.read_csv(input_stream, read_options = read_options)
                 
             if self.is_storing:
                 self.data_storage.store_data(in_data = data, 
                                             in_tags = self.tags,
                                             as_query = self.is_for_queries)
-            # log.debug("%s - DataPort '%s' received data: %s" % (Timestamp(), self.name, data))

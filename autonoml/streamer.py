@@ -165,7 +165,8 @@ class SimDataStreamer:
             try:
                 # Any message from the client with an endline confirms the connection.
                 # TODO: Give the await timeout as well.
-                await in_reader.readline()
+                message = await in_reader.readline()
+                log.info("%s - Client confirmation received." % (Timestamp()))
             except Exception as e:
                 log.warning(e)
                 break

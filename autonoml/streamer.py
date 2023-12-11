@@ -95,7 +95,8 @@ class SimDataStreamer:
         """
         The streamer stops if there is no interest in its server for a while.
         """
-        while Timestamp().time - self.timestamp_confirm_global.time < SS.DELAY_FOR_SHUTDOWN_CONFIRM:
+        while (Timestamp().time - self.timestamp_confirm_global.time 
+               < SS.DELAY_FOR_SERVER_ABANDON + SS.DELAY_FOR_SHUTDOWN_CONFIRM):
             await asyncio.sleep(SS.PERIOD_SHUTDOWN_CHECK)
         log.warning("%s - No clients have confirmed connection to the server "
                     "in over %s seconds." % (Timestamp(), SS.DELAY_FOR_SHUTDOWN_CONFIRM))
@@ -137,6 +138,8 @@ class SimDataStreamer:
         ops = list()
         ops.append(create_async_task(self.send_data_to_client, in_writer, timestamp_confirm_local, is_query))
         ops.append(create_async_task(self.receive_confirm_from_client, in_reader, timestamp_confirm_local))
+        
+        # If either sending or receiving fails, cancel both and move on.
         for op in asyncio.as_completed(ops):
             await op
             for op_other in ops:
@@ -147,7 +150,12 @@ class SimDataStreamer:
         await in_writer.wait_closed()
         
     async def send_data_to_client(self, in_writer, in_timestamp_confirm, is_query):
-        while Timestamp().time - in_timestamp_confirm.time < SS.DELAY_FOR_SERVER_ABANDON:
+        while True:
+            # log.info(Timestamp().time)
+            # log.info(in_timestamp_confirm.time)
+            # log.info(SS.DELAY_FOR_SERVER_ABANDON)
+            if not Timestamp().time - in_timestamp_confirm.time < SS.DELAY_FOR_SERVER_ABANDON:
+                break
             # If the 'future' object is updated with data, proceed to transmit.
             if is_query:
                 message = await self.query
@@ -161,11 +169,13 @@ class SimDataStreamer:
                 break
             
     async def receive_confirm_from_client(self, in_reader, in_timestamp_confirm):
-        while Timestamp().time - in_timestamp_confirm.time < SS.DELAY_FOR_SERVER_ABANDON:
+        while True:
+            if not Timestamp().time - in_timestamp_confirm.time < SS.DELAY_FOR_SERVER_ABANDON:
+                break
             try:
                 # Any message from the client with an endline confirms the connection.
                 # TODO: Give the await timeout as well.
-                message = await in_reader.readline()
+                await in_reader.readline()
                 log.info("%s - Client confirmation received." % (Timestamp()))
             except Exception as e:
                 log.warning(e)

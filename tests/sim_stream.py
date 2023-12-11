@@ -21,12 +21,16 @@ def parse_arguments():
                         help = "Hostname for the server broadcasting observations.")
     parser.add_argument("--port_observations", type = int, default = aml.SystemSettings.DEFAULT_PORT_OBSERVATIONS,
                         help = "Port number for the server broadcasting observations.")
+    parser.add_argument("--delay_for_server_abandon", type = float, default = aml.SystemSettings.DELAY_FOR_SERVER_ABANDON,
+                        help = "Time delay without client confirmation before broadcasting is abandoned.")
     return parser.parse_args()
 
 filename_data = "./data/pharma/indpensim_batch.csv"
 
 if __name__ == "__main__":
     args = parse_arguments()
+
+    aml.SystemSettings.DELAY_FOR_SERVER_ABANDON = args.delay_for_server_abandon
 
     streamer = aml.SimDataStreamer(in_filename_data = args.filename_data, 
                                    in_period_data_stream = args.period_data_stream,

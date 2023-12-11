@@ -12,7 +12,7 @@ import subprocess
 async def test():
     
     # Make checks more frequent for this test.
-    aml.SystemSettings.BASE_DELAY_FOR_ISSUE_CHECK = 1
+    aml.SystemSettings.BASE_DELAY_FOR_ISSUE_CHECK = 1.0
     
     # Define a default data server host/port for the user to connect with.
     server_hostname = aml.SystemSettings.DEFAULT_HOSTNAME

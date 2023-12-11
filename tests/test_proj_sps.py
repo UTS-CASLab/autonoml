@@ -36,6 +36,10 @@ if __name__ == '__main__':
     period_data_stream = 1.0
     delay_before_start = 1.0
 
+    # As AutonoML operations choke up, client confirmations to broadcasters choke up.
+    # This is a manual fix, although confirmations may eventually operate on their own thread/process.
+    delay_for_server_abandon = 150
+
     def get_field_names(in_filename_data):
         """
         When connecting to a data stream, knowledge of the metadata often comes from elsewhere.
@@ -78,7 +82,8 @@ if __name__ == '__main__':
                                            "--period_data_stream", str(period_data_stream),
                                            "--delay_before_start", str(delay_before_start),
                                            "--hostname_observations", hostname,
-                                           "--port_observations", str(port_stream_A)],
+                                           "--port_observations", str(port_stream_A),
+                                           "--delay_for_server_abandon", str(delay_for_server_abandon)],
                                           stdout = file_log_streamer, 
                                           stderr = subprocess.STDOUT,
                                           universal_newlines = True)
@@ -88,7 +93,8 @@ if __name__ == '__main__':
                                            "--period_data_stream", str(period_data_stream),
                                            "--delay_before_start", str(delay_before_start),
                                            "--hostname_observations", hostname,
-                                           "--port_observations", str(port_stream_B)],
+                                           "--port_observations", str(port_stream_B),
+                                           "--delay_for_server_abandon", str(delay_for_server_abandon)],
                                           stdout = file_log_streamer, 
                                           stderr = subprocess.STDOUT,
                                           universal_newlines = True)
@@ -98,7 +104,8 @@ if __name__ == '__main__':
                                            "--period_data_stream", str(period_data_stream),
                                            "--delay_before_start", str(delay_before_start),
                                            "--hostname_observations", hostname,
-                                           "--port_observations", str(port_hybrid_B)],
+                                           "--port_observations", str(port_hybrid_B),
+                                           "--delay_for_server_abandon", str(delay_for_server_abandon)],
                                           stdout = file_log_streamer, 
                                           stderr = subprocess.STDOUT,
                                           universal_newlines = True)

@@ -62,16 +62,30 @@ class HPOInstructions:
 
 
 def config_to_pipeline_structure(in_config):
+    """
+    Generate a pipeline from a selection made within hyperparameter space.
+    """
 
     structure = list()
-    key_predictor = in_config["predictor"]
-    type_predictor = catalogue.components[key_predictor]
+    for key_category in ["imputer", "scaler", "predictor"]:
+        key_component = in_config[key_category]
+        if not key_component == "":
+            type_component = catalogue.components[key_component]
 
-    config_hpars = dict()
-    for key_hpar in catalogue.components[key_predictor].new_hpars():
-        if key_hpar in in_config:
-            config_hpars[key_hpar] = in_config[key_hpar]
-    structure.append(type_predictor(in_hpars = config_hpars))
+            config_hpars = dict()
+            for key_hpar in type_component.new_hpars():
+                if key_hpar in in_config:
+                    config_hpars[key_hpar] = in_config[key_hpar]
+            structure.append(type_component(in_hpars = config_hpars))
+
+    # key_predictor = in_config["predictor"]
+    # type_predictor = catalogue.components[key_predictor]
+
+    # config_hpars = dict()
+    # for key_hpar in catalogue.components[key_predictor].new_hpars():
+    #     if key_hpar in in_config:
+    #         config_hpars[key_hpar] = in_config[key_hpar]
+    # structure.append(type_predictor(in_hpars = config_hpars))
 
     return structure
 
@@ -154,53 +168,58 @@ class HPOWorker(Worker):
         return {"loss": loss, "info": None}
         # return {"loss": loss, "info": info}
     
-    # TODO: Deal with preprocessors.
+    # TODO: Make a setting for empty-string magic values.
     @staticmethod
     def get_configspace(in_search_space: SearchSpace):
 
         cs = CS.ConfigurationSpace()
 
-        categories_predictors = list()
-        categories_preprocessors = list()
+        imputers = in_search_space.list_imputers()
+        scalers = in_search_space.list_scalers()
+        predictors = in_search_space.list_predictors()
 
-        categories_predictors = in_search_space.list_predictors()
-        
-        predictor = CS.CategoricalHyperparameter("predictor", categories_predictors)
-        cs.add_hyperparameter(predictor)
+        if len(imputers) == 0: imputers = [""]
+        if len(scalers) == 0: scalers = [""]
 
         # Check whether to include any associated hyperparameters in the config space.
-        for id_component in categories_predictors:
-            if "Hpars" in in_search_space[id_component]:
-                dict_hpars = in_search_space[id_component]["Hpars"]
-                for name_hpar in dict_hpars:
-                    do_vary = CustomBool(dict_hpars[name_hpar]["Vary"])
+        for tuple_category in [("imputer", imputers), ("scaler", scalers), ("predictor", predictors)]:
+            hp_cat = CS.CategoricalHyperparameter(tuple_category[0], tuple_category[1])
+            cs.add_hyperparameter(hp_cat)
 
-                    if do_vary:
-                        # Copy the appropriate hyperparameter and update it as desired.
-                        hpar = deepcopy(catalogue.components[id_component].new_hpars()[name_hpar])
-                        hpar.from_dict_config(dict_hpars[name_hpar])
+            for id_component in tuple_category[1]:
+                if id_component == "":
+                    break
+                if "Hpars" in in_search_space[id_component]:
+                    dict_hpars = in_search_space[id_component]["Hpars"]
+                    for name_hpar in dict_hpars:
+                        do_vary = CustomBool(dict_hpars[name_hpar]["Vary"])
 
-                        # Create the right config-space hyperparameter.
-                        if isinstance(hpar, HPInt):
-                            hp = CS.UniformIntegerHyperparameter(name_hpar,
-                                                                 lower = hpar.min,
-                                                                 upper = hpar.max,
-                                                                 default_value = hpar.default,
-                                                                 log = hpar.is_log_scale)
-                        elif isinstance(hpar, HPFloat):
-                            hp = CS.UniformFloatHyperparameter(name_hpar,
-                                                               lower = hpar.min,
-                                                               upper = hpar.max,
-                                                               default_value = hpar.default,
-                                                               log = hpar.is_log_scale)
-                        else:
-                            # TODO: Make this error more informative.
-                            raise NotImplementedError
-                        
-                        # Use the hyperparameter if the right predictor is being used.
-                        cs.add_hyperparameter(hp)
-                        cond = CS.EqualsCondition(hp, predictor, id_component)
-                        cs.add_condition(cond)
+                        if do_vary:
+                            # Copy the appropriate hyperparameter and update it as desired.
+                            hpar = deepcopy(catalogue.components[id_component].new_hpars()[name_hpar])
+                            hpar.from_dict_config(dict_hpars[name_hpar])
+
+                            # Create the right config-space hyperparameter.
+                            if isinstance(hpar, HPInt):
+                                hp = CS.UniformIntegerHyperparameter(name_hpar,
+                                                                    lower = hpar.min,
+                                                                    upper = hpar.max,
+                                                                    default_value = hpar.default,
+                                                                    log = hpar.is_log_scale)
+                            elif isinstance(hpar, HPFloat):
+                                hp = CS.UniformFloatHyperparameter(name_hpar,
+                                                                lower = hpar.min,
+                                                                upper = hpar.max,
+                                                                default_value = hpar.default,
+                                                                log = hpar.is_log_scale)
+                            else:
+                                # TODO: Make this error more informative.
+                                raise NotImplementedError
+                            
+                            # Use the hyperparameter if the right predictor is being used.
+                            cs.add_hyperparameter(hp)
+                            cond = CS.EqualsCondition(hp, hp_cat, id_component)
+                            cs.add_condition(cond)
 
         return(cs)
     
@@ -214,11 +233,22 @@ def create_pipelines_default(in_keys_features: List[str], in_key_target: str, in
         search_space = in_strategy.search_space
 
     cs = HPOWorker.get_configspace(search_space)
+    imputer_names = cs.get_hyperparameter("imputer").choices
+    scaler_names = cs.get_hyperparameter("scaler").choices
     predictor_names = cs.get_hyperparameter("predictor").choices
+
     pipelines = list()
     for predictor_name in predictor_names:
+
+        # Include a default imputer and scaler if they exist.
+        structure = list()
+        if not imputer_names[0] == "":
+            structure.append(catalogue.components[imputer_names[0]]())
+        if not scaler_names[0] == "":
+            structure.append(catalogue.components[scaler_names[0]]())
+
         pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target,
-                              in_components = [catalogue.components[predictor_name]()],
+                              in_components = structure + [catalogue.components[predictor_name]()],
                               in_loss_function = in_strategy.loss_function)
         pipelines.append(pipeline)
     

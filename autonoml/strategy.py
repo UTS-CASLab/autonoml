@@ -7,7 +7,7 @@ Created on Mon Aug 21 19:30:58 2023
 
 from . import components
 from .hyperparameter import HPInt, HPFloat
-from .component import MLComponent, MLPredictor, MLPreprocessor
+from .component import MLComponent, MLPredictor, MLImputer, MLScaler
 from .utils import log, Timestamp, CustomBool, flatten_dict
 from .metrics import LossFunction
 
@@ -88,14 +88,23 @@ class SearchSpace(dict):
     """
     A dictionary of components/hyperparameters representing user choices for an ML problem.
     """
-    def list_predictors(self):
+    def list_components(self, in_type):
         categories = list()
         for id_component in self:
             do_include = CustomBool(self[id_component]["Include"])
             if do_include:
-                if id_component in catalogue.category_to_cids[MLPredictor]:
+                if id_component in catalogue.category_to_cids[in_type]:
                     categories.append(id_component)
         return categories
+    
+    def list_predictors(self):
+        return self.list_components(MLPredictor)
+    
+    def list_imputers(self):
+        return self.list_components(MLImputer)
+    
+    def list_scalers(self):
+        return self.list_components(MLScaler)
 
 class Strategy:
     """

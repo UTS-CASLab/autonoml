@@ -69,6 +69,7 @@ class Hyperparameter:
         raise NotImplementedError
 
 
+
 class HPInt(Hyperparameter):
     def __init__(self, in_default: int = None, in_min: int = None, in_max: int = None,
                  *args, **kwargs):

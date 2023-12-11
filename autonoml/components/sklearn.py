@@ -6,11 +6,12 @@ Created on Mon Aug 21 19:49:01 2023
 """
 
 from ..component import (MLPreprocessor, MLPredictor, 
-                         MLOnlineLearner, MLScaler, 
+                         MLOnlineLearner, MLImputer, MLScaler, 
                          MLClassifier, MLRegressor)
 from ..data import DataFormatX, DataFormatY
 
-from sklearn import (preprocessing, linear_model, cross_decomposition,
+from sklearn import (impute, preprocessing, 
+                     linear_model, cross_decomposition,
                      dummy, svm)
 
 
@@ -21,7 +22,19 @@ class SKLearnPreprocessor(MLPreprocessor):
         self.name += "_SKLearn"
         self.format_x = DataFormatX.NUMPY_ARRAY_2D
 
-class StandardScaler(MLScaler, SKLearnPreprocessor):
+class SimpleImputer(MLImputer, SKLearnPreprocessor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = impute.SimpleImputer()
+        self.name += "_Simple"
+
+    def learn(self, x, y):
+        self.model.fit(X=x, y=y)
+
+    def transform(self, x):
+        return self.model.transform(X=x)
+
+class StandardScaler(MLOnlineLearner, MLScaler, SKLearnPreprocessor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = preprocessing.StandardScaler()

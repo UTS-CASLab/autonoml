@@ -97,7 +97,7 @@ class ProblemSolver:
         # Instantiate the solution as part of an event loop so that prerequisite data is ingested.
         self.solution = ProblemSolution(in_instructions = self.instructions, in_strategy = self.strategy, 
                                         in_data_storage = self.data_storage)
-
+        
         # Instantiate the development queue now that this code is running internally within an event loop.
         self.queue_dev = asyncio.Queue()
 

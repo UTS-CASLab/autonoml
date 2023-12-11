@@ -18,8 +18,8 @@ Strategy:
       run too many HPOs concurrently. Note that these strategies are applied once
       per learner group, in the case where problem-solving involves allocations of
       data-subsets.
-    Do Defaults: y
-    Do Random: n
+    Do Defaults: n
+    Do Random: y
     Number of Samples: 10
     Do HPO: n
     Max HPO Concurrency: 2
@@ -52,17 +52,17 @@ Inclusions/Exclusions:
     override any specific choices in the search space. Also decide whether inclusions
     or exclusions are higher priority, in the case that a component exists in multiple
     categories.
-  Prioritise Inclusions: y
+  Prioritise Inclusions: n
   Modules:
     autonoml.components.custom_ttk: 'n'
     autonoml.components.river: 'n'
-    autonoml.components.sklearn: 'y'
+    autonoml.components.sklearn: ''
   Categories:
     MLPreprocessor: ''
     MLPredictor: ''
-    MLOnlineLearner: 'n'
+    MLOnlineLearner: ''
     MLImputer: ''
-    MLScaler: ''
+    MLScaler: 'y'
     MLClassifier: ''
     MLRegressor: 'y'
 Search Space:

@@ -38,7 +38,8 @@ class MLPipeline:
 
     def __init__(self, in_keys_features: List[str], in_key_target: str, 
                  in_components: List[MLComponent] = None, in_loss_function: LossFunction = None,
-                 in_name: str = None, do_increment_count: bool = True):
+                 in_name: str = None, do_increment_count: bool = True,
+                 is_static: bool = False):
         
         if in_name is None:
             self.name = "Pipe_" + str(MLPipeline.count)
@@ -77,6 +78,9 @@ class MLPipeline:
         self.loss_function = LossFunction.default()
         if not in_loss_function is None:
             self.loss_function = in_loss_function
+
+        # Note whether the pipeline is static and cannot adapt after initial learning.
+        self.is_static = is_static
 
         # Maintain a history of the target variable as well as loss values.
         self.training_y_true = list()
@@ -331,5 +335,6 @@ def test_pipeline(in_pipeline: MLPipeline, in_data_collection:  DataCollectionXY
 
 def adapt_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY,
                    in_info_process: ProcessInformation, in_frac_data: float = 1.0):
+    # The adaptive learning only takes place if the pipeline is not static.
     return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
-                            do_query = True, do_learn = True)
+                            do_query = True, do_learn = not in_pipeline.is_static)

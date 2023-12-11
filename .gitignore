@@ -2,6 +2,7 @@
 tests/temp/
 tests/results/
 tests/backup/
+tests/pipelines/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

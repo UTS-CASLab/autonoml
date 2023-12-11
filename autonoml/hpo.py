@@ -166,7 +166,6 @@ class HPOWorker(Worker):
 
         # TODO: Consider more informative info.
         return {"loss": loss, "info": None}
-        # return {"loss": loss, "info": info}
     
     # TODO: Make a setting for empty-string magic values.
     @staticmethod
@@ -175,11 +174,10 @@ class HPOWorker(Worker):
         cs = CS.ConfigurationSpace()
 
         imputers = in_search_space.list_imputers()
-        scalers = in_search_space.list_scalers()
+        scalers = in_search_space.list_scalers() + [""]
         predictors = in_search_space.list_predictors()
 
         if len(imputers) == 0: imputers = [""]
-        if len(scalers) == 0: scalers = [""]
 
         # Check whether to include any associated hyperparameters in the config space.
         for tuple_category in [("imputer", imputers), ("scaler", scalers), ("predictor", predictors)]:

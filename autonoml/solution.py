@@ -13,6 +13,8 @@ from .data_storage import DataStorage
 
 from typing import List, Tuple, Union
 
+import joblib
+
 from enum import Enum
 import os
 import shutil
@@ -169,3 +171,17 @@ class ProblemSolution:
 
         with open(filepath, "a") as file:
             file.write("%s: %s\n" % (in_pipeline.name, in_pipeline.components_as_string(do_hpars = True)))
+
+    def export_learners(self):
+        prefix = "./pipelines/"
+        os.makedirs(prefix, exist_ok = True)
+
+        for key_group, pipelines in self.groups.items():
+            string_group = key_group
+            if not string_group == "":
+                string_group = "_" + string_group
+            for rank, pipeline in enumerate(pipelines):
+                filepath = prefix + "L" + str(rank) + string_group + ".pipe"
+                print(pipeline)
+                print(filepath)
+                joblib.dump(pipeline, filepath)

@@ -389,13 +389,14 @@ class DataStorage:
         self.has_new_observations = asyncio.Future()
         self.has_new_queries = asyncio.Future()
 
-    def get_keys(self):
+    def get_key_dict(self):
         """
-        Iterate through all collections of observations and return a set of data keys.
+        Iterate through all collections of observations and return a dict of data keys, i.e. field names.
         """
-        keys = set()
+        keys = dict()
         for collection in self.observations.values():
-            keys = keys | set(collection.data.column_names)
+            for column_name in collection.data.column_names:
+                keys[column_name] = True
 
         return keys
     

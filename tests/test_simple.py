@@ -23,5 +23,5 @@ if __name__ == '__main__':
     # proj.info_storage()
 
     proj.learn("target_int", do_immediate_responses = False,
-               in_strategy = aml.import_strategy("./test_proj.strat"),
+               in_strategy = aml.import_strategy("./test_simple.strat"),
                in_tags_allocation = [("file", aml.AllocationMethod.LEAVE_ONE_OUT)])

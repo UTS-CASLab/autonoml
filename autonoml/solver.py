@@ -673,7 +673,7 @@ class ProblemSolver:
                                       in_keys_features: List[str] = None, 
                                       do_exclude: bool = False):
         
-        storage_keys = self.data_storage.get_keys()
+        storage_keys = self.data_storage.get_key_dict()
 
         if in_key_target in storage_keys:
             key_target = in_key_target

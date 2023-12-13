@@ -9,17 +9,25 @@ setup(
     include_package_data=True,
     # TODO: Consider user installation options for only useful subsets of packages.
     install_requires=[
+        # For data handling and representation.
         "pyarrow>=14.0",
-        "dill",
-        "multiprocess",
         "numpy",
         "pandas",
-        "matplotlib",
-        "seaborn",
+        # For exporting/importing strategy files.
+        "pyyaml",
+        # For multiprocessing. (TODO: Revisit whether necessary.)
+        "dill",
+        "multiprocess",
+        # For hyperparameter optimisation.
         "configspace>=0.7",
         "hpbandster",
+        # For exporting/importing pipelines.
+        "joblib",
+        # For plotting.
+        "matplotlib",
+        "seaborn",
+        # For machine learning components.
         "scikit-learn",
         "river",
-        "joblib"
     ],
 )

@@ -64,9 +64,15 @@ if __name__ == '__main__':
     proj.info_storage()
 
     # Import the appropriate strategy file.
-    strategy = aml.import_strategy("./test_proj.strat")
+    strategy = aml.import_strategy("./test_proj_pharma.strat")
 
     # Start learning the target variable.
     proj.learn(in_key_target = "Penicillin concentration(P:g/L)",
-               in_keys_features = ["Time (h)"], do_exclude = True,
+               in_keys_features = ["Time (h)", 
+                                   "PAA concentration offline(PAA_offline:PAA (g L^{-1}))",
+                                   "NH_3 concentration off-line(NH3_offline:NH3 (g L^{-1}))",
+                                   "Offline Penicillin concentration(P_offline:P(g L^{-1}))",
+                                   "Offline Biomass concentratio(X_offline:X(g L^{-1}))",
+                                   "Viscosity(Viscosity_offline:centPoise)"], 
+               do_exclude = True,
                in_strategy = strategy)

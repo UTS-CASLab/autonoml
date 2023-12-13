@@ -127,7 +127,8 @@ def flatten_dict(in_dict: Dict):
             items.append((key, value))
     return dict(items)
     
-def identify_exception(in_exception: Exception, in_text_alert: str):
+def identify_exception(in_exception: Exception, in_text_alert: str, do_traceback: bool = True):
     log.error(in_text_alert)
     log.debug("Exception: %s" % str(in_exception))
-    log.debug("Traceback: %s" % "".join(traceback.format_tb(in_exception.__traceback__)))
+    if do_traceback:
+        log.debug("Traceback: %s" % "".join(traceback.format_tb(in_exception.__traceback__)))

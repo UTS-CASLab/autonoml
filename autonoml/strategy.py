@@ -17,9 +17,6 @@ import os
 
 import yaml
 
-# pool_preprocessors = dict()
-# pool_predictors = dict()
-
 class ComponentCatalogue():
     """
     Provides a complete dictionary of all the components available in the package.

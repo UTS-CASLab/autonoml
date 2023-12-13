@@ -20,7 +20,7 @@ class SystemSettings:
     LOG_HPO_WORKER = False
 
     #%% Streamer-specific constants.
-    DEFAULT_HOSTNAME = "localhost"          # Default IP address for connections.
+    DEFAULT_HOSTNAME = "127.0.0.1"          # Default IP address for connections.
     DEFAULT_PORT_OBSERVATIONS = 50001       # Ephemeral port within IANA-advised range.
     DEFAULT_PORT_QUERIES = 50002            # Ephemeral port within IANA-advised range.
     PERIOD_DATA_STREAM = 1.0                # Seconds between streamed data instances.

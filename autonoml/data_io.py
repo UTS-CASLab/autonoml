@@ -172,7 +172,8 @@ class DataPortStream(DataPort):
                 await writer.wait_closed()
                     
             except Exception as e:
-                identify_exception(e, "")
+                text_alert = ("%s - DataPort '%s' encountered an error. " % (Timestamp(), self.name))
+                identify_exception(e, text_alert, do_traceback = not isinstance(e, ConnectionRefusedError))
                 if not self.ops is None:
                     for op in self.ops:
                         op.cancel()
@@ -180,15 +181,15 @@ class DataPortStream(DataPort):
                 # If this was a drop out, give a limited number of reattempts.
                 # TODO: Limit connection attempts to if strongly desired.
                 if self.connection_state:
-                    log.warning("%s - DataPort '%s' has lost connection." % (Timestamp(), self.name))
+                    log.warning("%s   Connection broken." % Timestamp(None))
                     attempts_reconnection += 1
                 
                 if attempts_reconnection <= SS.MAX_ATTEMPTS_RECONNECTION:
-                    log.warning("%s - DataPort '%s' cannot connect to host %s, port %s. Retrying." 
-                                % (Timestamp(), self.name, self.target_hostname, self.target_port))
+                    log.warning("%s   Reattempting connection to host %s, port %s." 
+                                % (Timestamp(None), self.target_hostname, self.target_port))
                 else:
-                    log.warning("%s - DataPort '%s' is abandoning attempts to reconnect to host %s, port %s."
-                                % (Timestamp(), self.name, self.target_hostname, self.target_port))
+                    log.warning("%s   Abandoning connection attempts for host %s, port %s."
+                                % (Timestamp(None), self.target_hostname, self.target_port))
                     break
                 
     async def send_confirm_to_server(self, in_writer):

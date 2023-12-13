@@ -8,7 +8,7 @@ Created on Wed Apr  5 20:39:37 2023
 from .utils import log, Timestamp, identify_exception
 from .settings import SystemSettings as SS
 from .concurrency import (create_async_task_from_sync, create_async_task, 
-                          schedule_this)#, skip_in_other_processes)
+                          schedule_this, be_patient)
 
 from .data_storage import DataStorage
 from .data_io import DataPort, DataPortStream
@@ -221,6 +221,11 @@ class AutonoMachine:
                                     in_strategy = in_strategy,
                                     in_n_procs = self.n_procs,
                                     do_mp = self.do_mp)
+        
+        # If running with Python, block and wait for the secondary AutonoML thread.
+        # If running with IPython, do not block. Let the user interact.
+        # TODO: Maybe give the user the ability to choose when to end, e.g. with input.
+        be_patient()
 
     class Issues(Enum):
         """

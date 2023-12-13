@@ -32,3 +32,20 @@ A framework for continuous automated machine learning.
   ```bash
   pip install -e .
   ```
+
+## Usage
+
+## Usage
+
+Every Python script that uses the AutonoML package should have the form...
+  ```python
+  import autonoml as aml
+  
+  if __name__ == '__main__':
+  
+      proj = aml.AutonoMachine()
+  
+	  # Do stuff with the AutonoMachine.
+	  
+      aml.end_script()
+  ```

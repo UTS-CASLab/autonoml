@@ -25,8 +25,6 @@ def parse_arguments():
                         help = "Time delay without client confirmation before broadcasting is abandoned.")
     return parser.parse_args()
 
-filename_data = "./data/pharma/indpensim_batch.csv"
-
 if __name__ == "__main__":
     args = parse_arguments()
 

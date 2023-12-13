@@ -10,8 +10,11 @@ import threading
 import weakref
 import functools
 import atexit
-# import concurrent.futures
+import concurrent.futures
 # import dill
+
+# thread_pool_ref = concurrent.futures.ThreadPoolExecutor
+# process_pool_ref = concurrent.futures.ProcessPoolExecutor
 
 # Set up a forever-running asyncio event loop in a thread dedicated to AutonoML.
 # This works for Python where there is no pre-existing loop.
@@ -50,6 +53,21 @@ def end_loop():
 # Trigger the shutdown of the AutonoML end loop when it is no longer needed.
 # TODO: Work out if there is a way to test that this actually works.
 atexit.register(end_loop)
+
+def be_patient():
+    """
+    A function intended for the end of a script.
+    Seems suitable for the end of AutonoMachine.learn() as that is often the last non-interactive call.
+    This will allow Python scripts to wait for the AutonoML machine.
+    In an IPython run, this function should be non-blocking.
+    """
+    tasks = asyncio.all_tasks(asyncio.get_event_loop())
+
+    # A Python script should have no asyncio tasks in its main thread loop by the time it ends.
+    # Let it wait for the AutonoML thread to conclude.
+    # IPython should always have an asyncio kernel task, so it need not block.
+    if len(tasks) == 0:
+        thread_autonoml.join()
 
 
 

@@ -46,6 +46,4 @@ Every Python script that uses the AutonoML package should have the form...
       proj = aml.AutonoMachine()
   
 	  # Do stuff with the AutonoMachine.
-	  
-      aml.end_script()
   ```

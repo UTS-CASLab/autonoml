@@ -35,8 +35,6 @@ A framework for continuous automated machine learning.
 
 ## Usage
 
-## Usage
-
 Every Python script that uses the AutonoML package should have the form...
   ```python
   import autonoml as aml

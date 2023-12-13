@@ -19,7 +19,7 @@ setup(
         "dill",
         "multiprocess",
         # For hyperparameter optimisation.
-        "configspace>=0.7",
+        "ConfigSpace>=0.7",
         "hpbandster",
         # For exporting/importing pipelines.
         "joblib",

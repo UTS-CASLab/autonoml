@@ -74,7 +74,7 @@ def config_to_pipeline_structure(in_config):
 
             config_hpars = dict()
             for key_hpar in type_component.new_hpars():
-                if key_hpar in in_config:
+                if key_hpar in in_config.keys():
                     config_hpars[key_hpar] = in_config[key_hpar]
             structure.append(type_component(in_hpars = config_hpars))
 
@@ -259,7 +259,9 @@ def create_pipeline_random(in_keys_features, in_key_target, in_strategy):
     else:
         search_space = in_strategy.search_space
 
-    config = HPOWorker.get_configspace(search_space).sample_configuration()
+    cs = HPOWorker.get_configspace(search_space)
+    config = cs.sample_configuration()
+
     pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target,
                           in_components = config_to_pipeline_structure(in_config = config),
                           in_loss_function = in_strategy.loss_function)

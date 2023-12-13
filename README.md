@@ -21,9 +21,9 @@ A framework for continuous automated machine learning.
 
 2. Using Anaconda Prompt, navigate to the root directory of the cloned repository, i.e. where setup.py exists.
 
-3. Create and activate a virtual environment. (Note: The current version of the code runs on Python 3.12.)
+3. Create and activate a virtual environment. (Note: The current version of the code runs on Python 3.11.)
   ```bash
-  conda create --name autonoml python=3.12
+  conda create --name autonoml python=3.11
   
   conda activate autonoml
   ```

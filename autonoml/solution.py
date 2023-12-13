@@ -132,7 +132,7 @@ class ProblemSolution:
         self.groups[in_key_group] = sorted(list_pipelines, key=lambda p: p.get_loss())
         text_key_group = "" if in_key_group == self.id_no_filter else ": %s" % in_key_group
         log.info("%s - Learner Group%s -> %s" % (Timestamp(), text_key_group, 
-                                                 ["%s: %0.2f" % (pipeline.name, pipeline.get_loss()) 
+                                                 ["%s: %0.2e" % (pipeline.name, pipeline.get_loss()) 
                                                   for pipeline in self.groups[in_key_group]]))
         
         pipeline_removed = None

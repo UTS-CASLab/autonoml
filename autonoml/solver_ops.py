@@ -149,7 +149,10 @@ def develop_pipeline(in_pipeline: MLPipeline,
         
         losses.append(pipeline_clone.get_loss())
 
-    loss = sum(losses)/len(losses)
+    if len(losses) == 0:
+        loss = np.inf
+    else:
+        loss = sum(losses)/len(losses)
 
     # print("Final Training Size: %i" % in_observations.get_amount())
     pipeline, _, info_process = train_pipeline(in_pipeline = in_pipeline,

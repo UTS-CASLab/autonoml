@@ -17,6 +17,7 @@ from .metrics import LossFunction
 
 import ConfigSpace as CS
 from copy import deepcopy
+import numpy as np
 
 from typing import List
 
@@ -161,7 +162,10 @@ class HPOWorker(Worker):
             
             losses.append(pipeline.get_loss())
 
-        loss = sum(losses)/len(losses)
+        if len(losses) == 0:
+            loss = np.inf
+        else:
+            loss = sum(losses)/len(losses)
         # print("Loss: %f" % loss)
 
         # TODO: Consider more informative info.

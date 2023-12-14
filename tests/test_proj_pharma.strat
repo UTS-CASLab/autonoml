@@ -27,7 +27,7 @@ Strategy:
     Info: A pipeline is initially scored on a validation fraction of training data,
       averaged over a number of folds.
     Validation Fraction: 0.25
-    Validation Folds: 1
+    Validation Folds: 0
   Adaptation:
     Info: By default, all pipeline components will attempt to adapt to new observations,
       even if the adapt method for the component is to just do nothing.

@@ -61,7 +61,7 @@ if __name__ == '__main__':
     time.sleep(1)   # Wait a moment for the first observations to be stored.
 
     # Sanity-check that the initial data looks fine in storage.
-    proj.info_storage()
+    # proj.info_storage()
 
     # Import the appropriate strategy file.
     strategy = aml.import_strategy("./test_proj_pharma.strat")

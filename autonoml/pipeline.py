@@ -220,6 +220,9 @@ class MLPipeline:
                         # TODO: Expand the feature set with the response.
                         predictions = component.query(x=x)
 
+                        # print(state)
+                        # print(predictions)
+
                         if idx_component == num_components - 1:
                             # Reformat the final response to a list format.
                             # print(y)

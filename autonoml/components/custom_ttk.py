@@ -587,15 +587,17 @@ class OnlineSupportVectorRegressor(MLRegressor, MLOnlineLearner):
         return hpars
 
     def learn(self, x, y):
-        # print(type(x))
-        # print(type(y))
         for x_i, y_i in zip(x, y):
             self.model.learn(new_X = x_i, new_Y = y_i)
 
     def query(self, x):
-        y = self.model.predict(X=x)
-        # print(y)
-        return np.array(y)
+        responses = np.empty((x.shape[0], 1))
+        for i in range(x.shape[0]):
+            x_i = x[i, :]
+            y_i = self.model.predict(X = x_i)
+            responses[i, 0] = y_i
+        # print(responses)
+        return responses
     
     def set_keys_features(self, in_keys_features: List[str]):
         """

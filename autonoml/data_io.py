@@ -54,7 +54,8 @@ class DataPort:
         self.is_for_queries = is_for_queries
         
     # TODO: Update logs for queries.
-    async def ingest_file(self, in_filepath: str, in_file_has_headers: bool = True):
+    async def ingest_file(self, in_filepath: str, in_file_has_headers: bool = True,
+                          in_n_instances: int = None):
 
         log.info("%s - DataPort '%s' is ingesting a file: %s" 
                  % (Timestamp(), self.name, in_filepath))
@@ -65,6 +66,10 @@ class DataPort:
         read_options = pacsv.ReadOptions(use_threads = True,
                                          autogenerate_column_names = not in_file_has_headers)
         data = pacsv.read_csv(in_filepath, read_options = read_options)
+
+        # Take only the first n instances of data.
+        if not in_n_instances is None:
+            data = data.slice(offset = 0, length = in_n_instances)
 
         self.data_storage.store_data(in_data = data,
                                      in_tags = self.tags,

@@ -84,7 +84,7 @@ class AutonoMachine:
                 
         self.is_running = False
             
-    def ingest_file(self, in_filepath, in_tags: Dict[str, str] = None):
+    def ingest_file(self, in_filepath, in_tags: Dict[str, str] = None, in_n_instances: int = None):
         """
         Take in a .csv file and convert its contents into data to learn from, i.e. observations.
 
@@ -97,9 +97,9 @@ class AutonoMachine:
                  % (Timestamp(), self.name, in_filepath))
         ref = DataPort(in_data_storage = self.data_storage, in_tags = in_tags)
         self.data_ports[ref.name] = ref
-        create_async_task_from_sync(ref.ingest_file, in_filepath)
+        create_async_task_from_sync(ref.ingest_file, in_filepath, in_n_instances = in_n_instances)
         
-    def query_with_file(self, in_filepath, in_tags: Dict[str, str] = None):
+    def query_with_file(self, in_filepath, in_tags: Dict[str, str] = None, in_n_instances: int = None):
         """
         Take in a .csv file and convert its contents into data to respond to, i.e. queries.
 
@@ -112,7 +112,7 @@ class AutonoMachine:
         ref = DataPort(in_data_storage = self.data_storage, in_tags = in_tags,
                        is_for_queries = True)
         self.data_ports[ref.name] = ref
-        create_async_task_from_sync(ref.ingest_file, in_filepath)
+        create_async_task_from_sync(ref.ingest_file, in_filepath, in_n_instances = in_n_instances)
         
     def ingest_stream(self, in_hostname = SS.DEFAULT_HOSTNAME, in_port: int = SS.DEFAULT_PORT_OBSERVATIONS,
                       in_field_names: List[str] = None,

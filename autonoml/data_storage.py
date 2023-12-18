@@ -268,8 +268,8 @@ class SharedMemoryManager:
     @staticmethod
     def load(in_filepath: str):
 
-        # with pa.OSFile(in_filepath, "r") as source:
-        with pa.memory_map(in_filepath, "r") as source:
+        with pa.OSFile(in_filepath, "r") as source:
+        # with pa.memory_map(in_filepath, "r") as source:
             with ipc.RecordBatchStreamReader(source) as reader:
                 data = reader.read_all()
                 collection = DataCollection(data).quick_split_xy()

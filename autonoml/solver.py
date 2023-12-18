@@ -602,8 +602,10 @@ class ProblemSolver:
         while True:
 
             # If required, ensure no pipelines are awaiting development before querying.
+            # As this is usually done for static ML, also export learners.
             if not self.instructions.do_immediate_responses:
                 await self.queue_dev.join()
+                self.solution.export_learners()
 
             # Check if there are more instances in storage than have been processed.
             # If not, wait until new queries arive.

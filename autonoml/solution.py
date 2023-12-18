@@ -181,7 +181,7 @@ class ProblemSolution:
             if not string_group == "":
                 string_group = "_" + string_group
             for rank, pipeline in enumerate(pipelines):
-                filepath = prefix + "L" + str(rank) + string_group + ".pipe"
+                filepath = prefix + "L" + str(rank) + string_group + "_" + pipeline.name + ".pipe"
                 print(pipeline)
                 print(filepath)
                 joblib.dump(pipeline, filepath)

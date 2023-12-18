@@ -90,6 +90,8 @@ class MLPipeline:
         self.testing_y_response = list()
         self.testing_loss = np.inf
 
+        log.info("%s   Final structure: %s" % (Timestamp(None), self.components_as_string(do_hpars = True)))
+
     def __repr__(self):
         return self.name + ": [" + self.components_as_string() + "]"
 

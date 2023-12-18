@@ -76,16 +76,10 @@ class HPCategorical(Hyperparameter):
 
     def from_dict_config(self, in_dict_config):
         options = list()
-        print(in_dict_config)
         for option, choice in in_dict_config["Options"].items():
-            print(option)
-            print(choice)
-            print(CustomBool(choice))
             if CustomBool(choice):
                 options.append(option)
-        print(options)
         self.options = self.validate_options(options)
-        print(self.options)
         super().from_dict_config(in_dict_config)
                 
     def validate_options(self, in_options):
@@ -135,13 +129,9 @@ class HPNumerical(Hyperparameter):
         return dict_config
 
     def from_dict_config(self, in_dict_config):
-        print(111)
         self.min = self.validate_min(in_dict_config["Min"])
-        print(112)
         self.max = self.validate_max(in_dict_config["Max"])
-        print(113)
         super().from_dict_config(in_dict_config)
-        print(114)
 
     def validate_min(self, in_min):
         raise NotImplementedError

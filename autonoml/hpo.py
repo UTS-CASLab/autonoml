@@ -67,8 +67,6 @@ def config_to_pipeline_structure(in_config):
     Generate a pipeline from a selection made within hyperparameter space.
     """
 
-    print(in_config)
-
     structure = list()
     for key_category in ["imputer", "scaler", "predictor"]:
         key_component = in_config[key_category]
@@ -81,15 +79,6 @@ def config_to_pipeline_structure(in_config):
                 if key_full in in_config.keys():
                     config_hpars[key_hpar] = in_config[key_full]
             structure.append(type_component(in_hpars = config_hpars))
-
-    # key_predictor = in_config["predictor"]
-    # type_predictor = catalogue.components[key_predictor]
-
-    # config_hpars = dict()
-    # for key_hpar in catalogue.components[key_predictor].new_hpars():
-    #     if key_hpar in in_config:
-    #         config_hpars[key_hpar] = in_config[key_hpar]
-    # structure.append(type_predictor(in_hpars = config_hpars))
 
     return structure
 
@@ -186,14 +175,10 @@ class HPOWorker(Worker):
 
         if len(imputers) == 0: imputers = [""]
 
-        print(11)
-
         # Check whether to include any associated hyperparameters in the config space.
         for tuple_category in [("imputer", imputers), ("scaler", scalers), ("predictor", predictors)]:
             hp_cat = CS.CategoricalHyperparameter(tuple_category[0], tuple_category[1])
             cs.add_hyperparameter(hp_cat)
-
-            print(12)
 
             for id_component in tuple_category[1]:
                 if id_component == "":
@@ -203,20 +188,12 @@ class HPOWorker(Worker):
                     for name_hpar in dict_hpars:
                         do_vary = CustomBool(dict_hpars[name_hpar]["Vary"])
 
-                        print(13)
-
                         if do_vary:
                             # Copy the appropriate hyperparameter and update it as desired.
                             hpar = deepcopy(catalogue.components[id_component].new_hpars()[name_hpar])
-                            print(13.5)
-                            print(dict_hpars)
-                            print(dict_hpars[name_hpar])
-                            print(hpar)
                             hpar.from_dict_config(dict_hpars[name_hpar])
 
                             key_full = id_component + "." + name_hpar
-
-                            print(14)
 
                             # Create the right config-space hyperparameter.
                             if isinstance(hpar, HPInt):
@@ -239,14 +216,10 @@ class HPOWorker(Worker):
                                 # TODO: Make this error more informative.
                                 raise NotImplementedError
                             
-                            print(15)
-                            
                             # Use the hyperparameter if the right predictor is being used.
                             cs.add_hyperparameter(hp)
                             cond = CS.EqualsCondition(hp, hp_cat, id_component)
                             cs.add_condition(cond)
-
-                            print(16)
 
         return(cs)
     
@@ -288,13 +261,8 @@ def create_pipeline_random(in_keys_features, in_key_target, in_strategy):
     else:
         search_space = in_strategy.search_space
 
-    print(0)
-
     cs = HPOWorker.get_configspace(search_space)
-    print(1)
     config = cs.sample_configuration()
-
-    print(2)
 
     pipeline = MLPipeline(in_keys_features = in_keys_features, in_key_target = in_key_target,
                           in_components = config_to_pipeline_structure(in_config = config),

@@ -5,7 +5,7 @@ Created on Mon Aug 21 19:49:01 2023
 @author: David J. Kedziora
 """
 
-from ..hyperparameter import HPCategorical, HPFloat
+from ..hyperparameter import HPCategorical, HPInt, HPFloat
 from ..component import (MLPreprocessor, MLPredictor, 
                          MLOnlineLearner, MLDummy,
                          MLImputer, MLScaler, 
@@ -14,7 +14,8 @@ from ..data import DataFormatX, DataFormatY
 
 from sklearn import (impute, preprocessing, 
                      linear_model, cross_decomposition,
-                     dummy, svm)
+                     dummy, svm,
+                     ensemble)
 
 
 
@@ -125,9 +126,12 @@ class LinearRegressor(MLRegressor, SKLearnPredictor):
     def get_feature_importance(self):
         return self.model.coef_
     
+
+
 class LinearSVR(MLRegressor, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.name += "_LinearSVR"
 
         loss = self.hpars["loss"].val
         if loss == "L1":
@@ -139,7 +143,6 @@ class LinearSVR(MLRegressor, SKLearnPredictor):
                                    C = self.hpars["C"].val,
                                    loss = loss_translated,
                                    dual = "auto")
-        self.name += "_LinearSVR"
 
     @staticmethod
     def new_hpars():
@@ -158,12 +161,15 @@ class LinearSVR(MLRegressor, SKLearnPredictor):
     def get_feature_importance(self):
         return self.model.coef_
 
+
+
 class PLSRegressor(MLRegressor, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.model = cross_decomposition.PLSRegression(n_components=1)
         self.name += "_PLSR"
         self.format_y = DataFormatY.LIST_OF_LISTS_ACROSS_TARGETS
+
+        self.model = cross_decomposition.PLSRegression(n_components=1)
 
     def learn(self, x, y):
         self.model.fit(X=x, Y=y)
@@ -172,12 +178,85 @@ class PLSRegressor(MLRegressor, SKLearnPredictor):
         return self.model.coef_.T[0]
     
 
+
+class RandomForestRegressor(MLRegressor, SKLearnPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name += "_RandomForest"
+
+        max_depth = self.hpars["max_depth"].val
+        if max_depth == 0:
+            max_depth = None
+
+        self.model = ensemble.RandomForestRegressor(n_estimators = self.hpars["n_estimators"].val,
+                                                    max_depth = max_depth,
+                                                    min_samples_leaf = self.hpars["min_samples_leaf"].val,
+                                                    min_samples_split = self.hpars["min_samples_split"].val)
+
+    @staticmethod
+    def new_hpars():
+        hpars = dict()
+        hpars["n_estimators"] = HPInt(in_default = 32, in_min = 2, in_max = 512,
+                                      is_log_scale = True)
+        hpars["max_depth"] = HPInt(in_default = 0, in_min = 0, in_max = 100, 
+                                   in_info = "Max tree depth. Zero is unrestricted.")
+        hpars["min_samples_leaf"] = HPInt(in_default = 1, in_min = 1, in_max = 8, is_log_scale = True)
+        hpars["min_samples_split"] = HPInt(in_default = 2, in_min = 2, in_max = 16, is_log_scale = True)
+        return hpars
+
+    # TODO: Verify.
+    def get_feature_importance(self):
+        return self.model.feature_importances_
+    
+
+
+class GradientBoostingRegressor(MLRegressor, SKLearnPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name += "_GradientBoosting"
+
+        max_depth = self.hpars["max_depth"].val
+        if max_depth == 0:
+            max_depth = None
+
+        self.model = ensemble.GradientBoostingRegressor(learning_rate = self.hpars["learning_rate"].val,
+                                                        n_estimators = self.hpars["n_estimators"].val,
+                                                        max_depth = max_depth,
+                                                        min_samples_leaf = self.hpars["min_samples_leaf"].val,
+                                                        min_samples_split = self.hpars["min_samples_split"].val)
+
+    @staticmethod
+    def new_hpars():
+        hpars = dict()
+        hpars["learning_rate"] = HPFloat(in_default = 0.1, in_min = 0.01, in_max = 1.0,
+                                         is_log_scale = True)
+        hpars["n_estimators"] = HPInt(in_default = 16, in_min = 1, in_max = 256,
+                                      is_log_scale = True)
+        hpars["max_depth"] = HPInt(in_default = 4, in_min = 0, in_max = 16, 
+                                   in_info = "Max tree depth. Zero is unrestricted.")
+        hpars["min_samples_leaf"] = HPInt(in_default = 1, in_min = 1, in_max = 8, is_log_scale = True)
+        hpars["min_samples_split"] = HPInt(in_default = 2, in_min = 2, in_max = 16, is_log_scale = True)
+        return hpars
+
+    # TODO: Verify.
+    def get_feature_importance(self):
+        return self.model.feature_importances_
+    
+
     
 class SGDRegressor(MLRegressor, MLOnlineLearner, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.model = linear_model.SGDRegressor()
         self.name += "_SGD"
+
+        self.model = linear_model.SGDRegressor(alpha = self.hpars["alpha"].val)
+
+    @staticmethod
+    def new_hpars():
+        hpars = dict()
+        hpars["alpha"] = HPFloat(in_default = 0.0001, in_min = 0.0001, in_max = 1.0,
+                                 is_log_scale = True)
+        return hpars
     
     def adapt(self, x, y):
         self.model.partial_fit(X=x, y=y)

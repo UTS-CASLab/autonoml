@@ -158,6 +158,11 @@ class MLOnlineLearner(MLComponent):
     def adapt(self, x, y):
         self.learn(x, y)
 
+class MLDummy(MLComponent):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name += "_Dummy"
+
 class MLImputer(MLPreprocessor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

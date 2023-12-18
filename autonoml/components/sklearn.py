@@ -5,8 +5,10 @@ Created on Mon Aug 21 19:49:01 2023
 @author: David J. Kedziora
 """
 
+from ..hyperparameter import HPCategorical, HPFloat
 from ..component import (MLPreprocessor, MLPredictor, 
-                         MLOnlineLearner, MLImputer, MLScaler, 
+                         MLOnlineLearner, MLDummy,
+                         MLImputer, MLScaler, 
                          MLClassifier, MLRegressor)
 from ..data import DataFormatX, DataFormatY
 
@@ -34,7 +36,7 @@ class SimpleImputer(MLImputer, SKLearnPreprocessor):
     def transform(self, x):
         return self.model.transform(X=x)
 
-class StandardScaler(MLOnlineLearner, MLScaler, SKLearnPreprocessor):
+class StandardScaler(MLScaler, MLOnlineLearner, SKLearnPreprocessor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = preprocessing.StandardScaler()
@@ -66,11 +68,11 @@ class SKLearnPredictor(MLPredictor):
     
 
     
-class DummyClassifier(MLClassifier, SKLearnPredictor):
+class DummyClassifier(MLClassifier, MLDummy, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = dummy.DummyClassifier()
-        self.name += "_Dummy"
+        self.name += ""
 
 class LogisticRegressor(MLClassifier, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
@@ -108,11 +110,11 @@ class SGDClassifier(MLClassifier, MLOnlineLearner, SKLearnPredictor):
     
 
     
-class DummyRegressor(MLRegressor, SKLearnPredictor):
+class DummyRegressor(MLRegressor, MLDummy, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = dummy.DummyRegressor()
-        self.name += "_Dummy"
+        self.name += ""
 
 class LinearRegressor(MLRegressor, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
@@ -126,8 +128,32 @@ class LinearRegressor(MLRegressor, SKLearnPredictor):
 class LinearSVR(MLRegressor, SKLearnPredictor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.model = svm.LinearSVR()
+
+        loss = self.hpars["loss"].val
+        if loss == "L1":
+            loss_translated = "epsilon_insensitive"
+        elif loss == "L2":
+            loss_translated = "squared_epsilon_insensitive"
+
+        self.model = svm.LinearSVR(epsilon = self.hpars["epsilon"].val,
+                                   C = self.hpars["C"].val,
+                                   loss = loss_translated,
+                                   dual = "auto")
         self.name += "_LinearSVR"
+
+    @staticmethod
+    def new_hpars():
+        hpars = dict()
+        info = ("The acceptable error, defining the width the 'SVR tube'.")
+        hpars["epsilon"] = HPFloat(in_default = 0.0, in_min = 0.0, in_max = 1.0,
+                                   in_info = info)
+        info = ("Regularisation parameter.")
+        hpars["C"] = HPFloat(in_default = 1.0, in_min = 0.01, in_max = 100.0,
+                             is_log_scale = True, in_info = info)
+        info = ("Loss function.")
+        losses = ["L1", "L2"]
+        hpars["loss"] = HPCategorical(in_options = losses, in_info = info)
+        return hpars
 
     def get_feature_importance(self):
         return self.model.coef_

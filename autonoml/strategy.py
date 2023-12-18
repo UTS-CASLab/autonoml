@@ -6,7 +6,7 @@ Created on Mon Aug 21 19:30:58 2023
 """
 
 from . import components
-from .hyperparameter import HPInt, HPFloat
+from .hyperparameter import HPCategorical, HPInt, HPFloat
 from .component import MLComponent, MLPredictor, MLImputer, MLScaler
 from .utils import log, Timestamp, CustomBool, flatten_dict
 from .metrics import LossFunction
@@ -155,6 +155,7 @@ def template_strategy(in_filepath: str = "./template.strat",
     # Create/overwrite the YAML dumper Hyperparameter representer based on user requirements.
     def hyperparameter_representer(dumper, data):
         return dumper.represent_dict(data.to_dict_config(do_vary = do_all_hyperparameters))
+    CustomDumper.add_representer(HPCategorical, hyperparameter_representer)
     CustomDumper.add_representer(HPInt, hyperparameter_representer)
     CustomDumper.add_representer(HPFloat, hyperparameter_representer)
 
@@ -227,7 +228,7 @@ def template_strategy(in_filepath: str = "./template.strat",
 
     # Also add categories to inclusions/exclusions.
     overrides = {"Info": info_override,
-                 "Prioritise Inclusions": CustomBool(True),
+                 "Prioritise Inclusions": CustomBool(False),
                  "Modules": module_overrides,
                  "Categories": {category.__name__: "" for category in catalogue.categories}}
 

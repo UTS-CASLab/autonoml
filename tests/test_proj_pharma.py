@@ -19,17 +19,17 @@ if __name__ == '__main__':
     server_port_observations = aml.SystemSettings.DEFAULT_PORT_OBSERVATIONS
     
     # Name the data/log file for the streamer subprocess as well as the broadcasting period.
-    filename_data_streamer = "./data/pharma/indpensim_batch.csv"
+    filepath_data_streamer = "./data/pharma/indpensim_batch.csv"
     filename_log_streamer = "./test_proj_pharma_streamer.log"
     period_data_stream = 1.0
     delay_before_start = 1.0
 
-    def get_field_names(in_filename_data):
+    def get_field_names(in_filepath_data):
         """
         When connecting to a data stream, knowledge of the metadata often comes from elsewhere.
         In this case, just grab the headers from the .csv file to be streamed.
         """
-        with open(in_filename_data, "r") as file:
+        with open(in_filepath_data, "r") as file:
             csv_reader = csv.reader(file)
             field_names = next(csv_reader)
 
@@ -43,12 +43,12 @@ if __name__ == '__main__':
     # Note: The port should keep trying to reconnect unless deleted.
     port = proj.ingest_stream(server_hostname, server_port_observations, 
                               in_id_stream = "pharma", 
-                              in_field_names = get_field_names(filename_data_streamer))
+                              in_field_names = get_field_names(filepath_data_streamer))
 
     # Simulate the stream by running a separate process for the data broadcaster.
     with open(filename_log_streamer, "w") as file_log_streamer:
         server_process = subprocess.Popen(["python", "sim_stream.py", 
-                                           "--filename_data", filename_data_streamer, 
+                                           "--filepath_data", filepath_data_streamer, 
                                            "--period_data_stream", str(period_data_stream),
                                            "--delay_before_start", str(delay_before_start)],
                                           stdout = file_log_streamer, 

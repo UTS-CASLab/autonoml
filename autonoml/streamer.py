@@ -28,7 +28,7 @@ class SimDataStreamer:
     """
     
     def __init__(self, 
-                 in_filename_data: str = None,
+                 in_filepath_data: str = None,
                  in_observations_per_query: float = np.inf,
                  in_period_data_stream: float = SS.PERIOD_DATA_STREAM,
                  in_delay_before_start: float = SS.DELAY_BEFORE_START,
@@ -39,7 +39,7 @@ class SimDataStreamer:
                  in_port_queries = SS.DEFAULT_PORT_QUERIES):
         log.info("%s - A SimDataStreamer has been initialised." % Timestamp())
         
-        self.filename_data = in_filename_data
+        self.filepath_data = in_filepath_data
         self.file_has_headers = in_file_has_headers
         self.observations_per_query = in_observations_per_query
         self.period_data_stream = in_period_data_stream
@@ -194,7 +194,7 @@ class SimDataStreamer:
         """
         try:
             await asyncio.sleep(self.delay_before_start)
-            with open(self.filename_data, "r") as data_file:
+            with open(self.filepath_data, "r") as data_file:
                 # Ignore the header line.
                 if self.file_has_headers:
                     data_file.readline()

@@ -40,12 +40,12 @@ if __name__ == '__main__':
     # This is a manual fix, although confirmations may eventually operate on their own thread/process.
     delay_for_server_abandon = 150
 
-    def get_field_names(in_filename_data):
+    def get_field_names(in_filepath_data):
         """
         When connecting to a data stream, knowledge of the metadata often comes from elsewhere.
         In this case, just grab the headers from the .csv file to be streamed.
         """
-        with open(in_filename_data, "r") as file:
+        with open(in_filepath_data, "r") as file:
             csv_reader = csv.reader(file)
             field_names = next(csv_reader)
 
@@ -78,7 +78,7 @@ if __name__ == '__main__':
     # Simulate the streams by running separate processes for the data broadcaster.
     with open(filename_log_stream_A, "w") as file_log_streamer:
         server_process = subprocess.Popen(["python", "sim_stream.py", 
-                                           "--filename_data", filename_A, 
+                                           "--filepath_data", filename_A, 
                                            "--period_data_stream", str(period_data_stream),
                                            "--delay_before_start", str(delay_before_start),
                                            "--hostname_observations", hostname,
@@ -89,7 +89,7 @@ if __name__ == '__main__':
                                           universal_newlines = True)
     with open(filename_log_stream_B, "w") as file_log_streamer:
         server_process = subprocess.Popen(["python", "sim_stream.py", 
-                                           "--filename_data", filename_B, 
+                                           "--filepath_data", filename_B, 
                                            "--period_data_stream", str(period_data_stream),
                                            "--delay_before_start", str(delay_before_start),
                                            "--hostname_observations", hostname,
@@ -100,7 +100,7 @@ if __name__ == '__main__':
                                           universal_newlines = True)
     with open(filename_log_hybrid_B, "w") as file_log_streamer:
         server_process = subprocess.Popen(["python", "sim_stream.py", 
-                                           "--filename_data", filename_B, 
+                                           "--filepath_data", filename_B, 
                                            "--period_data_stream", str(period_data_stream),
                                            "--delay_before_start", str(delay_before_start),
                                            "--hostname_observations", hostname,

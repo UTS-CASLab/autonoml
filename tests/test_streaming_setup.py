@@ -29,11 +29,13 @@ async def test():
     proj = aml.AutonoMachine()
     await aml.user_pause(5)
     
-    print("USER: Opens a data port to an inactive streaming server.")
+    print("USER: Opens a data port to an inactive streaming server.\n"
+          "      They are unconcerned by connection errors.")
     port = proj.ingest_stream(server_hostname, server_port_observations, in_id_stream = "abrupto")
     await aml.user_pause(10)
     
-    print("USER: Notices the streaming server is activating.")
+    print("USER: Notices the streaming server is activating.\n"
+          "      They are unconcerned by initial connection errors.")
     with open(filename_log_streamer, "w") as file_log_streamer:
         server_process = subprocess.Popen(["python", "sim_stream.py", 
                                            "--filepath_data", filepath_data_streamer, 

@@ -149,6 +149,18 @@ class ProblemSolution:
             
         
             
+    def get_learners(self, in_key_group: str = None):
+
+        list_learners = list()
+        if in_key_group is None:
+            for group in self.groups.values():
+                list_learners.extend(group)
+        else:
+            list_learners = self.groups[in_key_group]
+            
+        return list_learners
+
+
     # TODO: Reconsider which objects should be responsible for preparing results.
     def prepare_results(self):
         """

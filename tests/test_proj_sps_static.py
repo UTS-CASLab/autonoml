@@ -21,7 +21,7 @@ experimental_contexts = ["1p2uW_3000cps",
 
 if __name__ == '__main__':
 
-    strategy = aml.import_strategy("./test_ml_static.strat")
+    strategy = aml.import_strategy("./test_proj_sps_static.strat")
 
     proj = aml.AutonoMachine(do_mp = False)
 
@@ -29,7 +29,8 @@ if __name__ == '__main__':
         if not experimental_context is None:
             proj.ingest_file(in_filepath = "%s/train_%s_%s.csv" % (dir_data, filename_substring, 
                                                                    experimental_context), 
-                             in_tags = {"context": experimental_context})
+                             in_tags = {"context": experimental_context},
+                             in_n_instances = 100)
             
     proj.info_storage()
 

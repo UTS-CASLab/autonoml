@@ -1,0 +1,234 @@
+Overview: This file dictates how an AutonoMachine will try to learn the solution to
+  an ML problem. Edit it as desired and import it when starting a learning process.
+Strategy:
+  Structure:
+    Info: An AutonoML solution consists of learner groups allocated to different partitions
+      of data. In the base case, there is one group and it learns/adapts on all observations.
+      Each learner group has one champion and a number of challengers. Newly developed
+      pipelines exceeding this number will either kick out an existing pipeline or
+      fail to enter the ranks.
+    Number of Challengers: 2
+  Development:
+    Info: The defaults strategy starts the learning process with one ML pipeline per
+      predictor that has been enabled in the search space below, where all hyperparameters
+      are set to default values. The random strategy starts with a number of pipelines
+      and hyperparameters randomly sampled from the enabled search space. The HPO
+      strategy runs a thread/process intensive hyperparameter optimisation to find
+      one optimal pipeline from the enabled search space. It is recommended not to
+      run too many HPOs concurrently. Note that these strategies are applied once
+      per learner group, in the case where problem-solving involves allocations of
+      data-subsets.
+    Do Defaults: n
+    Do Random: n
+    Number of Samples: 10
+    Do HPO: y
+    Max HPO Concurrency: 2
+  Validation:
+    Info: A pipeline is initially scored on a validation fraction of training data,
+      averaged over a number of folds.
+    Validation Fraction: 0.25
+    Validation Folds: 1
+  Adaptation:
+    Info: By default, all pipeline components will attempt to adapt to new observations,
+      even if the adapt method for the component is to just do nothing.
+Loss Function:
+  Info: Only one of these options for comparing models can be selected. If more than
+    one are marked 'y', the first of those will be chosen. If all are marked 'n',
+    this setting will not override defaults/choices made elsewhere.
+  Options:
+    RMSE: n
+    Zero-One Classification Loss: n
+Optimiser:
+  BOHB:
+    Info: Prior to HPO, the dataset is randomly split into a training fraction and
+      a validation fraction. For i iterations and p partitions, BOHB seeks to sample
+      p^i models on 1/p^i of training data at the 1st iteration, then propagate the
+      best 1/p models to the next iteration.
+    Iterations: 4
+    Partitions: 3
+Inclusions/Exclusions:
+  Info: These options are quick ways to include/exclude categories of components.
+    Mark them y/n if desired, but leave them unmarked otherwise. Otherwise, they will
+    override any specific choices in the search space. Also decide whether inclusions
+    or exclusions are higher priority, in the case that a component exists in multiple
+    categories.
+  Prioritise Inclusions: n
+  Modules:
+    autonoml.components.custom_ttk: ''
+    autonoml.components.river: ''
+    autonoml.components.sklearn: ''
+  Categories:
+    MLPreprocessor: ''
+    MLPredictor: ''
+    MLOnlineLearner: ''
+    MLDummy: ''
+    MLImputer: ''
+    MLScaler: ''
+    MLClassifier: ''
+    MLRegressor: ''
+Search Space:
+  autonoml.components.custom_ttk.OnlineSupportVectorRegressor:
+    Info: MLPredictor, MLOnlineLearner, MLRegressor
+    Include: n
+    Hpars:
+      C:
+        Info: Regularisation parameter, defining the limit on how close the learner
+          must adhere to the dataset (smoothness).
+        Vary: y
+        Default: 1.0
+        Min: 0.1
+        Max: 10.0
+      epsilon:
+        Info: The acceptable error, defining the width of what is sometimes called
+          the 'SVR tube'.
+        Vary: y
+        Default: 0.0
+        Min: 0.0
+        Max: 1.0
+      gamma:
+        Info: The kernel parameter, which is the scaling factor for comparing feature
+          distance. This implementation uses a Radial Basis Function.
+        Vary: y
+        Default: 0.01
+        Min: 0.0001
+        Max: 1.0
+  autonoml.components.river.OnlineStandardScaler:
+    Info: MLPreprocessor, MLOnlineLearner, MLScaler
+    Include: n
+    Hpars:
+      batch_size:
+        Vary: y
+        Default: 1
+        Min: 1
+        Max: 1000
+  autonoml.components.river.OnlineLinearRegressor:
+    Info: MLPredictor, MLOnlineLearner, MLRegressor
+    Include: n
+    Hpars:
+      batch_size:
+        Vary: y
+        Default: 1
+        Min: 1
+        Max: 1000
+      learning_rate:
+        Vary: y
+        Default: 0.001
+        Min: 1.0e-06
+        Max: 1.0
+  autonoml.components.sklearn.SimpleImputer:
+    Info: MLPreprocessor, MLImputer
+    Include: n
+  autonoml.components.sklearn.StandardScaler:
+    Info: MLPreprocessor, MLOnlineLearner, MLScaler
+    Include: y
+  autonoml.components.sklearn.DummyClassifier:
+    Info: MLPredictor, MLDummy, MLClassifier
+    Include: n
+  autonoml.components.sklearn.LogisticRegressor:
+    Info: MLPredictor, MLClassifier
+    Include: n
+  autonoml.components.sklearn.LinearSVC:
+    Info: MLPredictor, MLClassifier
+    Include: n
+  autonoml.components.sklearn.Perceptron:
+    Info: MLPredictor, MLOnlineLearner, MLClassifier
+    Include: n
+  autonoml.components.sklearn.SGDClassifier:
+    Info: MLPredictor, MLOnlineLearner, MLClassifier
+    Include: n
+  autonoml.components.sklearn.DummyRegressor:
+    Info: MLPredictor, MLDummy, MLRegressor
+    Include: n
+  autonoml.components.sklearn.LinearRegressor:
+    Info: MLPredictor, MLRegressor
+    Include: y
+  autonoml.components.sklearn.LinearSVR:
+    Info: MLPredictor, MLRegressor
+    Include: y
+    Hpars:
+      epsilon:
+        Info: The acceptable error, defining the width the 'SVR tube'.
+        Vary: y
+        Default: 0.0
+        Min: 0.0
+        Max: 1.0
+      C:
+        Info: Regularisation parameter.
+        Vary: y
+        Default: 1.0
+        Min: 0.01
+        Max: 100.0
+      loss:
+        Info: Loss function.
+        Vary: y
+        Default: L1
+        Options:
+          L1: y
+          L2: y
+  autonoml.components.sklearn.PLSRegressor:
+    Info: MLPredictor, MLRegressor
+    Include: y
+  autonoml.components.sklearn.RandomForestRegressor:
+    Info: MLPredictor, MLRegressor
+    Include: n
+    Hpars:
+      n_estimators:
+        Vary: y
+        Default: 32
+        Min: 2
+        Max: 512
+      max_depth:
+        Info: Max tree depth. Zero is unrestricted.
+        Vary: y
+        Default: 0
+        Min: 0
+        Max: 100
+      min_samples_leaf:
+        Vary: y
+        Default: 1
+        Min: 1
+        Max: 8
+      min_samples_split:
+        Vary: y
+        Default: 2
+        Min: 2
+        Max: 16
+  autonoml.components.sklearn.GradientBoostingRegressor:
+    Info: MLPredictor, MLRegressor
+    Include: n
+    Hpars:
+      learning_rate:
+        Vary: y
+        Default: 0.1
+        Min: 0.01
+        Max: 1.0
+      n_estimators:
+        Vary: y
+        Default: 16
+        Min: 1
+        Max: 256
+      max_depth:
+        Info: Max tree depth. Zero is unrestricted.
+        Vary: y
+        Default: 4
+        Min: 0
+        Max: 16
+      min_samples_leaf:
+        Vary: y
+        Default: 1
+        Min: 1
+        Max: 8
+      min_samples_split:
+        Vary: y
+        Default: 2
+        Min: 2
+        Max: 16
+  autonoml.components.sklearn.SGDRegressor:
+    Info: MLPredictor, MLOnlineLearner, MLRegressor
+    Include: y
+    Hpars:
+      alpha:
+        Vary: y
+        Default: 0.0001
+        Min: 0.0001
+        Max: 1.0

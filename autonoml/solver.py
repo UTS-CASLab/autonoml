@@ -20,6 +20,7 @@ from .solver_ops import (ProcessInformation,
 from .data_storage import DataStorage, SharedMemoryManager
 
 from typing import List
+from copy import deepcopy
 
 import asyncio
 import concurrent.futures
@@ -66,8 +67,9 @@ class ProblemSolver:
         self.solution = None            # MLPipelines that are in production.
         self.queue_dev = None           # MLPipelines and HPO runs that are in development.
         # Note: This queue must not be instantiated as an asyncio queue until within a coroutine.
-        self.hpo_runs_in_dev = dict()   # A dictionary to track what HPO runs are in development.
-        self.pipelines_in_dev = dict()  # A dictionary to track what pipelines are in development.
+        self.hpo_runs_in_dev = dict()       # A dictionary to track what HPO runs are in development.
+        self.pipelines_in_dev = dict()      # A dictionary to track what pipelines are in development.
+        self.pipelines_adapting = dict()    # A dictionary to track what pipelines are adapting.
 
         # Keep track of the data-storage instance up to which model has used.
         self.id_observations_last = -1
@@ -218,13 +220,19 @@ class ProblemSolver:
                     continue
                 object_dev = dev_package[0]
                 key_group = dev_package[1]
+                info_process = dev_package[3]
 
                 if key_group == "":
                     text_group = "."
                 else:
                     text_group = ": " + key_group
-                log.info("%s - Development request received for learner-group%s" 
-                         % (Timestamp(), text_group))
+
+                if info_process.do_adapt:
+                    text_type = "Adaptation"
+                else:
+                    text_type = "Initial development"
+                log.info("%s - %s request received for learner-group%s" 
+                         % (Timestamp(), text_type, text_group))
 
                 # Put solitary pipelines into a list.
                 if isinstance(object_dev, MLPipeline):
@@ -279,8 +287,9 @@ class ProblemSolver:
         time_end = Timestamp().time
         duration = time_end - time_start
 
-        log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
-                % (Timestamp(None), 1 - frac_validation, frac_validation, duration))
+        if not info_process.do_adapt:
+            log.info("%s   Time taken to construct training (%0.2f) and validation (%0.2f) sets: %.3f s"
+                    % (Timestamp(None), 1 - frac_validation, frac_validation, duration))
 
         # Create a manager object that stores and loads data, possibly writing it efficiently to disk.
         time_start = Timestamp().time
@@ -431,33 +440,37 @@ class ProblemSolver:
         try:
             pipeline, info_process = await in_future_pipeline
 
-            if not info_process.text is None:
-                log.info(info_process.text)
+            # If not adapting, log the outcome of pipeline development.
+            if not info_process.do_adapt:
+                if not info_process.text is None:
+                    log.info(info_process.text)
 
-            duration_prep = info_process.duration_prep
-            duration_proc = info_process.duration_proc
-            n_instances = info_process.n_instances
-            n_available = info_process.n_available
-            y_last = pipeline.training_y_true[-1]
-            y_pred_last = pipeline.training_y_response[-1]
+                duration_prep = info_process.duration_prep
+                duration_proc = info_process.duration_proc
+                n_instances = info_process.n_instances
+                n_available = info_process.n_available
+                y_last = pipeline.training_y_true[-1]
+                y_pred_last = pipeline.training_y_response[-1]
 
-            log.info("%s - Pipeline '%s' has learned from a total of %i observations (filtered from %i).\n"
-                     "%s   Structure: %s\n"
-                     "%s   Time taken to retrieve data: %.3f s\n"
-                     "%s   Time taken to train/score pipeline on data: %.3f s\n"
-                     "%s   Training loss: %f\n"
-                     "%s   (Heuristic validation loss: %f)\n"
-                     "%s   Last observation: Prediction '%s' vs True Value '%s'"
-                     % (Timestamp(), pipeline.name, n_instances, n_available,
-                        Timestamp(None), pipeline.components_as_string(do_hpars = True),
-                        Timestamp(None), duration_prep,
-                        Timestamp(None), duration_proc,
-                        Timestamp(None), pipeline.get_loss(is_training = True),
-                        Timestamp(None), pipeline.get_loss(),
-                        Timestamp(None), y_pred_last, y_last))
+                log.info("%s - Pipeline '%s' has learned from a total of %i observations (filtered from %i).\n"
+                        "%s   Structure: %s\n"
+                        "%s   Time taken to retrieve data: %.3f s\n"
+                        "%s   Time taken to train/score pipeline on data: %.3f s\n"
+                        "%s   Training loss: %f\n"
+                        "%s   (Heuristic validation loss: %f)\n"
+                        "%s   Last observation: Prediction '%s' vs True Value '%s'"
+                        % (Timestamp(), pipeline.name, n_instances, n_available,
+                            Timestamp(None), pipeline.components_as_string(do_hpars = True),
+                            Timestamp(None), duration_prep,
+                            Timestamp(None), duration_proc,
+                            Timestamp(None), pipeline.get_loss(is_training = True),
+                            Timestamp(None), pipeline.get_loss(),
+                            Timestamp(None), y_pred_last, y_last))
             
             log.info("%s   Pipeline '%s' is pushed to production." % (Timestamp(None), pipeline.name))
-            self.solution.insert_learner(in_pipeline = pipeline, in_key_group = key_group)
+
+            self.solution.insert_learner(in_pipeline = pipeline, in_key_group = key_group, 
+                                         do_replace = info_process.do_adapt)
 
         except Exception as e:
             # Create an alert for the exception.
@@ -491,8 +504,12 @@ class ProblemSolver:
                 del self.hpo_runs_in_dev[object_dev.name]
                 log.info("%s   HPO runs still in development: %i" 
                          % (Timestamp(None), len(self.hpo_runs_in_dev)))
-            # elif isinstance(object_dev, list) and all(isinstance(item, MLPipeline) for item in object_dev):
+                
             elif isinstance(object_dev, MLPipeline):
+                # Track when adaptation is done so that the next adaptation of a pipeline can be performed.
+                if info_process_old.do_adapt:
+                    del self.pipelines_adapting[object_dev.name]
+
                 if object_dev.name in self.pipelines_in_dev:
                     del self.pipelines_in_dev[object_dev.name]
                 else:
@@ -511,6 +528,11 @@ class ProblemSolver:
 
     # TODO: This slows over time, possibly due to data filtering. Investigate/upgrade for efficiency.
     async def process_observations(self):
+        """
+        Tests pipelines on all newly encountered observations.
+        If these pipelines are not already in the process of adapting...
+        Places them on the development queue to adapt to, by default, the last of those observations.
+        """
         
         while True:
 
@@ -525,7 +547,8 @@ class ProblemSolver:
             info_process = ProcessInformation(in_keys_features = self.keys_features,
                                               in_key_target = self.key_target,
                                               in_id_last_old = self.id_observations_last,
-                                              in_id_last_new = id_stop)
+                                              in_id_last_new = id_stop,
+                                              do_adapt = True)
             
             # Go through each learner group and grab the data the learners would be interested in.
             # This involves filtering out irrelevant data according to tags and grabbing the right range.
@@ -558,19 +581,19 @@ class ProblemSolver:
 
                     results_dict = dict()
                     
-                    # Pop learners from the group, taking note of current rank, and adapt them to the new data.
-                    rank_pipeline = 0
-                    list_adapted = list()
-                    while len(self.solution.groups[key_group]) > 0:
-                        pipeline = self.solution.groups[key_group].pop(0)
+                    list_tested = list()
+
+                    # Go through pipelines currently in the group and test them for the dynamics output file.
+                    for rank_pipeline, pipeline in enumerate(self.solution.groups[key_group]):
+                        # pipeline = self.solution.groups[key_group].pop(0)
 
                         results_dict[rank_pipeline] = dict()
 
-                        responses, pipeline, info_process = adapt_to_data(in_pipeline = pipeline,
-                                                                        in_observations = observations,
+                        responses, pipeline, info_process = get_responses(in_pipeline = pipeline,
+                                                                        in_queries = observations,
                                                                         in_info_process = info_process)
 
-                        list_adapted.append(pipeline)
+                        list_tested.append(pipeline)
 
                         results_dict[rank_pipeline]["responses"] = responses
                         record_loss = [None]*observations.get_amount()
@@ -578,11 +601,24 @@ class ProblemSolver:
                         results_dict[rank_pipeline]["loss"] = record_loss
                         results_dict[rank_pipeline]["name"] = [pipeline.name]*observations.get_amount()
 
-                        rank_pipeline += 1
+                        # rank_pipeline += 1
 
-                    # Reinsert learners into their appropriate groups, which will re-sort them based on new losses.
-                    while len(list_adapted) > 0:
-                        self.solution.insert_learner(in_pipeline = list_adapted.pop(0), in_key_group = key_group)
+                    # Update the group with the tested pipelines, i.e. with updated losses.
+                    self.solution.groups[key_group] = list_tested
+
+                    # Go through pipelines again and put them up for adaptation, if applicable.
+                    for rank_pipeline, pipeline in enumerate(deepcopy(self.solution.groups[key_group])):
+                        if not pipeline.name in self.pipelines_adapting:
+                            self.pipelines_adapting[pipeline.name] = True
+                            attempt = 0
+                            dev_package = (deepcopy(pipeline), key_group, data_filter, info_process, attempt)
+                            await self.queue_dev.put(dev_package)
+                        
+                        
+
+                    # # Reinsert learners into their appropriate groups, which will re-sort them based on new losses.
+                    # while len(list_adapted) > 0:
+                    #     self.solution.insert_learner(in_pipeline = list_adapted.pop(0), in_key_group = key_group)
 
                     track_dynamics(in_observations = observations,
                                    in_results_dict = results_dict,

@@ -12,11 +12,14 @@ class ProcessInformation:
     A small data structure containing variables to be passed between solver-related functions.
     """
     def __init__(self, in_keys_features: List[str] = None, in_key_target: str = None,
-                 in_id_last_old: int = None, in_id_last_new: int = None):
+                 in_id_last_old: int = None, in_id_last_new: int = None,
+                 do_adapt: bool = False):
         self.keys_features = in_keys_features
         self.key_target = in_key_target
         self.id_last_old = in_id_last_old
         self.id_last_new = in_id_last_new
+
+        self.do_adapt = do_adapt
 
         self.n_available = None
         self.n_instances = None

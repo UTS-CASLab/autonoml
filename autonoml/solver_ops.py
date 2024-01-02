@@ -10,7 +10,7 @@ Created on Thu Nov  9 11:02:45 2023
 
 from .data_storage import DataCollection, DataCollectionXY, SharedMemoryManager
 from .solution import AllocationMethod, ProblemSolution
-from .pipeline import MLPipeline, train_pipeline, test_pipeline, adapt_pipeline
+from .pipeline import MLPipeline, train_pipeline, test_pipeline
 from .instructions import ProcessInformation
 
 from typing import List, Dict
@@ -106,15 +106,20 @@ def filter_observations(in_dict_observations: Dict[int, DataCollection],
 def prepare_data(in_collection: DataCollection, in_info_process: ProcessInformation, 
                  in_frac_validation: float = 0.25, in_n_sets: int = 1):
 
+    # No validation is needed for adaptation.
+    if in_info_process.do_adapt:
+        in_n_sets = 0
+
     # Prepare x and y at this stage to minimise data manipulation during training/testing.
+    # For adaptation, this is just the last line.
     keys_features = in_info_process.keys_features
     key_target = in_info_process.key_target
-    collection = in_collection.prepare_xy(in_keys_features = keys_features, in_key_target = key_target)
+    collection = in_collection.prepare_xy(in_keys_features = keys_features, in_key_target = key_target,
+                                          do_last_only = in_info_process.do_adapt)
 
     sets_training = list()
     sets_validation = list()
-
-    # TODO: Let users decide how many training/validation pairs to form.
+    
     for _ in range(in_n_sets):
         set_validation, set_training = collection.split_randomly_by_fraction(in_fraction = in_frac_validation)
         sets_training.append(set_training)
@@ -149,10 +154,13 @@ def develop_pipeline(in_pipeline: MLPipeline,
         
         losses.append(pipeline_clone.get_loss())
 
-    if len(losses) == 0:
-        loss = np.inf
+    if in_info_process.do_adapt:
+        loss = in_pipeline.get_loss()
     else:
-        loss = sum(losses)/len(losses)
+        if len(losses) == 0:
+            loss = np.inf
+        else:
+            loss = sum(losses)/len(losses)
 
     # print("Final Training Size: %i" % in_observations.get_amount())
     pipeline, _, info_process = train_pipeline(in_pipeline = in_pipeline,
@@ -160,6 +168,7 @@ def develop_pipeline(in_pipeline: MLPipeline,
                                                in_info_process = in_info_process)
     
     # Short of further testing, its starting loss is the validation score it received here.
+    # In the case of adaptation, it is the last loss it had.
     pipeline.set_loss(loss)
     
     return pipeline, info_process

@@ -122,12 +122,22 @@ class ProblemSolution:
                  % (Timestamp(), len(self.groups),
                     Timestamp(None), self.n_challengers))
 
-    def insert_learner(self, in_pipeline: MLPipeline, in_key_group: str):
+    def insert_learner(self, in_pipeline: MLPipeline, in_key_group: str, do_replace: bool = False):
         """
         Insert a new learner into a group of learners.
         If there are too many challengers, remove the worst performer according to testing loss.
+        Optionally, remove an existing pipeline with the same name, e.g. with an adapted pipeline.
         """
         list_pipelines = self.groups[in_key_group]
+
+        if do_replace:
+            try:
+                index_to_remove = next(i for i, pipeline in enumerate(list_pipelines) if pipeline.name == in_pipeline.name)
+            except StopIteration:
+                pass
+            else:
+                list_pipelines.pop(index_to_remove)
+
         list_pipelines.append(in_pipeline)
         self.groups[in_key_group] = sorted(list_pipelines, key=lambda p: p.get_loss())
         text_key_group = "" if in_key_group == self.id_no_filter else ": %s" % in_key_group

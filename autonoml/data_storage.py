@@ -123,15 +123,23 @@ class DataCollection(DataCollectionBase):
         return collection_in, collection_out
         
     
-    def prepare_xy(self, in_keys_features: List[str], in_key_target: str):
+    def prepare_xy(self, in_keys_features: List[str], in_key_target: str, do_last_only: bool = False):
         """
         Return a special version of DataCollection prepared with features (x) and target (y).
         """
         x = self.data.select(in_keys_features)
         y = self.data.column(in_key_target)
+        ids = self.ids
+        timestamps = self.timestamps
+
+        if do_last_only:
+            x = x[-1:]
+            y = y[-1:]
+            ids = ids[-1:]
+            timestamps = timestamps[-1:]
 
         return DataCollectionXY(in_x = x, in_y = y, 
-                                in_ids = self.ids, in_timestamps = self.timestamps)
+                                in_ids = ids, in_timestamps = timestamps)
     
     def quick_split_xy(self):
         """

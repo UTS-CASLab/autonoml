@@ -151,15 +151,19 @@ class MLPipeline:
         
         return loss_recent
 
-    def process(self, x, y, do_query = False, do_learn = False):
+    # TODO: If querying and adaptive learning never occur in the same call, consider simplifying logic.
+    def process(self, x, y, do_query: bool = False, do_learn: bool = False, do_adapt: bool = False):
         """
         Given a mapping of x to y, this function can process a pipeline in several ways:
         - Query on x and score the response against y.
         - Learn on x and y.
-        - Do both, a.k.a. streamed learning.
+        - Adapt on x and y. (Requires learning and adaptation to be true.)
         
         Both x and y are assumed to be in default formats DataFormatX(0) and DataFormatY(0).
         At the end, responses are converted to DataFormatY.LIST.
+
+        Note: Streamed learning originally involved querying and adapting, hence the code layout.
+              However, adaptation now occurs separately to querying (although still subsequent).
         """
 
         format_x = DataFormatX(0)
@@ -205,7 +209,7 @@ class MLPipeline:
                     # Learn or adapt, depending on whether data was queried first.
                     if state == PipelineProcessState.LEARN:
                         # time_start = Timestamp().time
-                        if do_query:
+                        if do_adapt:
                             component.adapt(x=x, y=y)
                         else:
                             component.learn(x=x, y=y)
@@ -300,7 +304,8 @@ def process_pipeline(in_pipeline: MLPipeline,
                      in_info_process: ProcessInformation,
                      in_frac_data: float = 1.0,
                      do_query: bool = False,
-                     do_learn: bool = False):
+                     do_learn: bool = False,
+                     do_adapt: bool = False):
     """
     A wrapper for pipeline training to be called from a ProblemSolver or elsewhere.
     This is designed for multiprocessing.
@@ -317,7 +322,8 @@ def process_pipeline(in_pipeline: MLPipeline,
     # print(duration_prep)
 
     time_start = Timestamp().time
-    responses = in_pipeline.process(x, y, do_query = do_query, do_learn = do_learn)
+    responses = in_pipeline.process(x, y, do_query = do_query, do_learn = do_learn, 
+                                    do_adapt = do_adapt)
     time_end = Timestamp().time
     duration_proc = time_end - time_start
     # print(duration_proc)
@@ -329,17 +335,18 @@ def process_pipeline(in_pipeline: MLPipeline,
     return in_pipeline, responses, info_process
 
 def train_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY,
-                   in_info_process: ProcessInformation, in_frac_data: float = 1.0):
+                   in_info_process: ProcessInformation, in_frac_data: float = 1.0,
+                   do_adapt: bool = False):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
-                            do_learn = True)
+                            do_learn = True, do_adapt = do_adapt)
 
 def test_pipeline(in_pipeline: MLPipeline, in_data_collection:  DataCollectionXY,
                   in_info_process: ProcessInformation):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process,
                             do_query = True)
 
-def adapt_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY,
-                   in_info_process: ProcessInformation, in_frac_data: float = 1.0):
-    # The adaptive learning only takes place if the pipeline is not static.
-    return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
-                            do_query = True, do_learn = not in_pipeline.is_static)
+# def adapt_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY,
+#                    in_info_process: ProcessInformation, in_frac_data: float = 1.0):
+#     # The adaptive learning only takes place if the pipeline is not static.
+#     return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
+#                             do_query = True, do_learn = not in_pipeline.is_static)

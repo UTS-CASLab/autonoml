@@ -564,7 +564,8 @@ class ProblemSolver:
                 # print(observations.data)
                 observations, _, _ = prepare_data(in_collection = observations,
                                                   in_info_process = info_process,
-                                                  in_n_sets = 0)
+                                                  in_n_sets = 0,
+                                                  do_shuffle_original = False)
                 # print(observations.x)
                 time_end = Timestamp().time
                 duration = time_end - time_start
@@ -662,7 +663,8 @@ class ProblemSolver:
                 
                 queries, _, _ = prepare_data(in_collection = queries, 
                                              in_info_process = info_process,
-                                             in_n_sets = 0)
+                                             in_n_sets = 0,
+                                             do_shuffle_original = False)
                 
                 results_dict = dict()
                 

@@ -190,12 +190,12 @@ class DataCollectionXY(DataCollectionBase):
 
         return x, y
 
-    def split_randomly_by_fraction(self, in_fraction: float = 0.25, in_seed: int = 0):
+    def split_randomly_by_fraction(self, in_fraction: float = 0.25, in_seed: int = None):
         """
         Return shuffled DataCollectionXYs inside/outside a specified fraction of instances.
-        Optionally apply shuffling to IDs and timestamps or just ignore it altogether for efficency.
         """
-        np.random.seed(in_seed)
+        if not in_seed is None:
+            np.random.seed(in_seed)
         n_instances = self.get_amount()
         n_samples = min(max(0, int(n_instances * in_fraction)), n_instances)
         indices = np.random.permutation(np.arange(n_instances))

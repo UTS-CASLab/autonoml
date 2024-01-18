@@ -104,7 +104,8 @@ def filter_observations(in_dict_observations: Dict[int, DataCollection],
     return observations
 
 def prepare_data(in_collection: DataCollection, in_info_process: ProcessInformation, 
-                 in_frac_validation: float = 0.25, in_n_sets: int = 1):
+                 in_frac_validation: float = 0.25, in_n_sets: int = 1,
+                 do_shuffle_original: bool = True):
 
     # No validation is needed for adaptation.
     if in_info_process.do_adapt:
@@ -120,10 +121,15 @@ def prepare_data(in_collection: DataCollection, in_info_process: ProcessInformat
     sets_training = list()
     sets_validation = list()
     
-    for _ in range(in_n_sets):
-        set_validation, set_training = collection.split_randomly_by_fraction(in_fraction = in_frac_validation)
+    for idx_set in range(in_n_sets):
+        set_validation, set_training = collection.split_randomly_by_fraction(in_fraction = in_frac_validation, 
+                                                                             in_seed = idx_set)
         sets_training.append(set_training)
         sets_validation.append(set_validation)
+
+    # Shuffle the original collection, which is normally what pipelines are finally trained on.
+    if do_shuffle_original:
+        collection, _ = collection.split_randomly_by_fraction(in_fraction = 1.0, in_seed = 0)
 
     return collection, sets_training, sets_validation
 

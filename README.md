@@ -336,6 +336,6 @@ For example, in abstract terms:
             self.model.custom_incremental_fit(x=x_i, y=y_i)
   ```
 Note that a predictor or preprocessor can multiply inherit an MLOnlineLearner to, by default, make the adapt method redirect to the learn method, as the two are usually identical for an incremental learner.\
-Any other multiple inheritances, e.g. MLDummy, are simply to aid with inclusions/exclusions in strategy files.
+Any other multiple inheritances, e.g. of MLDummy, are simply to aid with inclusions/exclusions in strategy files.
 
 ## Ideal Roadmap

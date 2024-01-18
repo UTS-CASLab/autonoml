@@ -8,8 +8,7 @@ Created on Fri Oct 27 17:06:45 2023
 """
 
 from autonoml.data_storage import DataCollection, SharedMemoryManager
-from autonoml.solution import prepare_data
-from autonoml.solver_ops import ProcessInformation
+from autonoml.solver_ops import ProcessInformation, prepare_data
 
 import numpy as np
 import pyarrow as pa
@@ -36,7 +35,7 @@ if __name__ == '__main__':
 
     # Break up into sets.
     info_process = ProcessInformation(in_keys_features = keys_features, in_key_target = key_target)
-    output = prepare_data(in_observations = collection, in_info_process = info_process,
+    output = prepare_data(in_collection = collection, in_info_process = info_process,
                           in_frac_validation = 0.25, in_n_sets = 3)
     observations, sets_training, sets_validation = output
 
@@ -58,7 +57,7 @@ if __name__ == '__main__':
         print("Validation sets %i (y) equal: %s" % (idx_sets, set_validation.y.equals(set_validation_read.y)))
         idx_sets += 1
 
-    # Delete references to memory-mapped files so that the files can be cleaned.
-    del observations_read, sets_training_read, sets_validation_read
-    del set_training, set_training_read, set_validation, set_validation_read
-    manager.decrement_uses()
+    # # Delete references to memory-mapped files so that the files can be cleaned.
+    # del observations_read, sets_training_read, sets_validation_read
+    # del set_training, set_training_read, set_validation, set_validation_read
+    # manager.decrement_uses()

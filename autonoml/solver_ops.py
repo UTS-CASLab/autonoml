@@ -200,11 +200,16 @@ def track_dynamics(in_observations: DataCollectionXY,
                      in_results_dict,
                      in_key_group: str,
                      in_solution: ProblemSolution,
-                     in_info_process: ProcessInformation):
+                     in_info_process: ProcessInformation,
+                     in_directory: str = None):
     """
     Track the dynamics of a group of learners as they adapt to data.
     """
-    filepath_prefix = "./results/"
+
+    if in_directory is None:
+        filepath_prefix = "./results/"
+    else:
+        filepath_prefix = in_directory + "/results/"
     group_string = in_key_group
     if not group_string == "":
         group_string = "_" + group_string
@@ -286,12 +291,16 @@ def action_responses(in_queries: DataCollectionXY,
                      in_results_dict,
                      in_collection_tag_string: str,
                      in_solution: ProblemSolution,
-                     in_info_process: ProcessInformation):
+                     in_info_process: ProcessInformation,
+                     in_directory: str = None):
     """
     Do something with the responses returned by the solution.
     Currently exports to a file defined by how the query collection was tagged by the user.
     """
-    filepath_prefix = "./results/"
+    if in_directory is None:
+        filepath_prefix = "./results/"
+    else:
+        filepath_prefix = in_directory + "/results/"
     tag_string = in_collection_tag_string
     if not tag_string == "":
         tag_string = "_" + tag_string

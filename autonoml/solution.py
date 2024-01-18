@@ -51,8 +51,10 @@ class ProblemSolution:
     A container for all learners currently in production.
     """
     def __init__(self, in_instructions: ProblemSolverInstructions, in_strategy: Strategy, 
-                 in_data_storage: DataStorage):
+                 in_data_storage: DataStorage,
+                 in_directory: str = None):
 
+        self.directory = in_directory
         self.prepare_results()
 
         # Track pipelines that have been previously been successfully inserted into this solution.
@@ -177,7 +179,10 @@ class ProblemSolution:
         Delete any pre-existing results folder and create a new one.
         Start up a new file for describing pipelines.
         """
-        prefix = "./results/"
+        if self.directory is None:
+            prefix = "./results/"
+        else:
+            prefix = self.directory + "/results/"
         if os.path.exists(prefix):
             shutil.rmtree(prefix)
         os.makedirs(prefix)
@@ -188,14 +193,20 @@ class ProblemSolution:
 
     # TODO: Consider if there is a feasible way to make the info sorted.
     def append_info_file(self, in_pipeline: MLPipeline):
-        prefix = "./results/"
+        if self.directory is None:
+            prefix = "./results/"
+        else:
+            prefix = self.directory + "/results/"
         filepath = prefix + "info_pipelines.txt"
 
         with open(filepath, "a") as file:
             file.write("%s: %s\n" % (in_pipeline.name, in_pipeline.components_as_string(do_hpars = True)))
 
     def export_learners(self):
-        prefix = "./pipelines/"
+        if self.directory is None:
+            prefix = "./pipelines/"
+        else:
+            prefix = self.directory + "/pipelines/"
         os.makedirs(prefix, exist_ok = True)
 
         for key_group, pipelines in self.groups.items():

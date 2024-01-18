@@ -198,7 +198,8 @@ class AutonoMachine:
     def learn(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False,
               do_immediate_responses: bool = True, 
               in_tags_allocation: List[Union[str, Tuple[str, AllocationMethod]]] = None,
-              in_strategy: Strategy = None):
+              in_strategy: Strategy = None,
+              in_directory: str = None):
         """
         Create a solver that will attempt to learn a relation between data features and a target.
         If feature keys are not provided, the relation will include every feature currently present in data storage.
@@ -210,6 +211,8 @@ class AutonoMachine:
         If partitions of data have been assigned tags, they can be marked here for allocation.
         For example: ["source", ("context", AllocationMethod.LEAVE_ONE_OUT)]
         This allows solution learner groups to train on differently tagged subsets of data.
+
+        Note that a directory path can be provided to identify where results are exported to.
         """
         instructions = ProblemSolverInstructions(in_key_target = in_key_target,
                                                  in_keys_features = in_keys_features,
@@ -220,7 +223,8 @@ class AutonoMachine:
                                     in_instructions = instructions,
                                     in_strategy = in_strategy,
                                     in_n_procs = self.n_procs,
-                                    do_mp = self.do_mp)
+                                    do_mp = self.do_mp,
+                                    in_directory = in_directory)
         
         # If running with Python, block and wait for the secondary AutonoML thread.
         # If running with IPython, do not block. Let the user interact.

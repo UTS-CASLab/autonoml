@@ -38,11 +38,15 @@ class ProblemSolver:
     def __init__(self, in_data_storage: DataStorage, 
                  in_instructions: ProblemSolverInstructions,
                  in_strategy: Strategy = None,
-                 in_n_procs: int = 1, do_mp: bool = False):
+                 in_n_procs: int = 1, do_mp: bool = False,
+                 in_directory: str = None):
         
         self.name = "Sol_" + str(ProblemSolver.count)
         ProblemSolver.count += 1
         log.info("%s - Initialising ProblemSolver '%s'." % (Timestamp(), self.name))
+
+        # Note where any results should be exported to.
+        self.directory = in_directory
 
         # Store a reference to the DataStorage in the AutonoMachine.
         self.data_storage = in_data_storage
@@ -98,7 +102,8 @@ class ProblemSolver:
 
         # Instantiate the solution as part of an event loop so that prerequisite data is ingested.
         self.solution = ProblemSolution(in_instructions = self.instructions, in_strategy = self.strategy, 
-                                        in_data_storage = self.data_storage)
+                                        in_data_storage = self.data_storage,
+                                        in_directory = self.directory)
         
         # Instantiate the development queue now that this code is running internally within an event loop.
         self.queue_dev = asyncio.Queue()
@@ -625,7 +630,8 @@ class ProblemSolver:
                                    in_results_dict = results_dict,
                                    in_key_group = key_group,
                                    in_solution = self.solution,
-                                   in_info_process = info_process)
+                                   in_info_process = info_process,
+                                   in_directory = self.directory)
                 
             # Update an index to acknowledge the observations that have been processed.
             self.id_observations_last = id_stop
@@ -697,7 +703,8 @@ class ProblemSolver:
                                  in_results_dict = results_dict,
                                  in_collection_tag_string = tag_queries,
                                  in_solution = self.solution,
-                                 in_info_process = info_process)
+                                 in_info_process = info_process,
+                                 in_directory = self.directory)
                 
             # Update an index to acknowledge the queries that have been processed.
             self.id_queries_last = id_stop

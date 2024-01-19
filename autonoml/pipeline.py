@@ -170,6 +170,7 @@ class MLPipeline:
         format_y = DataFormatY(0)
 
         responses = None
+        loss_recent = None
 
         num_components = len(self.components)
 
@@ -242,17 +243,17 @@ class MLPipeline:
                             
                             if state == PipelineProcessState.QUERY:
                                 responses = predictions
-                                self.update_loss(y_response = predictions, y_true = y_list)
+                                loss_recent = self.update_loss(y_response = predictions, y_true = y_list)
                             else:
-                                self.update_loss(y_response = predictions, y_true = y_list, 
-                                                 is_training = True)
+                                loss_recent = self.update_loss(y_response = predictions, y_true = y_list,
+                                                               is_training = True)
 
                 # Recall the original feature space if querying and learning.
                 if (state == PipelineProcessState.QUERY and do_learn):
                     x = x_mem
                     format_x = format_x_mem
 
-        return responses
+        return responses, loss_recent
 
     def inspect_structure(self):
         """
@@ -322,8 +323,8 @@ def process_pipeline(in_pipeline: MLPipeline,
     # print(duration_prep)
 
     time_start = Timestamp().time
-    responses = in_pipeline.process(x, y, do_query = do_query, do_learn = do_learn, 
-                                    do_adapt = do_adapt)
+    responses, loss_recent = in_pipeline.process(x, y, do_query = do_query, do_learn = do_learn,
+                                                 do_adapt = do_adapt)
     time_end = Timestamp().time
     duration_proc = time_end - time_start
     # print(duration_proc)
@@ -332,7 +333,7 @@ def process_pipeline(in_pipeline: MLPipeline,
     info_process.set_duration_prep(duration_prep)
     info_process.set_duration_proc(duration_proc)
 
-    return in_pipeline, responses, info_process
+    return in_pipeline, responses, loss_recent, info_process
 
 def train_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY,
                    in_info_process: ProcessInformation, in_frac_data: float = 1.0,

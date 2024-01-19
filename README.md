@@ -228,7 +228,7 @@ This output file will contain a unique ID for every query, listing out all the f
 The output file will also provide a solution prediction (with an 'S_' prefix), which, by default, will be the mean of all champion predictions or, failing that, the mode.\
 If there is only one learner group, the ProblemSolution prediction should be equivalent to the solitary champion's prediction.
 
-The predictions of L0, L1, and so on, are included in the output file. So is the name of the pipeline that occupied the learner slot at the time of the response, as well as its cumulative loss value (if available/calculated).\
+The predictions of L0, L1, and so on, are included in the output file. So is the name of the pipeline that occupied the learner slot at the time of the response, as well as its loss value (if available/calculated) over the most recent batch of responses.\
 In streamed cases, expect the champions and challengers to regularly change.\
 Note that a champion can easily have a worse testing loss than a challenger. This just means it was ranked inaccurately, e.g. the training-set validation loss is not representative of the test set.
 

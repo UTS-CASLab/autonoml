@@ -149,12 +149,12 @@ def develop_pipeline(in_pipeline: MLPipeline,
         pipeline_clone = deepcopy(in_pipeline)
 
         # print("Initial Training Size: %i" % set_training.get_amount())
-        pipeline_clone, _, _ = train_pipeline(in_pipeline = pipeline_clone,
+        pipeline_clone, _, _, _ = train_pipeline(in_pipeline = pipeline_clone,
                                               in_data_collection = set_training,
                                               in_info_process = info_process_clone)
         
         # print("Validation Size: %i" % set_validation.get_amount())
-        pipeline_clone, _, _ = test_pipeline(in_pipeline = pipeline_clone,
+        pipeline_clone, _, _, _ = test_pipeline(in_pipeline = pipeline_clone,
                                              in_data_collection = set_validation,
                                              in_info_process = info_process_clone)
         
@@ -169,7 +169,7 @@ def develop_pipeline(in_pipeline: MLPipeline,
             loss = sum(losses)/len(losses)
 
     # print("Final Training Size: %i" % in_observations.get_amount())
-    pipeline, _, info_process = train_pipeline(in_pipeline = in_pipeline,
+    pipeline, _, _, info_process = train_pipeline(in_pipeline = in_pipeline,
                                                in_data_collection = in_observations,
                                                in_info_process = in_info_process)
     
@@ -258,11 +258,11 @@ def get_responses(in_pipeline: MLPipeline,
                   in_queries: DataCollectionXY,
                   in_info_process: ProcessInformation):
     
-    pipeline, responses, info_process = test_pipeline(in_pipeline = in_pipeline,
+    pipeline, responses, loss_recent, info_process = test_pipeline(in_pipeline = in_pipeline,
                                                       in_data_collection = in_queries,
                                                       in_info_process = in_info_process)
     
-    return responses, pipeline, info_process
+    return responses, loss_recent, pipeline, info_process
 
 # TODO: Expand on this.
 def ensemble_responses(in_dict_responses):

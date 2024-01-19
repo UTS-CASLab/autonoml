@@ -595,7 +595,7 @@ class ProblemSolver:
 
                         results_dict[rank_pipeline] = dict()
 
-                        responses, pipeline, info_process = get_responses(in_pipeline = pipeline,
+                        responses, loss_recent, pipeline, info_process = get_responses(in_pipeline = pipeline,
                                                                         in_queries = observations,
                                                                         in_info_process = info_process)
 
@@ -603,7 +603,7 @@ class ProblemSolver:
 
                         results_dict[rank_pipeline]["responses"] = responses
                         record_loss = [None]*observations.get_amount()
-                        record_loss[-1] = pipeline.get_loss()
+                        record_loss[-1] = loss_recent
                         results_dict[rank_pipeline]["loss"] = record_loss
                         results_dict[rank_pipeline]["name"] = [pipeline.name]*observations.get_amount()
 
@@ -682,13 +682,13 @@ class ProblemSolver:
 
                         results_dict[tags][rank_pipeline] = dict()
 
-                        responses, pipeline, info_process = get_responses(in_pipeline = pipeline,
+                        responses, loss_recent,pipeline, info_process = get_responses(in_pipeline = pipeline,
                                                                           in_queries = queries,
                                                                           in_info_process = info_process)
 
                         results_dict[tags][rank_pipeline]["responses"] = responses
                         record_loss = [None]*queries.get_amount()
-                        record_loss[-1] = pipeline.get_loss()
+                        record_loss[-1] = loss_recent
                         results_dict[tags][rank_pipeline]["loss"] = record_loss
                         results_dict[tags][rank_pipeline]["name"] = [pipeline.name]*queries.get_amount()
 

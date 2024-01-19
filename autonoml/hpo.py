@@ -136,7 +136,7 @@ class HPOWorker(Worker):
                                 in_loss_function = self.loss_function)
 
             # print("Training Size: %i" % int(budget*set_training.get_amount()))
-            pipeline, _, _ = train_pipeline(in_pipeline = pipeline,
+            pipeline, _, _, _ = train_pipeline(in_pipeline = pipeline,
                                             in_data_collection = set_training,
                                             in_info_process = self.info_process,
                                             in_frac_data = budget)
@@ -145,7 +145,7 @@ class HPOWorker(Worker):
             # info += "\ntrain_proc %s" % self.info_process.duration_proc
             
             # print("Validation Size: %i" % set_validation.get_amount())
-            pipeline, _, _ = test_pipeline(in_pipeline = pipeline,
+            pipeline, _, _, _ = test_pipeline(in_pipeline = pipeline,
                                            in_data_collection = set_validation,
                                            in_info_process = self.info_process)
 
@@ -386,7 +386,7 @@ def run_hpo(in_hpo_instructions: HPOInstructions,
                           in_keys_features = keys_features, in_key_target = key_target,
                           in_components = config_to_pipeline_structure(in_config = config_best),
                           in_loss_function = in_hpo_instructions.loss_function)
-    pipeline, _, info_process = train_pipeline(in_pipeline = pipeline,
+    pipeline, _, _, info_process = train_pipeline(in_pipeline = pipeline,
                                                in_data_collection = in_observations,
                                                in_info_process = in_info_process)
     

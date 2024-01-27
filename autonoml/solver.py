@@ -14,8 +14,7 @@ from .solution import ProblemSolverInstructions, ProblemSolution
 from .strategy import Strategy
 from .solver_ops import (ProcessInformation,
                          filter_observations, prepare_data, develop_pipeline,
-                         adapt_to_data, track_dynamics,
-                         get_responses, ensemble_responses, action_responses)
+                         track_dynamics, get_responses, ensemble_responses, action_responses)
 
 from .data_storage import DataStorage, SharedMemoryManager
 

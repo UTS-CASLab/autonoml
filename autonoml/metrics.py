@@ -30,7 +30,10 @@ def calculate_loss(y_response, y_true, in_loss_function: LossFunction = None):
         The output must be a loss.
         """
         if in_loss_function == LossFunction.RMSE:
-            val = metrics.mean_squared_error(y_true = y_true, y_pred = y_response, squared = False)
+            try:
+                val = metrics.root_mean_squared_error(y_true = y_true, y_pred = y_response)
+            except:
+                val = metrics.mean_squared_error(y_true = y_true, y_pred = y_response, squared = False)
         elif in_loss_function == LossFunction.ZERO_ONE:
             val = metrics.zero_one_loss(y_true = y_true, y_pred = y_response)
         else:

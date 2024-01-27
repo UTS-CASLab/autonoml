@@ -186,16 +186,6 @@ def develop_pipeline(in_pipeline: MLPipeline,
 
 #%% Functions for processing new observations, i.e. adaptation.
 
-def adapt_to_data(in_pipeline: MLPipeline,
-                  in_observations: DataCollectionXY,
-                  in_info_process: ProcessInformation):
-    
-    pipeline, responses, info_process = adapt_pipeline(in_pipeline = in_pipeline,
-                                                       in_data_collection = in_observations,
-                                                       in_info_process = in_info_process)
-    
-    return responses, pipeline, info_process
-
 def track_dynamics(in_observations: DataCollectionXY,
                      in_results_dict,
                      in_key_group: str,

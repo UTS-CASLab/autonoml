@@ -249,13 +249,20 @@ class SGDRegressor(MLRegressor, MLOnlineLearner, SKLearnPredictor):
         super().__init__(*args, **kwargs)
         self.name += "_SGD"
 
-        self.model = linear_model.SGDRegressor(alpha = self.hpars["alpha"].val)
+        self.model = linear_model.SGDRegressor(alpha = self.hpars["alpha"].val,
+                                               eta0 = self.hpars["eta_zero"].val,
+                                               learning_rate = self.hpars["learning_method"].val)
 
     @staticmethod
     def new_hpars():
         hpars = dict()
-        hpars["alpha"] = HPFloat(in_default = 0.0001, in_min = 0.0001, in_max = 1.0,
-                                 is_log_scale = True)
+
+        methods = ["invscaling", "constant", "optimal", "adaptive"]
+        hpars["learning_method"] = HPCategorical(in_options = methods)
+        hpars["eta_zero"] = HPFloat(in_default = 0.01, in_min = 0.0001, in_max = 1.0,
+                                    is_log_scale = True, in_info = "Initial learning rate.")
+        hpars["alpha"] = HPFloat(in_default = 0.0001, in_min = 10**-7, in_max = 1.0,
+                                 is_log_scale = True, in_info = "Regularisation factor.")
         return hpars
     
     def adapt(self, x, y):

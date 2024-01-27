@@ -200,7 +200,8 @@ class ProblemSolution:
         filepath = prefix + "info_pipelines.txt"
 
         with open(filepath, "a") as file:
-            file.write("%s: %s\n" % (in_pipeline.name, in_pipeline.components_as_string(do_hpars = True)))
+            file.write("%s: %s; Initial Loss: %s\n" % (in_pipeline.name, in_pipeline.components_as_string(do_hpars = True),
+                                                       in_pipeline.get_loss()))
 
     def export_learners(self):
         if self.directory is None:

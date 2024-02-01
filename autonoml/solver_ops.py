@@ -47,9 +47,13 @@ def get_collection(in_dict_observations, in_tag_to_collection_ids,
         set_collection_ids = set()
 
     for key_tag, value_tag in in_tags_inclusive.items():
-        set_collection_ids = set_collection_ids | in_tag_to_collection_ids[key_tag][value_tag]
+        if key_tag in in_tag_to_collection_ids:
+            if value_tag in in_tag_to_collection_ids[key_tag]:
+                set_collection_ids = set_collection_ids | in_tag_to_collection_ids[key_tag][value_tag]
     for key_tag, value_tag in in_tags_exclusive.items():
-        set_collection_ids = set_collection_ids - in_tag_to_collection_ids[key_tag][value_tag]
+        if key_tag in in_tag_to_collection_ids:
+            if value_tag in in_tag_to_collection_ids[key_tag]:
+                set_collection_ids = set_collection_ids - in_tag_to_collection_ids[key_tag][value_tag]
 
     # Create the basis of an empty data collection.
     empty_schema = pa.schema([])

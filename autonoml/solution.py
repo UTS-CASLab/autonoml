@@ -11,7 +11,7 @@ from .strategy import Strategy
 
 from .data_storage import DataStorage
 
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import joblib
 
@@ -35,7 +35,11 @@ class ProblemSolverInstructions:
     """
     def __init__(self, in_key_target: str, in_keys_features = None, do_exclude: bool = False,
                  do_immediate_responses: bool = True,
-                 in_tags_allocation: List[Union[str, Tuple[str, AllocationMethod]]] = None):
+                 in_tags_allocation: List[Union[str, Tuple[str, AllocationMethod]]] = None,
+                 in_directory_import: str = None,
+                 in_import_allocation: Dict[str, Union[Tuple[str, str], Tuple[str, str, AllocationMethod],
+                                                       List[Union[Tuple[str, str], Tuple[str, str, AllocationMethod]]]]] = None,
+                 do_compare_adaptation: bool = False):
         
         self.key_target = in_key_target
         self.keys_features = in_keys_features
@@ -45,6 +49,11 @@ class ProblemSolverInstructions:
 
         self.do_immediate_responses = do_immediate_responses
 
+        # How to handle imported pipelines, if any.
+        self.directory_import = in_directory_import
+        self.import_allocation = in_import_allocation
+        self.do_compare_adaptation = do_compare_adaptation
+
 # TODO: Clean-up labels around tags and keys.
 class ProblemSolution:
     """
@@ -52,9 +61,9 @@ class ProblemSolution:
     """
     def __init__(self, in_instructions: ProblemSolverInstructions, in_strategy: Strategy, 
                  in_data_storage: DataStorage,
-                 in_directory: str = None):
+                 in_directory_results: str = None):
 
-        self.directory = in_directory
+        self.directory = in_directory_results
         self.prepare_results()
 
         # Track pipelines that have been previously been successfully inserted into this solution.
@@ -123,6 +132,92 @@ class ProblemSolution:
                  "%s   Each group champion can have up to %i challengers."
                  % (Timestamp(), len(self.groups),
                     Timestamp(None), self.n_challengers))
+        
+
+    # TODO: Consider improvements to the logic.
+    def import_learners(self, in_instructions: ProblemSolverInstructions):
+        """
+        Load and insert all pipelines within a directory stored within instructions.
+        Determine what their data filters are for adaptation.
+        """
+
+        dir_import = in_instructions.directory_import
+        import_allocation = in_instructions.import_allocation
+
+        key_target = None
+        keys_features = None
+
+        if not dir_import is None:
+            for filename in os.listdir(dir_import):
+                filepath = os.path.join(dir_import, filename)
+
+                pipeline = joblib.load(filepath)
+                pipeline.name = "Imported_" + pipeline.name
+                pipeline.clean_history()
+                if in_instructions.do_compare_adaptation:
+                    pipeline.is_static = True
+                    pipeline.name += "_Static"
+                    pipeline_alt = joblib.load(filepath)
+                    pipeline_alt.name = "Imported_" + pipeline_alt.name + "_Adaptive"
+                    pipeline_alt.is_static = False
+                    pipeline_alt.clean_history()
+
+                key_group = self.id_no_filter
+
+                # Determine what data this imported pipeline should adapt on.
+                if not import_allocation is None:
+                    for substring, allocation in import_allocation.items():
+
+                        if substring in filename:
+
+                            key_group = self.id_no_filter
+                            filter_group = list()
+
+                            if isinstance(allocation, tuple):
+                                allocation = [allocation]
+
+                            for tag_tuple in allocation:
+                                key_data = tag_tuple[0]
+                                value = tag_tuple[1]
+                                if len(tag_tuple) == 3:
+                                    method_allocation = tag_tuple[2]
+                                else:
+                                    method_allocation = AllocationMethod.ONE_EACH
+
+                                if method_allocation == AllocationMethod.ONE_EACH:
+                                    if key_group == self.id_no_filter:
+                                        key_group = "(" + key_data + "==" + value + ")"
+                                    else:
+                                        key_group = key_group + "&(" + key_data + "==" + value + ")"
+                                elif method_allocation == AllocationMethod.LEAVE_ONE_OUT:
+                                    if key_group == self.id_no_filter:
+                                        key_group = "(" + key_data + "!=" + value + ")"
+                                    else:
+                                        key_group = key_group + "&(" + key_data + "!=" + value + ")"
+                                else:
+                                    raise NotImplementedError
+                                
+                                filter_group.append((key_data, value, method_allocation))
+
+                        # If the user has specified new filters, put those in.
+                        if not key_group in self.groups:
+                            self.groups[key_group] = list()
+                            self.filters[key_group] = filter_group
+
+                self.insert_learner(in_pipeline = pipeline, in_key_group = key_group)
+                if in_instructions.do_compare_adaptation:
+                    self.insert_learner(in_pipeline = pipeline_alt, in_key_group = key_group)
+
+                # The last component of a pipeline is a predictor with a target.
+                # The first component of a pipeline will store initial features.
+                # Get both so that target/features can be imported.
+                key_target = pipeline.components[-1].key_target
+                keys_features = pipeline.components[0].keys_features
+
+        # Return the last import pipeline's target/features.
+        return key_target, keys_features
+
+
 
     def insert_learner(self, in_pipeline: MLPipeline, in_key_group: str, do_replace: bool = False):
         """
@@ -171,6 +266,14 @@ class ProblemSolution:
             list_learners = self.groups[in_key_group]
             
         return list_learners
+    
+
+
+    def count_learners(self):
+        amount = 0
+        for group in self.groups.values():
+            amount += len(group)
+        return amount
 
 
     # TODO: Reconsider which objects should be responsible for preparing results.

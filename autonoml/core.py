@@ -199,7 +199,12 @@ class AutonoMachine:
               do_immediate_responses: bool = True, 
               in_tags_allocation: List[Union[str, Tuple[str, AllocationMethod]]] = None,
               in_strategy: Strategy = None,
-              in_directory: str = None):
+              in_directory_results: str = None,
+
+              in_directory_import: str = None,
+              in_import_allocation: Dict[str, Union[Tuple[str, str], Tuple[str, str, AllocationMethod],
+                                                    List[Union[Tuple[str, str], Tuple[str, str, AllocationMethod]]]]] = None,
+              do_compare_adaptation: bool = False):
         """
         Create a solver that will attempt to learn a relation between data features and a target.
         If feature keys are not provided, the relation will include every feature currently present in data storage.
@@ -211,20 +216,33 @@ class AutonoMachine:
         If partitions of data have been assigned tags, they can be marked here for allocation.
         For example: ["source", ("context", AllocationMethod.LEAVE_ONE_OUT)]
         This allows solution learner groups to train on differently tagged subsets of data.
+        For example, each group trains on data subsets marked with one tag of "source" and any-but-one tag of "context".
 
         Note that a directory path can be provided to identify where results are exported to.
+
+        Imports...
+        A directory path of previously exported pipelines can be provided to import them into a solver.
+        An allocation dictionary can additionally specify what data subsets they adapt to.
+        For example: {"pipe_1": ("source", "one"),
+                      "pipe_2": [("source", "two"), ("context", "alpha", AllocationMethod.LEAVE_ONE_OUT)]}
+        In this example, any pipelines with "pipe_1" in their filename will adapt on data subsets with a "source" tag of "one".
+        Likewise, "pipe_2" pipelines will adapt for a "source" tag of "two", but not on data subsets with "context" tag "alpha".
+        If a user desires to compare adaptation, each imported pipeline will be cloned into an adaptable and non-adaptable duo.
         """
         instructions = ProblemSolverInstructions(in_key_target = in_key_target,
                                                  in_keys_features = in_keys_features,
                                                  do_exclude = do_exclude,
                                                  do_immediate_responses = do_immediate_responses,
-                                                 in_tags_allocation = in_tags_allocation)
+                                                 in_tags_allocation = in_tags_allocation,
+                                                 in_directory_import = in_directory_import,
+                                                 in_import_allocation = in_import_allocation,
+                                                 do_compare_adaptation = do_compare_adaptation)
         self.solver = ProblemSolver(in_data_storage = self.data_storage,
                                     in_instructions = instructions,
                                     in_strategy = in_strategy,
                                     in_n_procs = self.n_procs,
                                     do_mp = self.do_mp,
-                                    in_directory = in_directory)
+                                    in_directory_results = in_directory_results)
         
         # If running with Python, block and wait for the secondary AutonoML thread.
         # If running with IPython, do not block. Let the user interact.

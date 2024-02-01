@@ -517,44 +517,19 @@ class DataStorage:
             amount += collection.get_amount()
         return amount
     
-    # def get_collection(self, in_tags_inclusive = None, in_tags_exclusive = None):
+    # def verify_schema(self, in_keys: List = None):
     #     """
-    #     Returns a concatenation of data collections linked/unlinked with 'inclusive/exclusive' tags.
-    #     If there are no inclusive tags, all collections are selected prior to exclusions.
+    #     Ensure that the core collection of observations and queries contains certain keys.
     #     """
-    #     # if in_tags_inclusive is None:
-    #     #     in_tags_inclusive = dict()
-    #     # if in_tags_exclusive is None:
-    #     #     in_tags_exclusive = dict()
-        
-    #     # if len(in_tags_inclusive) == 0:
-    #     #     set_collection_ids = set(self.observations.keys())
-    #     # else:
-    #     #     set_collection_ids = set()
 
-    #     # for key_tag, value_tag in in_tags_inclusive.items():
-    #     #     set_collection_ids = set_collection_ids | self.tag_to_collection_ids[key_tag][value_tag]
-    #     # for key_tag, value_tag in in_tags_exclusive.items():
-    #     #     set_collection_ids = set_collection_ids - self.tag_to_collection_ids[key_tag][value_tag]
-
-    #     # collection = None
-    #     # for collection_id in list(set_collection_ids):
-    #     #     if collection is None:
-    #     #         collection = self.observations[collection_id]
-    #     #     else:
-    #     #         collection = collection + self.observations[collection_id]
-
-    #     # return collection
-    #     return get_collection(self.observations, self.tag_to_collection_ids, in_tags_inclusive, in_tags_exclusive)
+    #     if not in_keys is None:
+    #         for collection in self.observations.values():
+    #             collection.insert(pa.table(columns = [], schema = in_keys))
+    #         for collection in self.queries.values():
+    #             collection.insert(pa.table(columns = [], schema = in_keys))
+            
     
-    # def expand_collections(self, in_key):
-    #     """
-    #     Add a new keyed list of None values to every collection in storage with appropriate size.
-    #     """
-    #     for source in [self.observations, self.queries]:
-    #         for collection in source.values():
-    #             collection.data[in_key] = [None]*len(collection.timestamps)
-    #     self.data_types[in_key] = None
+
 
     def store_data(self, in_data: pa.Table, in_tags: Dict[str, str], as_query: bool = False):
 
@@ -584,123 +559,6 @@ class DataStorage:
             self.has_new_observations.set_result(True)
             self.has_new_observations = asyncio.Future()
 
-    # # TODO: Update info logging once terminology is settled. Fix logging for tags.
-    # def store_data(self, in_timestamp: Timestamp, in_data_port_id, in_keys, in_elements, in_data_types, 
-    #                in_tags: Dict[str, str],
-    #                as_query: bool = False):
-
-    #     # Convert user-specified tags to a unique collection ID.
-    #     set_collection_ids = self.get_collection_ids(in_tags = in_tags, 
-    #                                                  do_prepare_dicts = True, 
-    #                                                  do_exact_tag_combo = True)
-    #     collection_id = list(set_collection_ids)[0]
-
-    #     if as_query:
-    #         timestamps = self.queries[collection_id].timestamps
-    #         dict_storage = self.queries[collection_id].data
-    #     else:
-    #         timestamps = self.observations[collection_id].timestamps
-    #         dict_storage = self.observations[collection_id].data
-            
-    #     timestamps.append(in_timestamp)
-
-    #     # Extend all existing data or query lists by one empty slot.
-    #     for dkey in self.get_key_dict():
-    #         dict_storage[dkey].append(None)
-        
-    #     count_ikey_new = 0
-    #     count_dkey_new = 0
-    #     for key, element, data_type in zip(in_keys, in_elements, in_data_types):
-            
-    #         ikey = in_data_port_id + "_" + key
-            
-    #         # If a new port-specific key is encountered, initialise a list.
-    #         # The list is initially named identically to this key.
-    #         if not ikey in self.ikeys_to_dkeys:
-    #             if count_ikey_new < SS.MAX_ALERTS_IKEY_NEW:
-    #                 log.info("%s   DataStorage is newly encountering elements "
-    #                          "of data/queries from a DataPort with key '%s'."
-    #                          % (Timestamp(None), ikey))
-    #             # TODO: Set up a safety mode where key is a distinct ikey.
-    #             self.ikeys_to_dkeys[ikey] = key
-    #             count_ikey_new += 1
-            
-    #         dkey = self.ikeys_to_dkeys[ikey]
-
-    #         if not dkey in self.get_key_dict():
-    #             if count_dkey_new < SS.MAX_ALERTS_DKEY_NEW:
-    #                 log.info("%s   DataStorage has begun storing elements of "
-    #                          "data/queries in a list with key '%s'." 
-    #                          % (Timestamp(None), dkey))
-    #             self.expand_collections(in_key = dkey)
-                
-    #             # If the type has not been determined elsewhere, the first element decides.
-    #             # TODO: Improve inference process. Maybe update as new data is encountered.
-    #             if data_type is None:
-    #                 self.data_types[dkey] = infer_data_type(element)
-    #             else:
-    #                 self.data_types[dkey] = data_type
-    #             count_dkey_new += 1
-            
-    #         # # Both data/queries must have the same keys.
-    #         # if not dkey in self.observations[collection_id].data:
-    #         #     if count_dkey_new < SS.MAX_ALERTS_DKEY_NEW:
-    #         #         log.info("%s   DataStorage has begun storing elements of "
-    #         #                  "data/queries in a list with key '%s'." 
-    #         #                  % (Timestamp(None), dkey))
-    #         #     self.observations[collection_id].data[dkey] = [None]*len(self.observations[collection_id].timestamps)
-    #         #     self.queries[collection_id].data[dkey] = [None]*len(self.queries[collection_id].timestamps)
-                
-    #         #     # If the type has not been determined elsewhere, the first element decides.
-    #         #     # TODO: Improve inference process. Maybe update as new data is encountered.
-    #         #     if data_type is None:
-    #         #         self.data_types[dkey] = infer_data_type(element)
-    #         #     else:
-    #         #         self.data_types[dkey] = data_type
-    #         #     count_dkey_new += 1
-            
-    #         # Add the new element to the list with str-to-type conversion.
-    #         try:
-    #             # TODO: Some data types do not convert, e.g. NoneType. Consider how to fix/avoid.
-    #             dict_storage[dkey][-1] = self.data_types[dkey].convert(element)
-    #         except Exception as e:
-    #             # TODO: Handle changes in data type for messy datasets.
-    #             raise e
-                
-    #     if count_ikey_new > SS.MAX_ALERTS_IKEY_NEW:
-    #         log.info("%s   In total, DataStorage has newly encountered data/queries "
-    #                  "from a DataPort with %i unseen keys."
-    #                  % (Timestamp(None), count_ikey_new))
-    #     if count_dkey_new > SS.MAX_ALERTS_DKEY_NEW:
-    #         log.info("%s   In total, DataStorage has begun storing data/queries "
-    #                  "in %i new keyed lists."
-    #                  % (Timestamp(None), count_dkey_new))
-        
-    #     # Flick a switch so that learners can start ingesting new data.
-    #     # Note: Resolving awaited futures are priority microtasks.
-    #     # The following reset runs after the learners are signalled.
-    #     if as_query:
-    #         self.has_new_queries.set_result(in_tags)
-    #         self.has_new_queries = asyncio.Future()
-    #     else:
-    #         self.has_new_observations.set_result(in_tags)
-    #         self.has_new_observations = asyncio.Future()
-
-
-    # def get_unique_values(self, in_key, do_check_category = True, from_queries = False):
-        
-    #     if do_check_category and not self.data_types[in_key] == DataType.CATEGORICAL:
-    #         text_error = ("Attempting to acquire unique values from "
-    #                         "a list of non-categorical data type.")
-    #         log.error("%s - %s" % (Timestamp(), text_error))
-    #         raise Exception(text_error)
-        
-    #     if from_queries:
-    #         unique_values = list(dict.fromkeys(self.queries.data[in_key]))
-    #     else:
-    #         unique_values = list(dict.fromkeys(self.observations.data[in_key]))
-
-    #     return unique_values
         
 
     def info(self):

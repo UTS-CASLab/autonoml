@@ -38,14 +38,14 @@ class ProblemSolver:
                  in_instructions: ProblemSolverInstructions,
                  in_strategy: Strategy = None,
                  in_n_procs: int = 1, do_mp: bool = False,
-                 in_directory: str = None):
+                 in_directory_results: str = None):
         
         self.name = "Sol_" + str(ProblemSolver.count)
         ProblemSolver.count += 1
         log.info("%s - Initialising ProblemSolver '%s'." % (Timestamp(), self.name))
 
         # Note where any results should be exported to.
-        self.directory = in_directory
+        self.directory_results = in_directory_results
 
         # Store a reference to the DataStorage in the AutonoMachine.
         self.data_storage = in_data_storage
@@ -102,7 +102,24 @@ class ProblemSolver:
         # Instantiate the solution as part of an event loop so that prerequisite data is ingested.
         self.solution = ProblemSolution(in_instructions = self.instructions, in_strategy = self.strategy, 
                                         in_data_storage = self.data_storage,
-                                        in_directory = self.directory)
+                                        in_directory_results = self.directory_results)
+        
+        # Import learners and, if there is no specified target or features yet, use the target and features from the last import.
+        key_target, keys_features = self.solution.import_learners(in_instructions = self.instructions)
+
+        if self.key_target is None:
+            self.key_target = key_target
+            # self.data_storage.verify_schema([key_target])
+        if self.keys_features is None:
+            self.keys_features = keys_features
+            # self.data_storage.verify_schema(keys_features)
+
+        # TODO: Really, this error should only have been reached in the do_exclude case, when feature keys can't be worked out without data or imports.
+        #       Otherwise, just trust the user. So, improve set_target_and_features function so that it doesn't need to be matched by the data storage.
+        if (self.key_target is None or self.keys_features is None):
+            text_error = "Target and feature keys were not present in data storage or in imported pipelines." 
+            log.error("%s - %s" % (Timestamp(), text_error))
+            raise Exception(text_error)
         
         # Instantiate the development queue now that this code is running internally within an event loop.
         self.queue_dev = asyncio.Queue()
@@ -169,7 +186,7 @@ class ProblemSolver:
                          "running HPO.") % self.name
             log.info("%s - %s" % (Timestamp(), text_info))
 
-        if self.queue_dev.qsize() == 0:
+        if self.queue_dev.qsize() == 0 and self.solution.count_learners() == 0:
             # TODO: Perhaps wrap this up in a utils error function.
             text_error = ("ProblemSolver '%s' cannot continue. "
                           "Its Strategy does not suggest any pipelines.") % self.name
@@ -558,6 +575,11 @@ class ProblemSolver:
             # This involves filtering out irrelevant data according to tags and grabbing the right range.
             # This also involves preparing the data in X and Y format, i.e. feature/target space.
             for key_group in self.solution.groups:
+
+                # If there are no learners in a group, skip.
+                if len(self.solution.groups[key_group]) == 0:
+                    continue
+
                 data_filter = self.solution.filters[key_group]
 
                 time_start = Timestamp().time
@@ -565,6 +587,11 @@ class ProblemSolver:
                 tag_to_collection_ids = self.data_storage.observations_tag_to_collection_ids
                 observations = filter_observations(dict_observations, tag_to_collection_ids, data_filter,
                                                    in_info_process = info_process)
+                
+                # If the filtered observations have no instances, skip.
+                if observations.get_amount() == 0:
+                    continue
+
                 # print(observations.data)
                 observations, _, _ = prepare_data(in_collection = observations,
                                                   in_info_process = info_process,
@@ -613,11 +640,13 @@ class ProblemSolver:
 
                     # Go through pipelines again and put them up for adaptation, if applicable.
                     for rank_pipeline, pipeline in enumerate(deepcopy(self.solution.groups[key_group])):
-                        if not pipeline.name in self.pipelines_adapting:
-                            self.pipelines_adapting[pipeline.name] = True
-                            attempt = 0
-                            dev_package = (deepcopy(pipeline), key_group, data_filter, info_process, attempt)
-                            await self.queue_dev.put(dev_package)
+                        if not pipeline.is_static:
+                            if not pipeline.name in self.pipelines_adapting:
+                                self.pipelines_adapting[pipeline.name] = True
+                                attempt = 0
+                                pipeline_adapt = deepcopy(pipeline)
+                                dev_package = (pipeline_adapt, key_group, data_filter, info_process, attempt)
+                                await self.queue_dev.put(dev_package)
                         
                         
 
@@ -630,7 +659,7 @@ class ProblemSolver:
                                    in_key_group = key_group,
                                    in_solution = self.solution,
                                    in_info_process = info_process,
-                                   in_directory = self.directory)
+                                   in_directory = self.directory_results)
                 
             # Update an index to acknowledge the observations that have been processed.
             self.id_observations_last = id_stop
@@ -703,7 +732,7 @@ class ProblemSolver:
                                  in_collection_tag_string = tag_queries,
                                  in_solution = self.solution,
                                  in_info_process = info_process,
-                                 in_directory = self.directory)
+                                 in_directory = self.directory_results)
                 
             # Update an index to acknowledge the queries that have been processed.
             self.id_queries_last = id_stop
@@ -714,19 +743,23 @@ class ProblemSolver:
 
 
             
-    # TODO: Include error checking for no features. Error-check target existence somewhere too.
+    # TODO: Include error checking for no features and information. Error-check target existence somewhere too.
     async def set_target_and_features(self, in_key_target: str,
                                       in_keys_features: List[str] = None, 
                                       do_exclude: bool = False):
+        
+        key_target = None
+        keys_features = None
         
         storage_keys = self.data_storage.get_key_dict()
 
         if in_key_target in storage_keys:
             key_target = in_key_target
         else:
-            text_error = "Desired target key '%s' cannot be found in DataStorage." % in_key_target 
-            log.error("%s - %s" % (Timestamp(), text_error))
-            raise Exception(text_error)
+            text_error = "Desired target key '%s' cannot be found in DataStorage yet." % in_key_target 
+            log.warning("%s - %s" % (Timestamp(), text_error))
+            # raise Exception(text_error)
+            return key_target, keys_features
         
         keys_features = list()
         # If the user provided feature keys, but not to exclude...

@@ -94,6 +94,14 @@ class MLPipeline:
 
     def __repr__(self):
         return self.name + ": [" + self.components_as_string() + "]"
+    
+    def clean_history(self):
+        self.training_y_true = list()
+        self.training_y_response = list()
+        self.training_loss = np.inf
+        self.testing_y_true = list()
+        self.testing_y_response = list()
+        self.testing_loss = np.inf
 
     def components_as_string(self, do_hpars = False):
         if do_hpars:
@@ -305,8 +313,7 @@ def process_pipeline(in_pipeline: MLPipeline,
                      in_info_process: ProcessInformation,
                      in_frac_data: float = 1.0,
                      do_query: bool = False,
-                     do_learn: bool = False,
-                     do_adapt: bool = False):
+                     do_learn: bool = False):
     """
     A wrapper for pipeline training to be called from a ProblemSolver or elsewhere.
     This is designed for multiprocessing.
@@ -324,7 +331,7 @@ def process_pipeline(in_pipeline: MLPipeline,
 
     time_start = Timestamp().time
     responses, loss_recent = in_pipeline.process(x, y, do_query = do_query, do_learn = do_learn,
-                                                 do_adapt = do_adapt)
+                                                 do_adapt = in_info_process.do_adapt)
     time_end = Timestamp().time
     duration_proc = time_end - time_start
     # print(duration_proc)
@@ -336,10 +343,9 @@ def process_pipeline(in_pipeline: MLPipeline,
     return in_pipeline, responses, loss_recent, info_process
 
 def train_pipeline(in_pipeline: MLPipeline, in_data_collection: DataCollectionXY,
-                   in_info_process: ProcessInformation, in_frac_data: float = 1.0,
-                   do_adapt: bool = False):
+                   in_info_process: ProcessInformation, in_frac_data: float = 1.0):
     return process_pipeline(in_pipeline, in_data_collection, in_info_process, in_frac_data, 
-                            do_learn = True, do_adapt = do_adapt)
+                            do_learn = True)
 
 def test_pipeline(in_pipeline: MLPipeline, in_data_collection:  DataCollectionXY,
                   in_info_process: ProcessInformation):

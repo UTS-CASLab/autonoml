@@ -36,7 +36,8 @@ class SimDataStreamer:
                  in_hostname_observations = SS.DEFAULT_HOSTNAME,
                  in_port_observations = SS.DEFAULT_PORT_OBSERVATIONS,
                  in_hostname_queries = SS.DEFAULT_HOSTNAME,
-                 in_port_queries = SS.DEFAULT_PORT_QUERIES):
+                 in_port_queries = SS.DEFAULT_PORT_QUERIES,
+                 do_stream_logs = True):
         log.info("%s - A SimDataStreamer has been initialised." % Timestamp())
         
         self.filepath_data = in_filepath_data
@@ -65,6 +66,8 @@ class SimDataStreamer:
         # This is a 'global' value, in case multiple clients connect.
         self.timestamp_confirm_global = Timestamp()
         
+        self.do_stream_logs = do_stream_logs
+
         self.run()
 
     def __del__(self):
@@ -176,7 +179,8 @@ class SimDataStreamer:
                 # Any message from the client with an endline confirms the connection.
                 # TODO: Give the await timeout as well.
                 await in_reader.readline()
-                log.info("%s - Client confirmation received." % (Timestamp()))
+                if self.do_stream_logs:
+                    log.info("%s - Client confirmation received." % (Timestamp()))
             except Exception as e:
                 log.warning(e)
                 break
@@ -209,12 +213,14 @@ class SimDataStreamer:
                     # Note: Resolving awaited futures are priority microtasks.
                     # The following reset runs after the writers get results.
                     if count_instance < self.observations_per_query:
-                        log.info("%s - Data generated: %s" % (Timestamp(), line.rstrip()))
+                        if self.do_stream_logs:
+                            log.info("%s - Data generated: %s" % (Timestamp(), line.rstrip()))
                         self.data.set_result(line)
                         self.data = asyncio.Future()
                         count_instance += 1
                     else:
-                        log.info("%s - Query (and expected response) generated: %s" % (Timestamp(), line.rstrip()))
+                        if self.do_stream_logs:
+                            log.info("%s - Query (and expected response) generated: %s" % (Timestamp(), line.rstrip()))
                         self.query.set_result(line)
                         self.query = asyncio.Future()
                         # Allow non-integer train/test ratios by subtracting.

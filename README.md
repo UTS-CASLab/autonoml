@@ -34,6 +34,11 @@ A framework for continuous automated machine learning.
   pip install -e .
   ```
 
+5. Optional. Some custom ML models need third-party packages to be manually installed.\
+   The AutonoML framework should skip over these models without issue if they are not installed.\
+   However, if you wish to use them, follow their installation procedures. Make sure they are installed in the 'autonoml' virtual environment...\
+   https://github.com/UTS-CASLab/lwpr
+
 ## For Users
 
 ### Basics

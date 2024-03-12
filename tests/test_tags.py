@@ -22,8 +22,7 @@ if __name__ == '__main__':
 
     # proj.info_storage()
 
-    # strategy = aml.import_strategy("./test_tags.strat")
-    strategy = aml.import_strategy("./template.strat")
+    strategy = aml.import_strategy("./test_tags.strat")
     proj.learn("target_int", do_immediate_responses = False,
                in_strategy = strategy,
                in_tags_allocation = [("file", aml.AllocationMethod.LEAVE_ONE_OUT)])

@@ -21,70 +21,6 @@ import base64
 from typing import List
 
 
-# class WrapperLWPR(lwpr.LWPR):
-#     """
-#     The lwpr package is built in C and is not automatically pickled.
-#     This class wraps around the LWPR model object and hacks in a pickling method.
-#     Basically, a binary file is exported and its filepath is pickled.
-#     """
-#     def __init__(self, *args, in_name_component = None, in_filepath = None, **kwargs):
-#         self.name_component = in_name_component
-#         if not in_filepath is None:
-#             # Load from binary file, if available.
-#             super().__init__(in_filepath)
-#         else:
-#             # Otherwise, initialise as usual.
-#             super().__init__(*args, **kwargs)
-
-#     def __reduce__(self):
-#         filepath = "./" + self.name_component + ".bin"
-#         self.write_binary(filepath)
-
-#         # Return a tuple with the class constructor and the arguments needed to reconstruct the object.
-#         return (self.__class__, (), {"in_name_component": self.name_component, "in_filepath": filepath})
-
-
-
-# class WrapperLWPR():
-#     """
-#     The lwpr package is built in C and is not automatically pickled.
-#     This class wraps around the LWPR model object and hacks in a pickling method.
-#     Basically, a binary file is exported/imported as needed and converted between a bytestring.
-#     This allows deepcopy to keep things in memory, while joblib dump/load writes up a pickle file.
-#     """
-#     def __init__(self, *args, **kwargs):
-#         in_bytestring = kwargs.get("in_bytestring", None)
-#         print("test")
-#         print(in_bytestring)
-#         if not in_bytestring is None:
-#             print("Import")
-#             print(in_bytestring)
-#             with open("./temp_lwpr.bin", "wb") as file:
-#                 lwpr_bytes = base64.b64decode(in_bytestring)
-#                 file.write(lwpr_bytes)
-#             self.model = lwpr.LWPR("./temp_lwpr.bin")
-#             os.remove("./temp_lwpr.bin")
-#         else:
-#             # Otherwise, initialise as usual.
-#             self.model = lwpr.LWPR(*args, **kwargs)
-
-#     def __getattr__(self, id_attribute):
-#         # Delegate any attribute access to the wrapped LWPR instance.
-#         return getattr(self.model, id_attribute)
-
-#     def __reduce__(self):
-#         self.model.write_binary("./temp_lwpr.bin")
-#         with open("./temp_lwpr.bin", "rb") as file:
-#             lwpr_bytes = file.read()
-#         lwpr_data = base64.b64encode(lwpr_bytes).decode("utf-8")
-#         os.remove("./temp_lwpr.bin")
-
-#         print((self.__class__, (), {"in_bytestring": lwpr_data}))
-
-#         # Return a tuple with the class constructor and the arguments needed to reconstruct the object.
-#         return (self.__class__, (), {"in_bytestring": lwpr_data})
-
-
 
 class WrapperLWPR():
     """
@@ -164,8 +100,6 @@ class LocallyWeightedProjectionRegressor(MLRegressor, MLOnlineLearner):
         x = x.astype(np.float64)
         y = y.astype(np.float64)
         for x_i, y_i in zip(x, y):
-            print(type(x_i))
-            print(type(y_i))
             self.model.update(x_i, y_i)
 
     def query(self, x):
@@ -177,7 +111,6 @@ class LocallyWeightedProjectionRegressor(MLRegressor, MLOnlineLearner):
             x_i = x[i, :]
             y_i = self.model.predict(x_i)
             responses[i, 0] = y_i
-        print(responses)
         return responses
     
     def set_keys_features(self, in_keys_features: List[str]):

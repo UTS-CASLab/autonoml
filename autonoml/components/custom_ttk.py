@@ -561,13 +561,11 @@ class OnlineSupportVectorRegressor(MLRegressor, MLOnlineLearner):
         #          Currently, number of features is unknown until a surrounding pipeline is constructed.
         #          Therefore, this component should not be used outside of a pipeline without care.
         # TODO: Reconsider whether MLComponent should require an in_keys_features argument.
-        self.model = OnlineSVR(n_features = None, 
-                               C = self.hpars["C"].val, 
-                               eps = self.hpars["epsilon"].val, 
-                               gamma = self.hpars["gamma"].val)
+        self.model = None
         self.name += "_CustomTTK_OnlineSVR"
         self.format_x = DataFormatX.NUMPY_ARRAY_2D
         self.format_y = DataFormatY.NUMPY_ARRAY_2D
+        self.is_setup_complete = False
 
     @staticmethod
     def new_hpars():
@@ -587,10 +585,14 @@ class OnlineSupportVectorRegressor(MLRegressor, MLOnlineLearner):
         return hpars
 
     def learn(self, x, y):
+        if not self.is_setup_complete:
+            raise Exception(f"Delayed setup for {self.name} was not completed before methods were called.")
         for x_i, y_i in zip(x, y):
             self.model.learn(new_X = x_i, new_Y = y_i)
 
     def query(self, x):
+        if not self.is_setup_complete:
+            raise Exception(f"Delayed setup for {self.name} was not completed before methods were called.")
         responses = np.empty((x.shape[0], 1))
         for i in range(x.shape[0]):
             x_i = x[i, :]
@@ -605,4 +607,11 @@ class OnlineSupportVectorRegressor(MLRegressor, MLOnlineLearner):
         This is required for updating the model with the number of features to expect.
         """
         self.keys_features = in_keys_features
-        self.model.n_features = len(self.keys_features)
+        self.run_delayed_setup()
+
+    def run_delayed_setup(self):
+        self.model = OnlineSVR(n_features = len(self.keys_features),
+                               C = self.hpars["C"].val, 
+                               eps = self.hpars["epsilon"].val, 
+                               gamma = self.hpars["gamma"].val)
+        self.is_setup_complete = True

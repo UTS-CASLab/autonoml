@@ -52,7 +52,12 @@ class ComponentCatalogue():
         # Import all modules within the components folder.
         for _, module_short, _ in pkgutil.iter_modules(components.__path__):
             module_full = "%s.%s" % (components.__name__, module_short)
-            loaded_module = importlib.import_module(module_full)
+            try:
+                loaded_module = importlib.import_module(module_full)
+            except ModuleNotFoundError:
+                text_warning = "Module '%s' failed in its own imports. Ignoring its components." % module_short
+                log.warning("%s - %s" % (Timestamp(), text_warning))
+                continue
 
             self.module_to_cids[module_full] = dict()
                 

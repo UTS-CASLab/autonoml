@@ -563,7 +563,13 @@ class ProblemSolver:
                 await self.data_storage.has_new_observations
 
             # Fix how many observations to process based on what is available at the time.
-            id_stop = self.data_storage.id_data_last
+            if self.instructions.do_adapt_to_everything:
+                # If every data instance matters, step forward by one instance.
+                # TODO: Consider speedups if this becomes slow, e.g. due to many learner group checks.
+                id_stop = self.id_observations_last + 1
+            else:
+                # Otherwise, grab the new batch of data and only adapt to the last instance.
+                id_stop = self.data_storage.id_data_last
 
             info_process = ProcessInformation(in_keys_features = self.keys_features,
                                               in_key_target = self.key_target,

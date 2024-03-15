@@ -39,7 +39,9 @@ class ProblemSolverInstructions:
                  in_directory_import: str = None,
                  in_import_allocation: Dict[str, Union[Tuple[str, str], Tuple[str, str, AllocationMethod],
                                                        List[Union[Tuple[str, str], Tuple[str, str, AllocationMethod]]]]] = None,
-                 do_compare_adaptation: bool = False):
+                 do_compare_adaptation: bool = False,
+                 do_adapt_to_everything: bool = False,
+                 do_rerank_learners: bool = True):
         
         self.key_target = in_key_target
         self.keys_features = in_keys_features
@@ -48,6 +50,8 @@ class ProblemSolverInstructions:
         self.tags_allocation = in_tags_allocation
 
         self.do_immediate_responses = do_immediate_responses
+        self.do_adapt_to_everything = do_adapt_to_everything
+        self.do_rerank_learners = do_rerank_learners
 
         # How to handle imported pipelines, if any.
         self.directory_import = in_directory_import
@@ -127,6 +131,7 @@ class ProblemSolution:
                     del self.filters[key_group]
 
         self.n_challengers = in_strategy.n_challengers
+        self.do_rerank_learners = in_instructions.do_rerank_learners
 
         log.info("%s - Prepared a ProblemSolution. Number of learner-groups: %i\n"
                  "%s   Each group champion can have up to %i challengers."
@@ -218,12 +223,15 @@ class ProblemSolution:
         return key_target, keys_features
 
 
-
+    # TODO: Consider whether to make a lack of re-ranking more meaningful, e.g. replacing poor performers in place.
     def insert_learner(self, in_pipeline: MLPipeline, in_key_group: str, do_replace: bool = False):
         """
         Insert a new learner into a group of learners.
         If there are too many challengers, remove the worst performer according to testing loss.
         Optionally, remove an existing pipeline with the same name, e.g. with an adapted pipeline.
+
+        If the user decided not to rerank when declaring an intent to learn, there is no loss-based sorting.
+        Warning: This means that ensembled solutions are arbitrary and new challengers cannot compete.
         """
         list_pipelines = self.groups[in_key_group]
 
@@ -236,7 +244,10 @@ class ProblemSolution:
                 list_pipelines.pop(index_to_remove)
 
         list_pipelines.append(in_pipeline)
-        self.groups[in_key_group] = sorted(list_pipelines, key=lambda p: p.get_loss())
+        if self.do_rerank_learners:
+            self.groups[in_key_group] = sorted(list_pipelines, key=lambda p: p.get_loss())
+        else:
+            self.groups[in_key_group] = list_pipelines
         text_key_group = "" if in_key_group == self.id_no_filter else ": %s" % in_key_group
         log.info("%s - Learner Group%s -> %s" % (Timestamp(), text_key_group, 
                                                  ["%s: %0.2e" % (pipeline.name, pipeline.get_loss()) 

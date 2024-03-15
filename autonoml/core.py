@@ -204,7 +204,9 @@ class AutonoMachine:
               in_directory_import: str = None,
               in_import_allocation: Dict[str, Union[Tuple[str, str], Tuple[str, str, AllocationMethod],
                                                     List[Union[Tuple[str, str], Tuple[str, str, AllocationMethod]]]]] = None,
-              do_compare_adaptation: bool = False):
+              do_compare_adaptation: bool = False,
+              do_adapt_to_everything: bool = False,
+              do_rerank_learners: bool = True):
         """
         Create a solver that will attempt to learn a relation between data features and a target.
         If feature keys are not provided, the relation will include every feature currently present in data storage.
@@ -220,7 +222,7 @@ class AutonoMachine:
 
         Note that a directory path can be provided to identify where results are exported to.
 
-        Imports...
+        Import capabilities...
         A directory path of previously exported pipelines can be provided to import them into a solver.
         An allocation dictionary can additionally specify what data subsets they adapt to.
         For example: {"pipe_1": ("source", "one"),
@@ -228,6 +230,13 @@ class AutonoMachine:
         In this example, any pipelines with "pipe_1" in their filename will adapt on data subsets with a "source" tag of "one".
         Likewise, "pipe_2" pipelines will adapt for a "source" tag of "two", but not on data subsets with "context" tag "alpha".
         If a user desires to compare adaptation, each imported pipeline will be cloned into an adaptable and non-adaptable duo.
+
+        Normally, adaptation only applies to the last data instance within a new batch received.
+        This prevents being overwhelmed by data that continuously arrives too quickly to deal with.
+        However, enable adaptation to everything if every data instance is crucial.
+
+        Normally, learners will be reranked based on performance; disable reranking for easier external analysis.
+        Warning: Do not disable reranking if caring about ensembled performance or generating new challengers.
         """
         instructions = ProblemSolverInstructions(in_key_target = in_key_target,
                                                  in_keys_features = in_keys_features,
@@ -236,7 +245,9 @@ class AutonoMachine:
                                                  in_tags_allocation = in_tags_allocation,
                                                  in_directory_import = in_directory_import,
                                                  in_import_allocation = in_import_allocation,
-                                                 do_compare_adaptation = do_compare_adaptation)
+                                                 do_compare_adaptation = do_compare_adaptation,
+                                                 do_adapt_to_everything = do_adapt_to_everything,
+                                                 do_rerank_learners = do_rerank_learners)
         self.solver = ProblemSolver(in_data_storage = self.data_storage,
                                     in_instructions = instructions,
                                     in_strategy = in_strategy,

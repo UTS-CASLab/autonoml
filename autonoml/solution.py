@@ -155,7 +155,6 @@ class ProblemSolution:
         if not dir_import is None:
             for filename in os.listdir(dir_import):
                 filepath = os.path.join(dir_import, filename)
-
                 pipeline = joblib.load(filepath)
                 pipeline.name = "Imported_" + pipeline.name
                 pipeline.clean_history()
@@ -204,10 +203,10 @@ class ProblemSolution:
                                 
                                 filter_group.append((key_data, value, method_allocation))
 
-                        # If the user has specified new filters, put those in.
-                        if not key_group in self.groups:
-                            self.groups[key_group] = list()
-                            self.filters[key_group] = filter_group
+                            # If the user has specified new filters, instantiate a group keyed to that filter.
+                            if not key_group in self.groups:
+                                self.groups[key_group] = list()
+                                self.filters[key_group] = filter_group
 
                 self.insert_learner(in_pipeline = pipeline, in_key_group = key_group)
                 if in_instructions.do_compare_adaptation:

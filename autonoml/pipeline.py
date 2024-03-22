@@ -96,12 +96,17 @@ class MLPipeline:
         return self.name + ": [" + self.components_as_string() + "]"
     
     def clean_history(self):
+        """
+        Clean the history of target values and predictions.
+        However, keep last loss value to estimate initial ranking.
+        It will be quickly overwritten the moment new data or queries are encountered.
+        """
         self.training_y_true = list()
         self.training_y_response = list()
-        self.training_loss = np.inf
+        # self.training_loss = np.inf
         self.testing_y_true = list()
         self.testing_y_response = list()
-        self.testing_loss = np.inf
+        # self.testing_loss = np.inf
 
     def components_as_string(self, do_hpars = False):
         if do_hpars:

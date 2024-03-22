@@ -34,7 +34,8 @@ class DataPort:
     
     count = 0
 
-    def __init__(self, in_data_storage: DataStorage, in_name: str = None, 
+    def __init__(self, in_data_storage: DataStorage, in_name: str = None,
+                 in_field_names: List[str] = None,
                  in_tags: Dict[str, str] = None, is_for_queries: bool = False):
         self.name = "Port_" + str(DataPort.count)
         DataPort.count += 1
@@ -44,6 +45,11 @@ class DataPort:
         
         # Reference to the DataStorage contained in the AutonoMachine.
         self.data_storage = in_data_storage
+
+        # Field names for the data that will be encountered.
+        self.field_names = None
+        if not in_field_names is None:
+            self.field_names = in_field_names
 
         # Ensure tags are in string format.
         self.tags = dict()
@@ -64,6 +70,8 @@ class DataPort:
 
         # Read CSV into an arrow table.
         read_options = pacsv.ReadOptions(use_threads = True,
+                                         skip_rows = int(self.field_names is not None),
+                                         column_names = self.field_names,
                                          autogenerate_column_names = not in_file_has_headers)
         data = pacsv.read_csv(in_filepath, read_options = read_options)
 
@@ -99,6 +107,7 @@ class DataPortStream(DataPort):
                  in_id_stream: str = None, in_tags: Dict[str, str] = None,
                  is_for_queries: bool = False):
         super().__init__(in_data_storage = in_data_storage, in_name = in_id_stream,
+                         in_field_names = in_field_names,
                          in_tags = in_tags, is_for_queries = is_for_queries)
         log.info("%s   This DataPort is designed for streams." % Timestamp(None))
         
@@ -107,11 +116,6 @@ class DataPortStream(DataPort):
         self.target_port = in_port
 
         self.connection_state = False
-        
-        # Field names for the streamed data that will be encountered.
-        self.field_names = None
-        if not in_field_names is None:
-            self.field_names = in_field_names
 
         # A switch for whether encountered data is currently being streamed into storage.
         # It will be flicked on only if field names are provided by the user.

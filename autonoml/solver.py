@@ -288,7 +288,8 @@ class ProblemSolver:
         time_start = Timestamp().time
         dict_observations = self.data_storage.observations
         tag_to_collection_ids = self.data_storage.observations_tag_to_collection_ids
-        observations = filter_observations(dict_observations, tag_to_collection_ids, data_filter)
+        observations = filter_observations(dict_observations, tag_to_collection_ids, data_filter,
+                                           in_info_process = info_process)
         # observations = await loop.run_in_executor(in_executor, filter_observations, dict_observations, 
         #                                           tag_to_collection_ids, data_filter)
         time_end = Timestamp().time
@@ -362,7 +363,8 @@ class ProblemSolver:
             time_start = Timestamp().time
             dict_observations = self.data_storage.observations
             tag_to_collection_ids = self.data_storage.observations_tag_to_collection_ids
-            observations = filter_observations(dict_observations, tag_to_collection_ids, data_filter)
+            observations = filter_observations(dict_observations, tag_to_collection_ids, data_filter,
+                                               in_info_process = info_process)
             # observations = await loop.run_in_executor(in_executor, filter_observations, dict_observations,
             #                                           tag_to_collection_ids, data_filter)
             time_end = Timestamp().time
@@ -565,10 +567,13 @@ class ProblemSolver:
             # Fix how many observations to process based on what is available at the time.
             if self.instructions.do_adapt_to_everything:
                 # If every data instance matters, step forward by one instance.
+                # Make sure all pipelines are ready to adapt.
+                await self.queue_dev.join()
                 # TODO: Consider speedups if this becomes slow, e.g. due to many learner group checks.
                 id_stop = self.id_observations_last + 1
             else:
                 # Otherwise, grab the new batch of data and only adapt to the last instance.
+                # Pipelines will adapt if they are ready to adapt.
                 id_stop = self.data_storage.id_data_last
 
             info_process = ProcessInformation(in_keys_features = self.keys_features,

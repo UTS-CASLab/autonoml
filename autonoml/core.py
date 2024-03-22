@@ -84,9 +84,11 @@ class AutonoMachine:
                 
         self.is_running = False
             
-    def ingest_file(self, in_filepath, in_tags: Dict[str, str] = None, in_n_instances: int = None):
+    def ingest_file(self, in_filepath, in_field_names: List[str] = None,
+                    in_tags: Dict[str, str] = None, in_n_instances: int = None):
         """
         Take in a .csv file and convert its contents into data to learn from, i.e. observations.
+        Optionally provide names for each field and skip the first row or leave empty and use the first row as headers.
 
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
         The tags partition data within storage.
@@ -95,13 +97,15 @@ class AutonoMachine:
 
         log.info("%s - Scheduling request for AutonoMachine '%s' to ingest data file: %s" 
                  % (Timestamp(), self.name, in_filepath))
-        ref = DataPort(in_data_storage = self.data_storage, in_tags = in_tags)
+        ref = DataPort(in_data_storage = self.data_storage, in_field_names = in_field_names, in_tags = in_tags)
         self.data_ports[ref.name] = ref
         create_async_task_from_sync(ref.ingest_file, in_filepath, in_n_instances = in_n_instances)
         
-    def query_with_file(self, in_filepath, in_tags: Dict[str, str] = None, in_n_instances: int = None):
+    def query_with_file(self, in_filepath, in_field_names: List[str] = None,
+                        in_tags: Dict[str, str] = None, in_n_instances: int = None):
         """
         Take in a .csv file and convert its contents into data to respond to, i.e. queries.
+        Optionally provide names for each field and skip the first row or leave empty and use the first row as headers.
 
         The data can be assigned optional tags, e.g. {"source":"wiki_1", "context":"exp_1"}.
         The tags partition data within storage.
@@ -109,7 +113,7 @@ class AutonoMachine:
 
         log.info("%s - Scheduling request to query AutonoMachine '%s' with file: %s" 
                  % (Timestamp(), self.name, in_filepath))
-        ref = DataPort(in_data_storage = self.data_storage, in_tags = in_tags,
+        ref = DataPort(in_data_storage = self.data_storage, in_field_names = in_field_names, in_tags = in_tags,
                        is_for_queries = True)
         self.data_ports[ref.name] = ref
         create_async_task_from_sync(ref.ingest_file, in_filepath, in_n_instances = in_n_instances)

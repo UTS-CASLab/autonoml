@@ -39,6 +39,7 @@ class ProblemSolverInstructions:
                  in_directory_import: str = None,
                  in_import_allocation: Dict[str, Union[Tuple[str, str], Tuple[str, str, AllocationMethod],
                                                        List[Union[Tuple[str, str], Tuple[str, str, AllocationMethod]]]]] = None,
+                 do_only_allocation: bool = False,
                  do_compare_adaptation: bool = False,
                  do_adapt_to_everything: bool = False,
                  do_rerank_learners: bool = True):
@@ -56,6 +57,7 @@ class ProblemSolverInstructions:
         # How to handle imported pipelines, if any.
         self.directory_import = in_directory_import
         self.import_allocation = in_import_allocation
+        self.do_only_allocation = do_only_allocation
         self.do_compare_adaptation = do_compare_adaptation
 
 # TODO: Clean-up labels around tags and keys.
@@ -148,6 +150,7 @@ class ProblemSolution:
 
         dir_import = in_instructions.directory_import
         import_allocation = in_instructions.import_allocation
+        do_only_allocation = in_instructions.do_only_allocation
 
         key_target = None
         keys_features = None
@@ -169,10 +172,12 @@ class ProblemSolution:
                 key_group = self.id_no_filter
 
                 # Determine what data this imported pipeline should adapt on.
+                is_pipeline_in_allocation = False
                 if not import_allocation is None:
                     for substring, allocation in import_allocation.items():
 
                         if substring in filename:
+                            is_pipeline_in_allocation = True
 
                             key_group = self.id_no_filter
                             filter_group = list()
@@ -208,15 +213,17 @@ class ProblemSolution:
                                 self.groups[key_group] = list()
                                 self.filters[key_group] = filter_group
 
-                self.insert_learner(in_pipeline = pipeline, in_key_group = key_group)
-                if in_instructions.do_compare_adaptation:
-                    self.insert_learner(in_pipeline = pipeline_alt, in_key_group = key_group)
+                # TODO: Stop loading pipelines unnecessarily before rejecting them if doing only allocation.
+                if (not do_only_allocation) or (do_only_allocation and (import_allocation is not None) and is_pipeline_in_allocation):
+                    self.insert_learner(in_pipeline = pipeline, in_key_group = key_group)
+                    if in_instructions.do_compare_adaptation:
+                        self.insert_learner(in_pipeline = pipeline_alt, in_key_group = key_group)
 
-                # The last component of a pipeline is a predictor with a target.
-                # The first component of a pipeline will store initial features.
-                # Get both so that target/features can be imported.
-                key_target = pipeline.components[-1].key_target
-                keys_features = pipeline.components[0].keys_features
+                    # The last component of a pipeline is a predictor with a target.
+                    # The first component of a pipeline will store initial features.
+                    # Get both so that target/features can be imported.
+                    key_target = pipeline.components[-1].key_target
+                    keys_features = pipeline.components[0].keys_features
 
         # Return the last import pipeline's target/features.
         return key_target, keys_features

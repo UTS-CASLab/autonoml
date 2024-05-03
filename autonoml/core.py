@@ -208,6 +208,7 @@ class AutonoMachine:
               in_directory_import: str = None,
               in_import_allocation: Dict[str, Union[Tuple[str, str], Tuple[str, str, AllocationMethod],
                                                     List[Union[Tuple[str, str], Tuple[str, str, AllocationMethod]]]]] = None,
+              do_only_allocation: bool = False,
               do_compare_adaptation: bool = False,
               do_adapt_to_everything: bool = False,
               do_rerank_learners: bool = True):
@@ -233,7 +234,8 @@ class AutonoMachine:
                       "pipe_2": [("source", "two"), ("context", "alpha", AllocationMethod.LEAVE_ONE_OUT)]}
         In this example, any pipelines with "pipe_1" in their filename will adapt on data subsets with a "source" tag of "one".
         Likewise, "pipe_2" pipelines will adapt for a "source" tag of "two", but not on data subsets with "context" tag "alpha".
-        If a user desires to compare adaptation, each imported pipeline will be cloned into an adaptable and non-adaptable duo.
+        The user can optionally choose to only import pipelines that have an allocation.
+        Also, if a user desires to compare adaptation, each imported pipeline will be cloned into an adaptable and non-adaptable duo.
 
         Normally, adaptation only applies to the last data instance within a new batch received.
         This prevents being overwhelmed by data that continuously arrives too quickly to deal with.
@@ -249,6 +251,7 @@ class AutonoMachine:
                                                  in_tags_allocation = in_tags_allocation,
                                                  in_directory_import = in_directory_import,
                                                  in_import_allocation = in_import_allocation,
+                                                 do_only_allocation = do_only_allocation,
                                                  do_compare_adaptation = do_compare_adaptation,
                                                  do_adapt_to_everything = do_adapt_to_everything,
                                                  do_rerank_learners = do_rerank_learners)

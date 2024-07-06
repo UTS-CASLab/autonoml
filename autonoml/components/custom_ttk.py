@@ -512,34 +512,25 @@ class OnlineSVR:
             self.remainder_set_indices.append(i)
             return
 
-        is_new_sample_added = False
-        iterations = 0
-        while not is_new_sample_added:
-            # Ensure we're not looping infinitely
-            iterations += 1
-            if iterations > self.n_samples_trained*100:
-                # print('Warning: we appear to be in an infinite loop.')
-                sys.exit()
-                iterations = 0
-            # Compute beta/gamma for constraint optimization
-            beta, gamma = self.compute_beta_gamma(i)
-            # Find minimum variation and determine how we should shift samples between sets
-            deltaC, flag, minIndex = self.find_min_variation(H, beta, gamma, i)
-            # Update weights and bias based on variation
-            if len(self.support_set_indices) > 0 and len(beta)>0:
-                self.weights[i] += deltaC
-                delta = beta*deltaC
-                self.bias += delta.item(0)
-                # numpy is wonky...
-                weight_delta = np.array(delta[1:])
-                weight_delta.shape = (len(weight_delta),)
-                self.weights[self.support_set_indices] += weight_delta
-                H += gamma*deltaC
-            else:
-                self.bias += deltaC
-                H += deltaC
-            # Adjust sets, moving samples between them according to flag
-            H, is_new_sample_added = self.adjust_sets(H, beta, gamma, i, flag, minIndex)
+        # Compute beta/gamma for constraint optimization
+        beta, gamma = self.compute_beta_gamma(i)
+        # Find minimum variation and determine how we should shift samples between sets
+        deltaC, flag, minIndex = self.find_min_variation(H, beta, gamma, i)
+        # Update weights and bias based on variation
+        if len(self.support_set_indices) > 0 and len(beta)>0:
+            self.weights[i] += deltaC
+            delta = beta*deltaC
+            self.bias += delta.item(0)
+            # numpy is wonky...
+            weight_delta = np.array(delta[1:])
+            weight_delta.shape = (len(weight_delta),)
+            self.weights[self.support_set_indices] += weight_delta
+            H += gamma*deltaC
+        else:
+            self.bias += deltaC
+            H += deltaC
+        # Adjust sets, moving samples between them according to flag
+        H, _ = self.adjust_sets(H, beta, gamma, i, flag, minIndex)
         
         if self.debug:
             print('weights',self.weights)

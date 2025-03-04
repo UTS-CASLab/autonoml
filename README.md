@@ -1,6 +1,10 @@
 # AutonoML
 
-A framework for continuous automated machine learning.
+Exploring a framework for continuous automated machine learning.
+
+The conceptual foundation for this framework is based on a review of autonomous machine learning, with the suggested citation as follows.
+
+David Jacob Kedziora, Katarzyna Musial and Bogdan Gabrys (2024), "AutonoML: Towards an Integrated Framework for Autonomous Machine Learning", Foundations and Trends® in Machine Learning: Vol. 17: No. 4, pp 590-766. http://dx.doi.org/10.1561/2200000093
 
 ## Installation
 
@@ -342,5 +346,3 @@ For example, in abstract terms:
   ```
 Note that a predictor or preprocessor can multiply inherit an MLOnlineLearner to, by default, make the adapt method redirect to the learn method, as the two are usually identical for an incremental learner.\
 Any other multiple inheritances, e.g. of MLDummy, are simply to aid with inclusions/exclusions in strategy files.
-
-## Ideal Roadmap

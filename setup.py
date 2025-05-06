@@ -29,5 +29,8 @@ setup(
         # For machine learning components.
         "scikit-learn",
         "river",
+        # ⇩⇩⇩  NEW  ⇩⇩⇩
+        # For AFE (SafeTransformer)
+        "safe-transformer-fixed",
     ],
 )

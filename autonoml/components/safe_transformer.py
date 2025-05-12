@@ -64,15 +64,15 @@ class AFETransformer(MLScaler):
     # ── required MLComponent API ──────────────────────────────────────────────
     def learn(self, x, y):
         """
-        Fit the base SVR first, then SafeTransformer.  
+        Fit the base ET first, then SafeTransformer.  
         Both need plain numpy / pandas data, so convert as required.
         """
         # ---------- X ----------
         x_df = _to_dataframe(x)          # DataFrame for SafeTransformer
-        x_np = x_df.values               # numpy for SVR
+        x_np = x_df.values               # numpy for ET
 
         # ---------- y ----------
-        y_np = _to_numpy_1d(y)           # 1‑D numpy for SVR
+        y_np = _to_numpy_1d(y)           # 1‑D numpy for ET
         y_sr = pd.Series(y_np)           # pandas Series for SafeTransformer
 
         # ---------- fit ----------

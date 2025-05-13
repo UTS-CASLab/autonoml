@@ -89,5 +89,5 @@ class GPRegressor(MLPredictor):
 
     # -------- Optional: fall-back adaptation (GP isn’t incremental) -----------------
     def adapt(self, x, y):
-        # just retrain on everything we’ve got
-        self.learn(x, y)
+        """GP cannot be updated incrementally – do nothing."""
+        return

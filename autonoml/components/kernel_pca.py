@@ -74,7 +74,8 @@ class KPCA(MLScaler):
             gamma        = hp["gamma"].val,
             fit_inverse_transform = False,
             copy_X       = True,
-            n_jobs       = 1                       # AutonoML handles parallelism
+            n_jobs       = 1,                       # AutonoML handles parallelism
+            random_state=0
         )
 
     # ------------------------------------------------------------------------

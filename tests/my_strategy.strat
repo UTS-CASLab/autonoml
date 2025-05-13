@@ -72,7 +72,7 @@ Inclusions/Exclusions:
 Search Space:
   autonoml.components.GaussianProcess.GPRegressor:
     Info: MLPredictor
-    Include: y
+    Include: n
     Hpars:
       Kernel:
         Info: Type of covariance kernel
@@ -127,7 +127,7 @@ Search Space:
         Max: 1.0
   autonoml.components.kernel_pca.KPCA:
     Info: MLPreprocessor, MLScaler
-    Include: y
+    Include: n
     Hpars:
       kernel:
         Info: KPCA kernel function
@@ -230,7 +230,7 @@ Search Space:
     Include: n
   autonoml.components.sklearn.RandomForestRegressor:
     Info: MLPredictor, MLRegressor
-    Include: n
+    Include: y
     Hpars:
       n_estimators:
         Vary: y

@@ -109,7 +109,7 @@ def filter_observations(in_dict_observations: Dict[int, DataCollection],
 
 def prepare_data(in_collection: DataCollection, in_info_process: ProcessInformation, 
                  in_frac_validation: float = 0.25, in_n_sets: int = 1,
-                 do_shuffle_original: bool = False):
+                 do_shuffle_original: bool = True):
 
     # No validation is needed for adaptation.
     if in_info_process.do_adapt:

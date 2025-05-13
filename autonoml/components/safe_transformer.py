@@ -3,6 +3,7 @@ AFETransformer – SafeTransformer wrapped for AutonoML.
 
 * Trains once (base ET ➜ SafeTransformer).
 * Afterwards only `.transform()` is used; `.adapt()` is a no‑op.
+Author: Dilshan Sonnadara
 """
 
 # ── std / third‑party ─────────────────────────────────────────────────────────

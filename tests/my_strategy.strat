@@ -18,8 +18,8 @@ Strategy:
       run too many HPOs concurrently. Note that these strategies are applied once
       per learner group, in the case where problem-solving involves allocations of
       data-subsets.
-    Do Defaults: y
-    Do Random: n
+    Do Defaults: n
+    Do Random: y
     Number of Samples: 10
     Do HPO: n
     Max HPO Concurrency: 2
@@ -54,7 +54,9 @@ Inclusions/Exclusions:
     categories.
   Prioritise Inclusions: n
   Modules:
+    autonoml.components.GaussianProcess: ''
     autonoml.components.custom_ttk: ''
+    autonoml.components.kernel_pca: ''
     autonoml.components.river: ''
     autonoml.components.safe_transformer: ''
     autonoml.components.sklearn: ''
@@ -68,6 +70,36 @@ Inclusions/Exclusions:
     MLClassifier: ''
     MLRegressor: ''
 Search Space:
+  autonoml.components.GaussianProcess.GPRegressor:
+    Info: MLPredictor
+    Include: y
+    Hpars:
+      Kernel:
+        Info: Type of covariance kernel
+        Vary: y
+        Default: RBF
+        Options:
+          RBF: y
+          Matern: y
+          RationalQuadratic: y
+      LengthScale:
+        Info: Kernel length-scale
+        Vary: y
+        Default: 1.0
+        Min: 0.1
+        Max: 10.0
+      Alpha:
+        Info: Added diagonal noise (alpha)
+        Vary: y
+        Default: 0.01
+        Min: 1.0e-10
+        Max: 0.1
+      Restarts:
+        Info: n_restarts_optimizer
+        Vary: y
+        Default: 0
+        Min: 0
+        Max: 10
   autonoml.components.custom_ttk.OnlineSupportVectorRegressor:
     Info: MLPredictor, MLOnlineLearner, MLRegressor
     Include: n
@@ -93,6 +125,30 @@ Search Space:
         Default: 0.01
         Min: 0.0001
         Max: 1.0
+  autonoml.components.kernel_pca.KPCA:
+    Info: MLPreprocessor, MLScaler
+    Include: y
+    Hpars:
+      kernel:
+        Info: KPCA kernel function
+        Vary: y
+        Default: rbf
+        Options:
+          linear: y
+          poly: y
+          rbf: y
+          sigmoid: y
+          cosine: y
+      n_components:
+        Vary: y
+        Default: 10
+        Min: 2
+        Max: 200
+      gamma:
+        Vary: y
+        Default: 0.1
+        Min: 0.0001
+        Max: 10.0
   autonoml.components.river.OnlineStandardScaler:
     Info: MLPreprocessor, MLOnlineLearner, MLScaler
     Include: n
@@ -118,7 +174,7 @@ Search Space:
         Max: 1.0
   autonoml.components.safe_transformer.AFETransformer:
     Info: MLPreprocessor, MLScaler
-    Include: y
+    Include: n
   autonoml.components.sklearn.SimpleImputer:
     Info: MLPreprocessor, MLImputer
     Include: n
@@ -145,7 +201,7 @@ Search Space:
     Include: n
   autonoml.components.sklearn.LinearRegressor:
     Info: MLPredictor, MLRegressor
-    Include: y
+    Include: n
   autonoml.components.sklearn.LinearSVR:
     Info: MLPredictor, MLRegressor
     Include: n
